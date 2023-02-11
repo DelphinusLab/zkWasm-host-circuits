@@ -1,5 +1,7 @@
-use std::marker::PhantomData;
+mod utils;
+mod circuits;
 
+use std::marker::PhantomData;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
@@ -19,23 +21,27 @@ trait HostCircuit<F: FieldExt>: Clone {
     ) -> Result<Self, Error>;
 }
 
+#[derive(Clone, Debug)]
+struct SharedOpInfo {
+}
 
 // ANCHOR: add-config
 #[derive(Clone, Debug)]
-struct HostSumConfig {
-    advice: [Column<Advice>; 2],
+struct HostOpConfig {
     shared_operands: Column<Advice>,
     shared_opcodes: Column<Advice>,
-    s_add: Selector,
+    shared_index: Column<Advice>,
+    filtered_operands: Column<Advice>,
+    filtered_index: Column<Advice>,
 }
 
-struct HostSumChip<F: FieldExt> {
-    config: HostSumConfig,
+struct HostOpChip<F: FieldExt> {
+    config: HostOpConfig,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> Chip<F> for HostSumChip<F> {
-    type Config = HostSumConfig;
+impl<F: FieldExt> Chip<F> for HostOpChip<F> {
+    type Config = HostOpConfig;
     type Loaded = ();
 
     fn config(&self) -> &Self::Config {
@@ -47,7 +53,7 @@ impl<F: FieldExt> Chip<F> for HostSumChip<F> {
     }
 }
 
-impl<F: FieldExt> HostSumChip<F> {
+impl<F: FieldExt> HostOpChip<F> {
     fn construct(config: <Self as Chip<F>>::Config) -> Self {
         Self {
             config,
@@ -57,24 +63,28 @@ impl<F: FieldExt> HostSumChip<F> {
 
     fn configure(
         meta: &mut ConstraintSystem<F>,
-        advice: [Column<Advice>; 2],
         shared_operands: Column<Advice>,
         shared_opcodes: Column<Advice>,
+        shared_index: Column<Advice>,
+        filtered_operands: Column<Advice>,
+        filtered_index: Column<Advice>,
+        opcode: F,
     ) -> <Self as Chip<F>>::Config {
-        let s_add = meta.selector();
-        meta.create_gate("host-sum", |meta| {
-            let lhs = meta.query_advice(advice[0], Rotation::cur());
-            let rhs = meta.query_advice(advice[1], Rotation::cur());
-            let out = meta.query_advice(advice[0], Rotation::next());
-            let s_add = meta.query_selector(s_add);
-            vec![s_add]
+        meta.lookup_any("filter-shared-ops", |meta| {
+            let sopc = meta.query_advice(shared_opcodes, Rotation::cur());
+            let soper = meta.query_advice(shared_operands, Rotation::cur());
+            let sidx = meta.query_advice(shared_index, Rotation::cur());
+            let foper = meta.query_advice(filtered_operands, Rotation::cur());
+            let fidx = meta.query_advice(filtered_index, Rotation::cur());
+            vec![(constant!(opcode), sopc), (foper, soper), (fidx, sidx)]
         });
 
-        HostSumConfig {
-            advice,
+        HostOpConfig {
             shared_operands,
             shared_opcodes,
-            s_add,
+            shared_index,
+            filtered_operands,
+            filtered_index
         }
     }
 }
@@ -86,7 +96,7 @@ struct HostSumCircuit<F: FieldExt> {
 
 impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
     // Since we are using a single chip for everything, we can just reuse its config.
-    type Config = HostSumConfig;
+    type Config = HostOpConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -95,14 +105,24 @@ impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         // We create the two advice columns that FieldChip uses for I/O.
-        let advice = [meta.advice_column(), meta.advice_column()];
         let shared_operands = meta.advice_column();
         let shared_opcodes = meta.advice_column();
+        let shared_index = meta.advice_column();
+        let filtered_operands = meta.advice_column();
+        let filtered_index = meta.advice_column();
 
         // We also need an instance column to store public inputs.
         let instance = meta.instance_column();
 
-        HostSumChip::configure(meta, advice, shared_operands, shared_opcodes)
+        HostOpChip::configure(
+            meta,
+            shared_operands,
+            shared_opcodes,
+            shared_index,
+            filtered_operands,
+            filtered_index,
+            F::one(),
+        )
     }
 
     fn synthesize(
@@ -110,7 +130,7 @@ impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let host_sum_chip = HostSumChip::<F>::construct(config);
+        let host_sum_chip = HostOpChip::<F>::construct(config);
         Ok(())
     }
 }

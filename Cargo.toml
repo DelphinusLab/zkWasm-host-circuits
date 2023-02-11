@@ -7,5 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
+strum = "0.24.1"
+strum_macros = "0.24.1"
 halo2_proofs = { git = "https://github.com/junyu0312/halo2", branch = "gpu", default-features = true }
+num-bigint = { version = "0.4", features = ["rand"] }

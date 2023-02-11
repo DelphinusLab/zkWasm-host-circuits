@@ -87,14 +87,71 @@ impl<F: FieldExt> HostOpChip<F> {
             filtered_index
         }
     }
+
+    fn assign(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        shared_operands: &Vec<F>,
+        shared_opcodes: &Vec<F>,
+        shared_index: &Vec<F>,
+        target_opcode: F,
+    ) -> Result<(), Error>  {
+        layouter.assign_region(
+            || "filter operands and opcodes",
+            |mut region| {
+                let mut offset = 0;
+                let mut picked_offset = 0;
+                for opcode in shared_opcodes {
+                    region.assign_advice(
+                        || "shared opcodes",
+                        self.config.shared_opcodes,
+                        offset,
+                        || Ok(opcode.clone())
+                    )?;
+                    region.assign_advice(
+                        || "shared operands",
+                        self.config.shared_operands,
+                        offset,
+                        || Ok(shared_operands[offset])
+                    )?;
+                    region.assign_advice(
+                        || "shared index",
+                        self.config.shared_index,
+                        offset,
+                        || Ok(shared_index[offset])
+                    )?;
+                    if opcode.clone() == target_opcode {
+                        region.assign_advice(
+                            || "picked operands",
+                            self.config.filtered_operands,
+                            picked_offset,
+                            || Ok(shared_operands[offset])
+                        )?;
+                        region.assign_advice(
+                            || "shared advice",
+                            self.config.filtered_index,
+                            picked_offset,
+                            || Ok(shared_index[offset])
+                        )?;
+                    };
+                    offset += 1;
+                    picked_offset += 1;
+                };
+                Ok(())
+            },
+        )?;
+        Ok(())
+    }
 }
 
 #[derive(Default)]
-struct HostSumCircuit<F: FieldExt> {
+struct HostOpCircuit<F: FieldExt> {
     shared_operands: Vec<F>,
+    shared_opcodes: Vec<F>,
+    shared_index: Vec<F>,
 }
 
-impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
+impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = HostOpConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -110,9 +167,6 @@ impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
         let shared_index = meta.advice_column();
         let filtered_operands = meta.advice_column();
         let filtered_index = meta.advice_column();
-
-        // We also need an instance column to store public inputs.
-        let instance = meta.instance_column();
 
         HostOpChip::configure(
             meta,
@@ -130,7 +184,14 @@ impl<F: FieldExt> Circuit<F> for HostSumCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let host_sum_chip = HostOpChip::<F>::construct(config);
+        let host_op_chip = HostOpChip::<F>::construct(config);
+        host_op_chip.assign(
+            &mut layouter,
+            &self.shared_operands,
+            &self.shared_opcodes,
+            &self.shared_index,
+            F::one()
+        )?;
         Ok(())
     }
 }
@@ -150,10 +211,14 @@ fn main() {
     let b = Fp::one();
     let c = a + b;
     let shared_operands = vec![a, b, c];
+    let shared_opcodes = vec![Fp::one(), Fp::one(), Fp::one()];
+    let shared_index = vec![Fp::one(), Fp::from(2), Fp::from(3)];
 
     // Instantiate the circuit with the private inputs.
-    let circuit = HostSumCircuit {
-        shared_operands
+    let circuit = HostOpCircuit {
+        shared_operands,
+        shared_opcodes,
+        shared_index,
     };
 
     // Given the correct public input, our circuit will verify.

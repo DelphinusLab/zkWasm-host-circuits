@@ -76,7 +76,7 @@ impl<F: FieldExt> HostOpChip<F> {
             let sidx = meta.query_advice(shared_index, Rotation::cur());
             let foper = meta.query_advice(filtered_operands, Rotation::cur());
             let fidx = meta.query_advice(filtered_index, Rotation::cur());
-            vec![(constant!(opcode), sopc), (foper, soper), (fidx, sidx)]
+            vec![(fidx, sidx), (foper, soper), (constant!(opcode), sopc)]
         });
 
         HostOpConfig {
@@ -102,6 +102,7 @@ impl<F: FieldExt> HostOpChip<F> {
                 let mut offset = 0;
                 let mut picked_offset = 0;
                 for opcode in shared_opcodes {
+                    println!("opcode is {:?}", opcode);
                     region.assign_advice(
                         || "shared opcodes",
                         self.config.shared_opcodes,
@@ -121,6 +122,7 @@ impl<F: FieldExt> HostOpChip<F> {
                         || Ok(shared_index[offset])
                     )?;
                     if opcode.clone() == target_opcode {
+                        println!("target_opcode is {:?}", target_opcode);
                         region.assign_advice(
                             || "picked operands",
                             self.config.filtered_operands,
@@ -210,9 +212,9 @@ fn main() {
     let a = Fp::one();
     let b = Fp::one();
     let c = a + b;
-    let shared_operands = vec![a, b, c];
-    let shared_opcodes = vec![Fp::one(), Fp::one(), Fp::one()];
-    let shared_index = vec![Fp::one(), Fp::from(2), Fp::from(3)];
+    let shared_operands = vec![Fp::zero(), a, b, c];
+    let shared_opcodes = vec![Fp::zero(), Fp::one(), Fp::one(), Fp::one()];
+    let shared_index = vec![Fp::zero(), Fp::one(), Fp::from(2), Fp::from(3)];
 
     // Instantiate the circuit with the private inputs.
     let circuit = HostOpCircuit {
@@ -224,11 +226,4 @@ fn main() {
     // Given the correct public input, our circuit will verify.
     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
-
-    // If we try some other public input, the proof will fail!
-    let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    assert!(prover.verify().is_err());
-    // ANCHOR_END: test-circuit
 }
-
-

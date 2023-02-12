@@ -7,7 +7,9 @@ use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
+    pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
+use circuits::get_circuit_on_bn256;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -99,6 +101,7 @@ impl<F: FieldExt> HostOpChip<F> {
         layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
+                println!("asign_region");
                 let mut offset = 0;
                 let mut picked_offset = 0;
                 for opcode in shared_opcodes {
@@ -122,7 +125,6 @@ impl<F: FieldExt> HostOpChip<F> {
                         || Ok(shared_index[offset])
                     )?;
                     if opcode.clone() == target_opcode {
-                        println!("target_opcode is {:?}", target_opcode);
                         region.assign_advice(
                             || "picked operands",
                             self.config.filtered_operands,
@@ -135,10 +137,12 @@ impl<F: FieldExt> HostOpChip<F> {
                             picked_offset,
                             || Ok(shared_index[offset])
                         )?;
+                        picked_offset += 1;
                     };
                     offset += 1;
-                    picked_offset += 1;
                 };
+                println!("picked offset is {:?}", picked_offset);
+                println!("offset is {:?}", offset);
                 Ok(())
             },
         )?;

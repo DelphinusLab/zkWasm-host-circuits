@@ -34,6 +34,7 @@ struct HostOpConfig {
     shared_opcodes: Column<Advice>,
     shared_index: Column<Advice>,
     filtered_operands: Column<Advice>,
+    filtered_opcodes: Column<Advice>,
     filtered_index: Column<Advice>,
 }
 
@@ -69,6 +70,7 @@ impl<F: FieldExt> HostOpChip<F> {
         shared_opcodes: Column<Advice>,
         shared_index: Column<Advice>,
         filtered_operands: Column<Advice>,
+        filtered_opcodes: Column<Advice>,
         filtered_index: Column<Advice>,
         opcode: F,
     ) -> <Self as Chip<F>>::Config {
@@ -77,8 +79,9 @@ impl<F: FieldExt> HostOpChip<F> {
             let soper = meta.query_advice(shared_operands, Rotation::cur());
             let sidx = meta.query_advice(shared_index, Rotation::cur());
             let foper = meta.query_advice(filtered_operands, Rotation::cur());
+            let fopc  = meta.query_advice(filtered_opcodes, Rotation::cur());
             let fidx = meta.query_advice(filtered_index, Rotation::cur());
-            vec![(fidx, sidx), (foper, soper), (constant!(opcode), sopc)]
+            vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
         });
 
         HostOpConfig {
@@ -86,6 +89,7 @@ impl<F: FieldExt> HostOpChip<F> {
             shared_opcodes,
             shared_index,
             filtered_operands,
+            filtered_opcodes,
             filtered_index
         }
     }
@@ -132,7 +136,14 @@ impl<F: FieldExt> HostOpChip<F> {
                             || Ok(shared_operands[offset])
                         )?;
                         region.assign_advice(
-                            || "shared advice",
+                            || "picked opcodes",
+                            self.config.filtered_opcodes,
+                            picked_offset,
+                            || Ok(target_opcode)
+                        )?;
+
+                        region.assign_advice(
+                            || "picked index",
                             self.config.filtered_index,
                             picked_offset,
                             || Ok(shared_index[offset])
@@ -172,6 +183,7 @@ impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
         let shared_opcodes = meta.advice_column();
         let shared_index = meta.advice_column();
         let filtered_operands = meta.advice_column();
+        let filtered_opcodes = meta.advice_column();
         let filtered_index = meta.advice_column();
 
         HostOpChip::configure(
@@ -180,6 +192,7 @@ impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
             shared_opcodes,
             shared_index,
             filtered_operands,
+            filtered_opcodes,
             filtered_index,
             F::one(),
         )

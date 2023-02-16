@@ -9,7 +9,6 @@ use halo2_proofs::{
     poly::Rotation,
     pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
-use circuits::get_circuit_on_bn256;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -167,6 +166,13 @@ struct HostOpCircuit<F: FieldExt> {
     shared_opcodes: Vec<F>,
     shared_index: Vec<F>,
 }
+
+/*
+let base_chip = BaseChip::new(config.base_chip_config);
+let range_chip = RangeChip::<N>::new(config.range_chip_config);
+range_chip.init_table(&mut layouter)?;
+*/
+
 
 impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
     // Since we are using a single chip for everything, we can just reuse its config.

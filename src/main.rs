@@ -9,6 +9,10 @@ use halo2_proofs::{
     poly::Rotation,
     pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
+use std::path::PathBuf;
+use clap::{arg, value_parser, App, Arg, ArgMatches};
+use halo2_proofs::dev::MockProver;
+use halo2_proofs::pairing::bn256::Fr as Fp;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -221,10 +225,29 @@ impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
     }
 }
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ExternalHostCallEntry {
+    pub op: usize,
+    pub value: u64,
+    pub is_ret: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ExternalHostCallEntryTable(Vec<ExternalHostCallEntry>);
+
+fn input_file<'a>() -> Arg<'a> {
+    arg!(-i --input<INPUT_FILES>... "Input file that contains all host function call")
+        .max_values(1)
+        .value_parser(value_parser!(PathBuf))
+}
+
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    use halo2_proofs::dev::MockProver;
-    use halo2_proofs::pairing::bn256::Fr as Fp;
+
+    let clap_app = App::new("playground")
+        .arg(input_file());
 
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example

@@ -70,7 +70,7 @@ fn get_g1_from_cells(
     ctx: &GeneralScalarEccContext<G1Affine, Fr>,
     a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
-    ///field_to_bn(a[0].value()) 
+    ///field_to_bn(a[0].value())
     ///
     todo!()
 }
@@ -86,9 +86,10 @@ fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
     records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    point: &AssignedPoint<G1Affine, Fr>
-    //fq12: AssignedFq12<G1Affine, Fr>
+    point: &AssignedPoint<G1Affine, Fr>,
+    input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
+    todo!()
 
 }
 
@@ -96,9 +97,10 @@ fn enable_g2affine_permute(
     region: &mut Region<'_, Fr>,
     records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    point: &AssignedG2Affine<G1Affine, Fr>
+    point: &AssignedG2Affine<G1Affine, Fr>,
+    input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
-
+    todo!()
 }
 
 
@@ -106,7 +108,8 @@ fn enable_fq12_permute(
     region: &mut Region<'_, Fr>,
     records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-    fq12: &AssignedFq12<Bls381Fq, Fr>
+    fq12: &AssignedFq12<Bls381Fq, Fr>,
+    input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
     //region.constrain_equal(assigned_cell.cell(), self.cell())?;
 
@@ -134,9 +137,9 @@ impl Bls381PairChip<Fr> {
 
     pub fn load_bls381_pair_circuit(
         &self,
-        a:Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
-        b:Vec<AssignedCell<Fr, Fr>>, //G2 (10 * 2 + 1)
-        ab:Vec<AssignedCell<Fr, Fr>>, // Fq_12 (5*12)
+        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (10 * 2 + 1)
+        ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (5*12)
         base_chip: BaseChip<Fr>,
         range_chip: RangeChip<Fr>,
         mut layouter: impl Layouter<Fr>,
@@ -152,11 +155,11 @@ impl Bls381PairChip<Fr> {
         //let ab0 = pairing(&a, &b);
         //
         //
-        let a_g1 = get_g1_from_cells(&mut ctx, &a);
-        let b_g2 = get_g2_from_cells(&mut ctx, &b);
+        let a_g1 = get_g1_from_cells(&mut ctx, a);
+        let b_g2 = get_g2_from_cells(&mut ctx, b);
 
 
-        let ab = ctx.pairing(&[(&a_g1, &b_g2)]);
+        let ab_fq12 = ctx.pairing(&[(&a_g1, &b_g2)]);
 
         /*
         ctx.fq12_assert_eq(&ab0, &ab);
@@ -173,9 +176,9 @@ impl Bls381PairChip<Fr> {
                 let timer = start_timer!(|| "assign");
                 let cells = records
                     .assign_all(&mut region, &base_chip, &range_chip)?;
-                enable_g1affine_permute(&mut region, &mut records, &cells, &a_g1);
-                enable_g2affine_permute(&mut region, &mut records, &cells, &b_g2);
-                enable_fq12_permute(&mut region, &mut records, &cells, &ab);
+                enable_g1affine_permute(&mut region, &mut records, &cells, &a_g1, a);
+                enable_g2affine_permute(&mut region, &mut records, &cells, &b_g2, b);
+                enable_fq12_permute(&mut region, &mut records, &cells, &ab_fq12, ab);
                 end_timer!(timer);
                 Ok(())
             },

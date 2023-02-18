@@ -9,10 +9,14 @@ use halo2_proofs::{
     poly::Rotation,
     pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
-use std::path::PathBuf;
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::dev::MockProver;
 use halo2_proofs::pairing::bn256::Fr as Fp;
+use std::{
+    io::BufReader,
+    fs::File,
+    path::PathBuf,
+};
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -243,11 +247,30 @@ fn input_file<'a>() -> Arg<'a> {
         .value_parser(value_parser!(PathBuf))
 }
 
+fn parse_input_file(matches: &ArgMatches) -> PathBuf {
+    matches
+        .get_one::<PathBuf>("input")
+        .expect("input file is required")
+        .clone()
+}
+
 #[allow(clippy::many_single_char_names)]
 fn main() {
 
     let clap_app = App::new("playground")
         .arg(input_file());
+
+    let matches = clap_app.get_matches();
+    let input_file = parse_input_file(&matches);
+
+    let file = File::open(input_file).expect("File does not exist");
+    let v: ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
+        Err(e) => {
+            println!("load json error {:?}", e);
+            unreachable!();
+        },
+        Ok(o) => o
+    };
 
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
@@ -255,12 +278,12 @@ fn main() {
     let k = 4;
 
     // Prepare the private and public inputs to the circuit!
-    let a = Fp::one();
-    let b = Fp::one();
-    let c = a + b;
-    let shared_operands = vec![Fp::zero(), a, b, c];
-    let shared_opcodes = vec![Fp::zero(), Fp::one(), Fp::one(), Fp::one()];
-    let shared_index = vec![Fp::zero(), Fp::one(), Fp::from(2), Fp::from(3)];
+    let shared_operands = v.0.iter().map(|x| Fp::from(x.value as u64)).collect();
+    let shared_opcodes = v.0.iter().map(|x| Fp::from(x.op as u64)).collect();
+    let shared_index = v.0.iter()
+        .enumerate()
+        .map(|(i, _)| Fp::from(i as u64))
+        .collect();
 
     // Instantiate the circuit with the private inputs.
     let circuit = HostOpCircuit {

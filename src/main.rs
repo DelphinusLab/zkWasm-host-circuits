@@ -11,12 +11,23 @@ use halo2_proofs::{
 };
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::dev::MockProver;
-use halo2_proofs::pairing::bn256::Fr as Fp;
 use std::{
     io::BufReader,
     fs::File,
     path::PathBuf,
 };
+
+use crate::circuits::{
+    Bls381ChipConfig,
+    Bls381PairChip,
+};
+
+use halo2ecc_s::circuit::{
+    base_chip::{BaseChip, BaseChipConfig},
+    range_chip::{RangeChip, RangeChipConfig}
+};
+
+use halo2_proofs::pairing::bn256::Fr;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -43,6 +54,9 @@ struct HostOpConfig {
     filtered_operands: Column<Advice>,
     filtered_opcodes: Column<Advice>,
     filtered_index: Column<Advice>,
+    base_chip_config: BaseChipConfig,
+    range_chip_config: RangeChipConfig,
+    bls381_chip_config: Bls381ChipConfig,
 }
 
 struct HostOpChip<F: FieldExt> {
@@ -63,8 +77,8 @@ impl<F: FieldExt> Chip<F> for HostOpChip<F> {
     }
 }
 
-impl<F: FieldExt> HostOpChip<F> {
-    fn construct(config: <Self as Chip<F>>::Config) -> Self {
+impl HostOpChip<Fr> {
+    fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
         Self {
             config,
             _marker: PhantomData,
@@ -72,15 +86,15 @@ impl<F: FieldExt> HostOpChip<F> {
     }
 
     fn configure(
-        meta: &mut ConstraintSystem<F>,
+        meta: &mut ConstraintSystem<Fr>,
         shared_operands: Column<Advice>,
         shared_opcodes: Column<Advice>,
         shared_index: Column<Advice>,
         filtered_operands: Column<Advice>,
         filtered_opcodes: Column<Advice>,
         filtered_index: Column<Advice>,
-        opcode: F,
-    ) -> <Self as Chip<F>>::Config {
+        opcode: Fr,
+    ) -> <Self as Chip<Fr>>::Config {
         meta.lookup_any("filter-shared-ops", |meta| {
             let sopc = meta.query_advice(shared_opcodes, Rotation::cur());
             let soper = meta.query_advice(shared_operands, Rotation::cur());
@@ -91,23 +105,34 @@ impl<F: FieldExt> HostOpChip<F> {
             vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
         });
 
+        let base_chip_config = BaseChip::configure(meta);
+        let range_chip_config = RangeChip::<Fr>::configure(meta);
+        let bls381_chip_config = Bls381PairChip::<Fr>::configure(
+            meta,
+            base_chip_config.clone(),
+            range_chip_config.clone()
+        );
+
         HostOpConfig {
             shared_operands,
             shared_opcodes,
             shared_index,
             filtered_operands,
             filtered_opcodes,
-            filtered_index
+            filtered_index,
+            base_chip_config,
+            range_chip_config,
+            bls381_chip_config,
         }
     }
 
     fn assign(
         &self,
-        layouter: &mut impl Layouter<F>,
-        shared_operands: &Vec<F>,
-        shared_opcodes: &Vec<F>,
-        shared_index: &Vec<F>,
-        target_opcode: F,
+        layouter: &mut impl Layouter<Fr>,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
+        target_opcode: Fr,
     ) -> Result<(), Error>  {
         layouter.assign_region(
             || "filter operands and opcodes",
@@ -182,7 +207,7 @@ range_chip.init_table(&mut layouter)?;
 */
 
 
-impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
+impl Circuit<Fr> for HostOpCircuit<Fr> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = HostOpConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -191,7 +216,7 @@ impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
         Self::default()
     }
 
-    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         // We create the two advice columns that FieldChip uses for I/O.
         let shared_operands = meta.advice_column();
         let shared_opcodes = meta.advice_column();
@@ -208,22 +233,22 @@ impl<F: FieldExt> Circuit<F> for HostOpCircuit<F> {
             filtered_operands,
             filtered_opcodes,
             filtered_index,
-            F::one(),
+            Fr::one(),
         )
     }
 
     fn synthesize(
         &self,
         config: Self::Config,
-        mut layouter: impl Layouter<F>,
+        mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let host_op_chip = HostOpChip::<F>::construct(config);
+        let host_op_chip = HostOpChip::<Fr>::construct(config);
         host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
-            F::one()
+            Fr::one()
         )?;
         Ok(())
     }
@@ -278,11 +303,11 @@ fn main() {
     let k = 4;
 
     // Prepare the private and public inputs to the circuit!
-    let shared_operands = v.0.iter().map(|x| Fp::from(x.value as u64)).collect();
-    let shared_opcodes = v.0.iter().map(|x| Fp::from(x.op as u64)).collect();
+    let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
+    let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
     let shared_index = v.0.iter()
         .enumerate()
-        .map(|(i, _)| Fp::from(i as u64))
+        .map(|(i, _)| Fr::from(i as u64))
         .collect();
 
     // Instantiate the circuit with the private inputs.

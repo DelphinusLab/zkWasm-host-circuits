@@ -186,11 +186,11 @@ impl Bls381PairChip<Fr> {
         }
     }
 
-    fn configure(
+    pub fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        base_chip_config: BaseChipConfig,
+        range_chip_config: RangeChipConfig,
     ) -> <Self as Chip<Fr>>::Config {
-        let base_chip_config = BaseChip::configure(meta);
-        let range_chip_config = RangeChip::<Fr>::configure(meta);
         Bls381ChipConfig {
             base_chip_config,
             range_chip_config,

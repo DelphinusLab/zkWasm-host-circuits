@@ -321,3 +321,22 @@ fn main() {
     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
 }
+
+#[cfg(test)]
+mod tests {
+    use rand::rngs::OsRng;
+    use halo2_proofs::arithmetic::Field;
+    use halo2_proofs::pairing::bls12_381::pairing;
+    use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2};
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::pairing::group::prime::PrimeCurveAffine;
+    use halo2_proofs::pairing::group::Group;
+    use crate::ExternalHostCallEntryTable;
+    #[test]
+    fn generate_bls_input() {
+        let a:G1 = G1::random(&mut OsRng).into();
+        let b:G2Affine = G2Affine::from(G2::random(&mut OsRng));
+        let table = ExternalHostCallEntryTable (vec![]);
+        println!("{:#?}", table);
+    }
+}

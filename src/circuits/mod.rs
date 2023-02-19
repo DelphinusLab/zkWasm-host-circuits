@@ -1,11 +1,14 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Add};
 use std::sync::Arc;
+use halo2ecc_s::circuit::ecc_chip::EccChipBaseOps;
+use subtle::Choice;
+use halo2_proofs::arithmetic::{BaseExt, CurveAffine};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
-    pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
+    pairing::bls12_381::{G1Affine, G2Affine, G1, G2 }
 };
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::pairing::bn256::Fr;
@@ -39,6 +42,10 @@ use halo2ecc_s::{
     context::{Context, Records, GeneralScalarEccContext},
 };
 
+use crate::utils::{field_to_bn, bn_to_field};
+use num_bigint::BigUint;
+use std::ops::{Mul, AddAssign};
+
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {
@@ -66,19 +73,59 @@ impl<N: FieldExt> Chip<N> for Bls381PairChip<N> {
     }
 }
 
+pub fn fr_to_bn(f: &Fr) -> BigUint {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    BigUint::from_bytes_le(&bytes[..])
+}
+
+pub fn fr_to_bool(f: &Fr) -> bool {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    return bytes[0] == 1u8;
+}
+
+fn assigned_cells_to_bn381 (
+    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    start: usize
+) -> BigUint {
+    let shift = BigUint::from(2 as u32).pow(90);
+    let mut bn = BigUint::from(0 as u64);
+    for i in start..start+5 {
+        bn.add_assign(fr_to_bn(a[i].value().unwrap()).mul(shift.clone()));
+    }
+    bn
+}
+
 fn get_g1_from_cells(
-    ctx: &GeneralScalarEccContext<G1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
-    ///field_to_bn(a[0].value())
-    ///
-    todo!()
+    let x_bn = assigned_cells_to_bn381(a, 0);
+    let y_bn = assigned_cells_to_bn381(a, 5);
+
+    let is_identity = fr_to_bool(a[10].value().unwrap());
+
+    let a = if is_identity {
+        G1::identity()
+    } else {
+        G1::from(G1Affine::from_xy(
+            bn_to_field(&x_bn),
+            bn_to_field(&y_bn)
+        ).unwrap())
+    };
+
+    ctx.assign_point(&a)
 }
 
 fn get_g2_from_cells(
-    ctx: &GeneralScalarEccContext<G1Affine, Fr>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     b:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
 ) -> AssignedG2Affine<G1Affine, Fr> {
+    let x1_bn = assigned_cells_to_bn381(b, 0);
+    let x2_bn = assigned_cells_to_bn381(b, 5);
+    let y_bn = assigned_cells_to_bn381(b, 10);
+    let y2_bn = assigned_cells_to_bn381(b, 15);
     todo!()
 }
 

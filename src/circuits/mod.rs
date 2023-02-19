@@ -1,5 +1,6 @@
 use std::{marker::PhantomData, ops::Add};
 use std::sync::Arc;
+use halo2ecc_s::circuit::base_chip::BaseChipOps;
 use halo2ecc_s::circuit::ecc_chip::EccChipBaseOps;
 use subtle::Choice;
 use halo2_proofs::arithmetic::{BaseExt, CurveAffine};
@@ -17,9 +18,12 @@ use std::cell::RefCell;
 
 use halo2_proofs::pairing::bls12_381::pairing;
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
+use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
+use halo2ecc_s::assign::{
+    AssignedCondition,
+    AssignedG1Affine,
+};
 /*
-use halo2ecc_s::{assign::AssignedG2Affine, circuit::ecc_chip::EccBaseIntegerChipWrapper};
-use halo2ecc_s::assign::AssignedCondition;
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use halo2ecc_s::circuit::fq12::Fq2ChipOps;
 use halo2ecc_s::circuit::base_chip::BaseChipOps;
@@ -124,9 +128,20 @@ fn get_g2_from_cells(
 ) -> AssignedG2Affine<G1Affine, Fr> {
     let x1_bn = assigned_cells_to_bn381(b, 0);
     let x2_bn = assigned_cells_to_bn381(b, 5);
-    let y_bn = assigned_cells_to_bn381(b, 10);
+    let y1_bn = assigned_cells_to_bn381(b, 10);
     let y2_bn = assigned_cells_to_bn381(b, 15);
-    todo!()
+    let x1 = ctx.base_integer_chip().assign_w(&x1_bn);
+    let x2 = ctx.base_integer_chip().assign_w(&x2_bn);
+    let y1 = ctx.base_integer_chip().assign_w(&y1_bn);
+    let y2 = ctx.base_integer_chip().assign_w(&y2_bn);
+    let is_identity = fr_to_bool(b[20].value().unwrap());
+    AssignedG2Affine::new(
+        (x1, x2),
+        (y1, y2),
+        AssignedCondition(ctx.native_ctx.borrow_mut().assign(
+            if is_identity { Fr::one() } else { Fr::zero() }
+        ))
+    )
 }
 
 fn enable_g1affine_permute(

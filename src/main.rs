@@ -22,12 +22,15 @@ use crate::circuits::{
     Bls381PairChip,
 };
 
+use crate::utils::field_to_bn;
+
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
     range_chip::{RangeChip, RangeChipConfig}
 };
 
 use halo2_proofs::pairing::bn256::Fr;
+use num_bigint::BigUint;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -40,6 +43,8 @@ trait HostCircuit<F: FieldExt>: Clone {
         layouter: impl Layouter<F>,
     ) -> Result<Self, Error>;
 }
+
+use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
 
 #[derive(Clone, Debug)]
 struct SharedOpInfo {
@@ -322,21 +327,64 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 }
 
+fn bls381_fr_to_pair_args(f: Bls381Fq) -> Vec<ExternalHostCallEntry> {
+    let mut bn = field_to_bn(&f);
+    let mut ret = vec![];
+    for _ in 0..9 {
+        let d = BigUint::from(2^45 as u64);
+        let r = bn.clone() % d.clone();
+        bn = bn / d;
+        let entry = ExternalHostCallEntry {
+            op: 1,
+            value: r.to_u64_digits()[0],
+            is_ret:false,
+        };
+        ret.append(&mut vec![entry]);
+    };
+    ret
+}
+
+fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
+    let mut a = bls381_fr_to_pair_args(g.x);
+    let mut b = bls381_fr_to_pair_args(g.y);
+    let z:u64 = g.is_identity().unwrap_u8() as u64;
+    a.append(&mut b);
+    a.append(&mut vec![ExternalHostCallEntry{
+        op:1,
+        value: z,
+        is_ret:false,
+    }]);
+    a
+}
+
+fn bls381_g2_to_pair_args(g:G2Affine) -> Vec<ExternalHostCallEntry> {
+    todo!();
+}
+
+
+
 #[cfg(test)]
 mod tests {
     use rand::rngs::OsRng;
-    use halo2_proofs::arithmetic::Field;
     use halo2_proofs::pairing::bls12_381::pairing;
     use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2};
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::pairing::group::prime::PrimeCurveAffine;
     use halo2_proofs::pairing::group::Group;
-    use crate::ExternalHostCallEntryTable;
+    use crate::{
+        ExternalHostCallEntry,
+        ExternalHostCallEntryTable,
+        bls381_g1_to_pair_args,
+    };
+
+
     #[test]
     fn generate_bls_input() {
-        let a:G1 = G1::random(&mut OsRng).into();
+        let a:G1Affine = G1::random(&mut OsRng).into();
         let b:G2Affine = G2Affine::from(G2::random(&mut OsRng));
-        let table = ExternalHostCallEntryTable (vec![]);
+        let mut g1_args = bls381_g1_to_pair_args(a);
+        let table = ExternalHostCallEntryTable (g1_args);
         println!("{:#?}", table);
+        /* todo: output to blstest.json */
     }
 }

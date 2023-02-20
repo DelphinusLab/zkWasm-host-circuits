@@ -44,7 +44,10 @@ trait HostCircuit<F: FieldExt>: Clone {
     ) -> Result<Self, Error>;
 }
 
-use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
+use halo2_proofs::pairing::bls12_381::{
+    Fq as Bls381Fq,
+    Gt as Bls381Gt,
+};
 
 #[derive(Clone, Debug)]
 struct SharedOpInfo {
@@ -344,6 +347,10 @@ fn bls381_fr_to_pair_args(f: Bls381Fq) -> Vec<ExternalHostCallEntry> {
     ret
 }
 
+fn bls381_gt_to_pair_args(f: Bls381Gt) -> Vec<ExternalHostCallEntry> {
+    todo!()
+}
+
 fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
     let mut a = bls381_fr_to_pair_args(g.x);
     let mut b = bls381_fr_to_pair_args(g.y);
@@ -358,33 +365,51 @@ fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
 }
 
 fn bls381_g2_to_pair_args(g:G2Affine) -> Vec<ExternalHostCallEntry> {
-    todo!();
+    let mut x0 = bls381_fr_to_pair_args(g.x.c0);
+    let mut x1 = bls381_fr_to_pair_args(g.x.c0);
+    let mut y0 = bls381_fr_to_pair_args(g.y.c0);
+    let mut y1 = bls381_fr_to_pair_args(g.y.c0);
+    let z:u64 = g.is_identity().unwrap_u8() as u64;
+    let zentry = ExternalHostCallEntry{
+        op:1,
+        value: z,
+        is_ret:false,
+    };
+    vec![x0,x1,y0,y1, vec![zentry]].into_iter().flatten().collect()
 }
-
 
 
 #[cfg(test)]
 mod tests {
     use rand::rngs::OsRng;
     use halo2_proofs::pairing::bls12_381::pairing;
-    use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2};
+    use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2, Gt as Bls381Gt};
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::pairing::group::prime::PrimeCurveAffine;
     use halo2_proofs::pairing::group::Group;
     use crate::{
-        ExternalHostCallEntry,
         ExternalHostCallEntryTable,
         bls381_g1_to_pair_args,
+        bls381_g2_to_pair_args,
+        bls381_gt_to_pair_args,
     };
+    use std::fs::File;
+    use std::io::Write;
 
 
     #[test]
     fn generate_bls_input() {
         let a:G1Affine = G1::random(&mut OsRng).into();
         let b:G2Affine = G2Affine::from(G2::random(&mut OsRng));
+        let ab:Bls381Gt = pairing(&a, &b);
         let mut g1_args = bls381_g1_to_pair_args(a);
-        let table = ExternalHostCallEntryTable (g1_args);
-        println!("{:#?}", table);
+        let mut g2_args = bls381_g2_to_pair_args(b);
+        let mut ab_args = bls381_gt_to_pair_args(ab);
+        let table = ExternalHostCallEntryTable (
+            vec![g1_args, g2_args, ab_args].into_iter().flatten().collect()
+        );
+        let file = File::create("blstest.json").expect("can not create file");
+        serde_json::to_writer(file, &table).expect("can not write to file");
         /* todo: output to blstest.json */
     }
 }

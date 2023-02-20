@@ -144,6 +144,12 @@ fn get_g2_from_cells(
     )
 }
 
+/*
+fn get_cell_of_ctx(
+    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
+)
+*/
+
 fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
     records: &mut Records<Fr>,
@@ -151,6 +157,7 @@ fn enable_g1affine_permute(
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
+    //a_g1.x.limbs_le[0].cell.
     todo!()
 
 }
@@ -219,6 +226,7 @@ impl Bls381PairChip<Fr> {
         //
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
+
 
 
         let ab_fq12 = ctx.pairing(&[(&a_g1, &b_g2)]);

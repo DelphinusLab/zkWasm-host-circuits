@@ -348,7 +348,19 @@ fn bls381_fr_to_pair_args(f: Bls381Fq) -> Vec<ExternalHostCallEntry> {
 }
 
 fn bls381_gt_to_pair_args(f: Bls381Gt) -> Vec<ExternalHostCallEntry> {
-    todo!()
+    let mut c000 = bls381_fr_to_pair_args(f.0.c0.c0.c0);
+    let mut c001 = bls381_fr_to_pair_args(f.0.c0.c0.c1);
+    let mut c010 = bls381_fr_to_pair_args(f.0.c0.c1.c0);
+    let mut c011 = bls381_fr_to_pair_args(f.0.c0.c1.c1);
+    let mut c020 = bls381_fr_to_pair_args(f.0.c0.c2.c0);
+    let mut c021 = bls381_fr_to_pair_args(f.0.c0.c2.c1);
+    let mut c100 = bls381_fr_to_pair_args(f.0.c1.c0.c0);
+    let mut c101 = bls381_fr_to_pair_args(f.0.c1.c0.c1);
+    let mut c110 = bls381_fr_to_pair_args(f.0.c1.c1.c0);
+    let mut c111 = bls381_fr_to_pair_args(f.0.c1.c1.c1);
+    let mut c120 = bls381_fr_to_pair_args(f.0.c1.c2.c0);
+    let mut c121 = bls381_fr_to_pair_args(f.0.c1.c2.c1);
+    vec![c000, c001, c010, c011, c020, c021, c100, c101, c110, c111, c120, c121].into_iter().flatten().collect()
 }
 
 fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
@@ -366,9 +378,9 @@ fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
 
 fn bls381_g2_to_pair_args(g:G2Affine) -> Vec<ExternalHostCallEntry> {
     let mut x0 = bls381_fr_to_pair_args(g.x.c0);
-    let mut x1 = bls381_fr_to_pair_args(g.x.c0);
+    let mut x1 = bls381_fr_to_pair_args(g.x.c1);
     let mut y0 = bls381_fr_to_pair_args(g.y.c0);
-    let mut y1 = bls381_fr_to_pair_args(g.y.c0);
+    let mut y1 = bls381_fr_to_pair_args(g.y.c1);
     let z:u64 = g.is_identity().unwrap_u8() as u64;
     let zentry = ExternalHostCallEntry{
         op:1,

@@ -1,7 +1,7 @@
 mod utils;
 mod circuits;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Shl};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
@@ -141,7 +141,8 @@ impl HostOpChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         target_opcode: Fr,
-    ) -> Result<(), Error>  {
+    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>  {
+        let mut arg_cells = vec![];
         layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
@@ -169,12 +170,13 @@ impl HostOpChip<Fr> {
                         || Ok(shared_index[offset])
                     )?;
                     if opcode.clone() == target_opcode {
-                        region.assign_advice(
+                        let opcell = region.assign_advice(
                             || "picked operands",
                             self.config.filtered_operands,
                             picked_offset,
                             || Ok(shared_operands[offset])
                         )?;
+                        arg_cells.append(&mut vec![opcell]);
                         region.assign_advice(
                             || "picked opcodes",
                             self.config.filtered_opcodes,
@@ -197,7 +199,7 @@ impl HostOpChip<Fr> {
                 Ok(())
             },
         )?;
-        Ok(())
+        Ok(arg_cells)
     }
 }
 
@@ -250,14 +252,21 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let host_op_chip = HostOpChip::<Fr>::construct(config);
-        host_op_chip.assign(
+        let host_op_chip = HostOpChip::<Fr>::construct(config.clone());
+        let all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
             Fr::one()
         )?;
+        let a = all_arg_cells[0..21].to_vec();
+        let b = all_arg_cells[21..42].to_vec();
+        let ab = all_arg_cells[42..162].to_vec();
+        let base_chip = BaseChip::new(config.base_chip_config);
+        let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
+        let bls381_chip = Bls381PairChip::construct(config.bls381_chip_config.clone());
+        bls381_chip.load_bls381_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
         Ok(())
     }
 }
@@ -308,7 +317,7 @@ fn main() {
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
     // circuit is very small, we can pick a very small value here.
-    let k = 4;
+    let k = 22;
 
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
@@ -330,17 +339,23 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 }
 
-fn bls381_fr_to_pair_args(f: Bls381Fq) -> Vec<ExternalHostCallEntry> {
+fn bls381_fr_to_pair_args(f: Bls381Fq, is_ret: bool) -> Vec<ExternalHostCallEntry> {
     let mut bn = field_to_bn(&f);
     let mut ret = vec![];
     for _ in 0..9 {
-        let d = BigUint::from(2^45 as u64);
+        let d:BigUint = BigUint::from(2 as u64).shl(45);
         let r = bn.clone() % d.clone();
+        let value = if r == BigUint::from(0 as u32) {
+            0 as u64
+        } else {
+            r.to_u64_digits()[0]
+        };
+        println!("d is {:?}, remainder is {:?}", d, r);
         bn = bn / d;
         let entry = ExternalHostCallEntry {
             op: 1,
-            value: r.to_u64_digits()[0],
-            is_ret:false,
+            value,
+            is_ret,
         };
         ret.append(&mut vec![entry]);
     };
@@ -348,24 +363,24 @@ fn bls381_fr_to_pair_args(f: Bls381Fq) -> Vec<ExternalHostCallEntry> {
 }
 
 fn bls381_gt_to_pair_args(f: Bls381Gt) -> Vec<ExternalHostCallEntry> {
-    let mut c000 = bls381_fr_to_pair_args(f.0.c0.c0.c0);
-    let mut c001 = bls381_fr_to_pair_args(f.0.c0.c0.c1);
-    let mut c010 = bls381_fr_to_pair_args(f.0.c0.c1.c0);
-    let mut c011 = bls381_fr_to_pair_args(f.0.c0.c1.c1);
-    let mut c020 = bls381_fr_to_pair_args(f.0.c0.c2.c0);
-    let mut c021 = bls381_fr_to_pair_args(f.0.c0.c2.c1);
-    let mut c100 = bls381_fr_to_pair_args(f.0.c1.c0.c0);
-    let mut c101 = bls381_fr_to_pair_args(f.0.c1.c0.c1);
-    let mut c110 = bls381_fr_to_pair_args(f.0.c1.c1.c0);
-    let mut c111 = bls381_fr_to_pair_args(f.0.c1.c1.c1);
-    let mut c120 = bls381_fr_to_pair_args(f.0.c1.c2.c0);
-    let mut c121 = bls381_fr_to_pair_args(f.0.c1.c2.c1);
+    let c000 = bls381_fr_to_pair_args(f.0.c0.c0.c0, true);
+    let c001 = bls381_fr_to_pair_args(f.0.c0.c0.c1, true);
+    let c010 = bls381_fr_to_pair_args(f.0.c0.c1.c0, true);
+    let c011 = bls381_fr_to_pair_args(f.0.c0.c1.c1, true);
+    let c020 = bls381_fr_to_pair_args(f.0.c0.c2.c0, true);
+    let c021 = bls381_fr_to_pair_args(f.0.c0.c2.c1, true);
+    let c100 = bls381_fr_to_pair_args(f.0.c1.c0.c0, true);
+    let c101 = bls381_fr_to_pair_args(f.0.c1.c0.c1, true);
+    let c110 = bls381_fr_to_pair_args(f.0.c1.c1.c0, true);
+    let c111 = bls381_fr_to_pair_args(f.0.c1.c1.c1, true);
+    let c120 = bls381_fr_to_pair_args(f.0.c1.c2.c0, true);
+    let c121 = bls381_fr_to_pair_args(f.0.c1.c2.c1, true);
     vec![c000, c001, c010, c011, c020, c021, c100, c101, c110, c111, c120, c121].into_iter().flatten().collect()
 }
 
 fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
-    let mut a = bls381_fr_to_pair_args(g.x);
-    let mut b = bls381_fr_to_pair_args(g.y);
+    let mut a = bls381_fr_to_pair_args(g.x, false);
+    let mut b = bls381_fr_to_pair_args(g.y, false);
     let z:u64 = g.is_identity().unwrap_u8() as u64;
     a.append(&mut b);
     a.append(&mut vec![ExternalHostCallEntry{
@@ -377,10 +392,10 @@ fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
 }
 
 fn bls381_g2_to_pair_args(g:G2Affine) -> Vec<ExternalHostCallEntry> {
-    let mut x0 = bls381_fr_to_pair_args(g.x.c0);
-    let mut x1 = bls381_fr_to_pair_args(g.x.c1);
-    let mut y0 = bls381_fr_to_pair_args(g.y.c0);
-    let mut y1 = bls381_fr_to_pair_args(g.y.c1);
+    let x0 = bls381_fr_to_pair_args(g.x.c0, false);
+    let x1 = bls381_fr_to_pair_args(g.x.c1, false);
+    let y0 = bls381_fr_to_pair_args(g.y.c0, false);
+    let y1 = bls381_fr_to_pair_args(g.y.c1, false);
     let z:u64 = g.is_identity().unwrap_u8() as u64;
     let zentry = ExternalHostCallEntry{
         op:1,
@@ -396,8 +411,6 @@ mod tests {
     use rand::rngs::OsRng;
     use halo2_proofs::pairing::bls12_381::pairing;
     use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2, Gt as Bls381Gt};
-    use halo2_proofs::pairing::bn256::Fr;
-    use halo2_proofs::pairing::group::prime::PrimeCurveAffine;
     use halo2_proofs::pairing::group::Group;
     use crate::{
         ExternalHostCallEntryTable,
@@ -406,17 +419,15 @@ mod tests {
         bls381_gt_to_pair_args,
     };
     use std::fs::File;
-    use std::io::Write;
-
 
     #[test]
     fn generate_bls_input() {
         let a:G1Affine = G1::random(&mut OsRng).into();
         let b:G2Affine = G2Affine::from(G2::random(&mut OsRng));
         let ab:Bls381Gt = pairing(&a, &b);
-        let mut g1_args = bls381_g1_to_pair_args(a);
-        let mut g2_args = bls381_g2_to_pair_args(b);
-        let mut ab_args = bls381_gt_to_pair_args(ab);
+        let g1_args = bls381_g1_to_pair_args(a);
+        let g2_args = bls381_g2_to_pair_args(b);
+        let ab_args = bls381_gt_to_pair_args(ab);
         let table = ExternalHostCallEntryTable (
             vec![g1_args, g2_args, ab_args].into_iter().flatten().collect()
         );

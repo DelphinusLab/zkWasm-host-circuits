@@ -186,7 +186,7 @@ fn enable_fq12_permute(
 
 
 impl Bls381PairChip<Fr> {
-    fn construct(config: <Self as Chip<Fr>>::Config, _loaded: <Self as Chip<Fr>>::Loaded) -> Self {
+    pub fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
         Self {
             config,
             _marker: PhantomData,
@@ -209,21 +209,13 @@ impl Bls381PairChip<Fr> {
         a: &Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
         b: &Vec<AssignedCell<Fr, Fr>>, //G2 (10 * 2 + 1)
         ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (5*12)
-        base_chip: BaseChip<Fr>,
-        range_chip: RangeChip<Fr>,
+        base_chip: &BaseChip<Fr>,
+        range_chip: &RangeChip<Fr>,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);
 
-        /* FIXME: Calculate a b from input vec_a and vec_b */
-
-        //let a = G1::random(&mut OsRng).into();
-        //let b = G2Affine::from(G2::random(&mut OsRng));
-
-        //let ab0 = pairing(&a, &b);
-        //
-        //
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
 

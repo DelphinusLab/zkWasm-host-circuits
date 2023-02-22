@@ -253,16 +253,17 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let host_op_chip = HostOpChip::<Fr>::construct(config.clone());
-        let all_arg_cells = host_op_chip.assign(
+        let mut all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
             Fr::one()
         )?;
-        let a = all_arg_cells[0..21].to_vec();
-        let b = all_arg_cells[21..42].to_vec();
-        let ab = all_arg_cells[42..162].to_vec();
+        all_arg_cells.retain(|x| x.value().is_some());
+        let a = all_arg_cells[0..19].to_vec();
+        let b = all_arg_cells[19..56].to_vec();
+        let ab = all_arg_cells[56..164].to_vec();
         let base_chip = BaseChip::new(config.base_chip_config);
         let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
         let bls381_chip = Bls381PairChip::construct(config.bls381_chip_config.clone());

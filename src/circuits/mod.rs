@@ -90,12 +90,12 @@ pub fn fr_to_bool(f: &Fr) -> bool {
 }
 
 fn assigned_cells_to_bn381 (
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (9 * 2 + 1)
     start: usize
 ) -> BigUint {
-    let shift = BigUint::from(2 as u32).pow(90);
     let mut bn = BigUint::from(0 as u64);
-    for i in start..start+5 {
+    for i in start..start + 9 {
+        let shift = BigUint::from(2 as u32).pow(45 * (i - start) as u32);
         bn.add_assign(fr_to_bn(a[i].value().unwrap()).mul(shift.clone()));
     }
     bn
@@ -103,12 +103,12 @@ fn assigned_cells_to_bn381 (
 
 fn get_g1_from_cells(
     ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (9 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn381(a, 0);
-    let y_bn = assigned_cells_to_bn381(a, 5);
+    let y_bn = assigned_cells_to_bn381(a, 9);
 
-    let is_identity = fr_to_bool(a[10].value().unwrap());
+    let is_identity = fr_to_bool(a[18].value().unwrap());
 
     let a = if is_identity {
         G1::identity()
@@ -124,17 +124,17 @@ fn get_g1_from_cells(
 
 fn get_g2_from_cells(
     ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    b:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    b:&Vec<AssignedCell<Fr, Fr>>, //G2 (9 * 4 + 1)
 ) -> AssignedG2Affine<G1Affine, Fr> {
     let x1_bn = assigned_cells_to_bn381(b, 0);
-    let x2_bn = assigned_cells_to_bn381(b, 5);
-    let y1_bn = assigned_cells_to_bn381(b, 10);
-    let y2_bn = assigned_cells_to_bn381(b, 15);
+    let x2_bn = assigned_cells_to_bn381(b, 9);
+    let y1_bn = assigned_cells_to_bn381(b, 18);
+    let y2_bn = assigned_cells_to_bn381(b, 27);
     let x1 = ctx.base_integer_chip().assign_w(&x1_bn);
     let x2 = ctx.base_integer_chip().assign_w(&x2_bn);
     let y1 = ctx.base_integer_chip().assign_w(&y1_bn);
     let y2 = ctx.base_integer_chip().assign_w(&y2_bn);
-    let is_identity = fr_to_bool(b[20].value().unwrap());
+    let is_identity = fr_to_bool(b[36].value().unwrap());
     AssignedG2Affine::new(
         (x1, x2),
         (y1, y2),
@@ -206,9 +206,9 @@ impl Bls381PairChip<Fr> {
 
     pub fn load_bls381_pair_circuit(
         &self,
-        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
-        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (10 * 2 + 1)
-        ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (5*12)
+        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (9 * 2 + 1)
+        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (9 * 4 + 1)
+        ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (9 * 12)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
         mut layouter: impl Layouter<Fr>,

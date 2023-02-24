@@ -22,6 +22,7 @@ use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::assign::{
     AssignedCondition,
     AssignedG1Affine,
+    Cell as ContextCell
 };
 /*
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
@@ -142,11 +143,13 @@ fn get_g2_from_cells(
     )
 }
 
-/*
 fn get_cell_of_ctx(
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
-)
-*/
+    cell: &ContextCell,
+) -> AssignedCell<Fr, Fr> {
+    todo!();
+    //cells[cell.region as usize][cell.row][cell.col].unwrap()
+}
 
 fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
@@ -155,8 +158,11 @@ fn enable_g1affine_permute(
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
+    let x_limb0 = point.x.limbs_le[0].cell;
+    let x_limb0_assigned = get_cell_of_ctx(cells, &x_limb0);
+    region.constrain_equal(input[0].cell(), x_limb0_assigned.cell());
     //a_g1.x.limbs_le[0].cell.
-    todo!()
+    //todo!()
 
 }
 
@@ -167,7 +173,7 @@ fn enable_g2affine_permute(
     point: &AssignedG2Affine<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
-    todo!()
+    //todo!()
 }
 
 
@@ -178,8 +184,7 @@ fn enable_fq12_permute(
     fq12: &AssignedFq12<Bls381Fq, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> () {
-    //region.constrain_equal(assigned_cell.cell(), self.cell())?;
-
+    todo!()
 }
 
 

@@ -109,17 +109,15 @@ fn get_g1_from_cells(
     let y_bn = assigned_cells_to_bn381(a, 9);
 
     let is_identity = fr_to_bool(a[18].value().unwrap());
-
-    let a = if is_identity {
-        G1::identity()
-    } else {
-        G1::from(G1Affine::from_xy(
-            bn_to_field(&x_bn),
-            bn_to_field(&y_bn)
-        ).unwrap())
-    };
-
-    ctx.assign_point(&a)
+    let x = ctx.base_integer_chip().assign_w(&x_bn);
+    let y = ctx.base_integer_chip().assign_w(&y_bn);
+    AssignedG1Affine{
+        x,
+        y,
+        z: AssignedCondition(ctx.native_ctx.borrow_mut().assign(
+            if is_identity { Fr::one() } else { Fr::zero() }
+        )),
+    }
 }
 
 fn get_g2_from_cells(

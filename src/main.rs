@@ -17,7 +17,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::circuits::{
+use crate::circuits::bls::{
     Bls381ChipConfig,
     Bls381PairChip,
 };

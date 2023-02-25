@@ -1,5 +1,6 @@
 mod utils;
 mod circuits;
+mod host;
 
 use std::{marker::PhantomData, ops::Shl};
 use halo2_proofs::{

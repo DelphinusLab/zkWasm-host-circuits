@@ -1,10 +1,18 @@
 [package]
-name = "zkWASM-host-circuits"
+name = "zkwasm-host-circuits"
 authors = ["DelphinusLab <xgao@zoyoe.com>"]
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "mylib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mybin"
+path = "src/main.rs"
 
 [dependencies]
 strum = "0.24.1"

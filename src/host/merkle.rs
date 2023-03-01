@@ -76,12 +76,13 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
             Err(MerkleError::new("path out of boundary".to_string(), index))
         } else {
             let mut p = index;
-            let mut path = vec![index];
+            let mut path = vec![];
             for _ in 0..D {
                 let sibling = self.get_sibling_index(p);
-                path.insert(0, sibling);
+                path.insert(0, sibling-1);
                 p = (p-1)/2;
             };
+            println!("path is {:?} {:?}", path, D);
             Ok(path.try_into().unwrap())
         }
     }

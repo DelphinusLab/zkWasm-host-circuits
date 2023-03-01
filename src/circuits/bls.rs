@@ -22,7 +22,7 @@ use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::assign::{
     AssignedCondition,
     AssignedG1Affine,
-    Cell as ContextCell
+    Cell as ContextCell, AssignedFq
 };
 /*
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
@@ -91,12 +91,12 @@ pub fn fr_to_bool(f: &Fr) -> bool {
 }
 
 fn assigned_cells_to_bn381 (
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (4 * 2 + 1)
     start: usize
 ) -> BigUint {
     let mut bn = BigUint::from(0 as u64);
-    for i in start..start + 5 {
-        let shift = BigUint::from(2 as u32).pow(90 * (i - start) as u32);
+    for i in start..start + 4 {
+        let shift = BigUint::from(2 as u32).pow(108 * (i - start) as u32);
         bn.add_assign(fr_to_bn(a[i].value().unwrap()).mul(shift.clone()));
     }
     bn
@@ -104,11 +104,11 @@ fn assigned_cells_to_bn381 (
 
 fn get_g1_from_cells(
     ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
+    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (4 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn381(a, 0);
-    let y_bn = assigned_cells_to_bn381(a, 5);
-    let is_identity = fr_to_bool(a[10].value().unwrap());
+    let y_bn = assigned_cells_to_bn381(a, 4);
+    let is_identity = fr_to_bool(a[8].value().unwrap());
     let x = ctx.base_integer_chip().assign_w(&x_bn);
     let y = ctx.base_integer_chip().assign_w(&y_bn);
     AssignedPoint::new(
@@ -122,17 +122,17 @@ fn get_g1_from_cells(
 
 fn get_g2_from_cells(
     ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    b:&Vec<AssignedCell<Fr, Fr>>, //G2 (5 * 4 + 1)
+    b:&Vec<AssignedCell<Fr, Fr>>, //G2 (4 * 4 + 1)
 ) -> AssignedG2Affine<G1Affine, Fr> {
     let x1_bn = assigned_cells_to_bn381(b, 0);
-    let x2_bn = assigned_cells_to_bn381(b, 5);
-    let y1_bn = assigned_cells_to_bn381(b, 10);
-    let y2_bn = assigned_cells_to_bn381(b, 15);
+    let x2_bn = assigned_cells_to_bn381(b, 4);
+    let y1_bn = assigned_cells_to_bn381(b, 8);
+    let y2_bn = assigned_cells_to_bn381(b, 12);
     let x1 = ctx.base_integer_chip().assign_w(&x1_bn);
     let x2 = ctx.base_integer_chip().assign_w(&x2_bn);
     let y1 = ctx.base_integer_chip().assign_w(&y1_bn);
     let y2 = ctx.base_integer_chip().assign_w(&y2_bn);
-    let is_identity = fr_to_bool(b[20].value().unwrap());
+    let is_identity = fr_to_bool(b[16].value().unwrap());
     AssignedG2Affine::new(
         (x1, x2),
         (y1, y2),
@@ -149,23 +149,37 @@ fn get_cell_of_ctx(
     cells[cell.region as usize][cell.col][cell.row].clone().unwrap()
 }
 
+fn enable_fq_permute(
+    region: &mut Region<'_, Fr>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
+    fq: &AssignedFq<Bls381Fq, Fr>,
+    input: &Vec<AssignedCell<Fr, Fr>>
+) -> Result<(), Error> {
+    for i in 0..4 {
+        let limb = fq.limbs_le[i].cell;
+        let limb_assigned = get_cell_of_ctx(cells, &limb);
+        region.constrain_equal(input[0].cell(), limb_assigned.cell())?;
+    }
+    Ok(())
+}
+
 fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> Result<(), Error> {
-    for i in 0..5 {
+    for i in 0..4 {
         let x_limb0 = point.x.limbs_le[i].cell;
         let y_limb0 = point.y.limbs_le[i].cell;
         let x_limb0_assigned = get_cell_of_ctx(cells, &x_limb0);
         let y_limb0_assigned = get_cell_of_ctx(cells, &y_limb0);
         region.constrain_equal(input[i].cell(), x_limb0_assigned.cell())?;
-        region.constrain_equal(input[i + 5].cell(), y_limb0_assigned.cell())?;
+        region.constrain_equal(input[i + 4].cell(), y_limb0_assigned.cell())?;
     }
     let z_limb0 = point.z.0.cell;
     let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
-    region.constrain_equal(input[10].cell(), z_limb0_assigned.cell())?;
+    region.constrain_equal(input[8].cell(), z_limb0_assigned.cell())?;
     Ok(())
 }
 
@@ -174,20 +188,39 @@ fn enable_g2affine_permute(
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedG2Affine<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
-) -> () {
-    //todo!()
+) -> Result<(), Error> {
+    let mut inputs = input.chunks(4);
+    enable_fq_permute(region, cells, &point.x.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &point.x.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &point.y.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &point.y.1, &inputs.next().unwrap().to_vec())?;
+    let z_limb0 = point.z.0.cell;
+    let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
+    region.constrain_equal(input[16].cell(), z_limb0_assigned.cell())?;
+    Ok(())
 }
-
 
 fn enable_fq12_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq12: &AssignedFq12<Bls381Fq, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
-) -> () {
-    todo!()
+) -> Result<(), Error> {
+    let mut inputs = input.chunks(4);
+    enable_fq_permute(region, cells, &fq12.0.0.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.0.0.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.0.1.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.0.1.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.0.2.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.0.2.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.0.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.0.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.1.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.1.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.2.0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &fq12.1.2.1, &inputs.next().unwrap().to_vec())?;
+    Ok(())
 }
-
 
 impl Bls381PairChip<Fr> {
     pub fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
@@ -210,9 +243,9 @@ impl Bls381PairChip<Fr> {
 
     pub fn load_bls381_pair_circuit(
         &self,
-        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (5 * 2 + 1)
-        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (5 * 4 + 1)
-        ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (5 * 12)
+        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (4 * 2 + 1)
+        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (4 * 4 + 1)
+        ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (4 * 12)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
         mut layouter: impl Layouter<Fr>,
@@ -223,10 +256,11 @@ impl Bls381PairChip<Fr> {
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
 
-        println!("x: {:?}, y: {:?}", a_g1.x.limbs_le, a_g1.y.limbs_le);
+        //records.enable_permute(cell);
 
         let ab_fq12 = ctx.pairing(&[(&a_g1, &b_g2)]);
 
+        //println!("x: {:?}, y: {:?}", a_g1.x.limbs_le, a_g1.y.limbs_le);
         /*
         ctx.fq12_assert_eq(&ab0, &ab);
 
@@ -243,7 +277,7 @@ impl Bls381PairChip<Fr> {
                 let cells = records
                     .assign_all(&mut region, &base_chip, &range_chip)?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
-                enable_g2affine_permute(&mut region, &cells, &b_g2, b);
+          //    enable_g2affine_permute(&mut region, &cells, &b_g2, b);
                 enable_fq12_permute(&mut region, &cells, &ab_fq12, ab);
                 end_timer!(timer);
                 Ok(())

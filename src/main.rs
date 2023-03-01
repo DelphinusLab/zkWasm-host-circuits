@@ -123,8 +123,11 @@ impl HostOpChip<Fr> {
             let cur_op = meta.query_advice(filtered_operands, Rotation::cur());
             let next_op = meta.query_advice(filtered_operands, Rotation::next());
             let indicator = meta.query_fixed(indicator, Rotation::cur());
-            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(2u64^45)) + cur_op))]
+            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(2u64^54)) + cur_op))]
         });
+
+        meta.enable_equality(merged_operands);
+
 
         let base_chip_config = BaseChip::configure(meta);
         let range_chip_config = RangeChip::<Fr>::configure(meta);
@@ -209,7 +212,7 @@ impl HostOpChip<Fr> {
                         )?;
 
                         let value = if toggle >= 0 {
-                            shared_operands[offset].clone().mul(&Fr::from(2u64^45)).add(&shared_operands[toggle as usize])
+                            shared_operands[offset].clone().mul(&Fr::from(2u64^54)).add(&shared_operands[toggle as usize])
                         } else {
                             shared_operands[offset].clone()
                         };
@@ -261,10 +264,10 @@ let range_chip = RangeChip::<N>::new(config.range_chip_config);
 range_chip.init_table(&mut layouter)?;
 */
 
-pub const BLS381FQ_SIZE: usize = 9;
-pub const BLS381G1_SIZE: usize = 19;
-pub const BLS381G2_SIZE: usize = 37;
-pub const BLS381GT_SIZE: usize = 108;
+pub const BLS381FQ_SIZE: usize = 8;
+pub const BLS381G1_SIZE: usize = 17;
+pub const BLS381G2_SIZE: usize = 33;
+pub const BLS381GT_SIZE: usize = 96;
 
 impl Circuit<Fr> for HostOpCircuit<Fr> {
     // Since we are using a single chip for everything, we can just reuse its config.
@@ -305,7 +308,7 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        /* The 0,2,4,6's u45 of every Fq(9 * u45) return true, others false  */
+        /* The 0,2,4,6's u54 of every Fq(8 * u54) return true, others false  */
         let merge_next = |i: usize| {
             let mut r = i % BLS381FQ_SIZE;
             if i >= BLS381G1_SIZE - 1 {
@@ -315,7 +318,7 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
                 r += BLS381FQ_SIZE - 1;
             }
             r %= BLS381FQ_SIZE;
-            r != BLS381FQ_SIZE - 1 && r % 2 == 0
+            r % 2 == 0
         };
         let host_op_chip = HostOpChip::<Fr>::construct(config.clone());
         let mut all_arg_cells = host_op_chip.assign(
@@ -328,11 +331,12 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         )?;
         all_arg_cells.retain(|x| x.value().is_some());
         println!("arg cell num is: {:?}", all_arg_cells.len());
-        let a = all_arg_cells[0..11].to_vec();
-        let b = all_arg_cells[11..32].to_vec();
-        let ab = all_arg_cells[32..92].to_vec();
+        let a = all_arg_cells[0..9].to_vec();
+        let b = all_arg_cells[9..26].to_vec();
+        let ab = all_arg_cells[26..74].to_vec();
         let base_chip = BaseChip::new(config.base_chip_config);
         let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
+        range_chip.init_table(&mut layouter)?;
         let bls381_chip = Bls381PairChip::construct(config.bls381_chip_config.clone());
         bls381_chip.load_bls381_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
         Ok(())
@@ -400,6 +404,7 @@ fn main() {
         shared_operands,
         shared_opcodes,
         shared_index,
+        // bls
     };
 
     // Given the correct public input, our circuit will verify.
@@ -410,8 +415,8 @@ fn main() {
 fn bls381_fr_to_pair_args(f: Bls381Fq, is_ret: bool) -> Vec<ExternalHostCallEntry> {
     let mut bn = field_to_bn(&f);
     let mut ret = vec![];
-    for _ in 0..9 {
-        let d:BigUint = BigUint::from(2 as u64).shl(45);
+    for _ in 0..8 {
+        let d:BigUint = BigUint::from(2 as u64).shl(54);
         let r = bn.clone() % d.clone();
         let value = if r == BigUint::from(0 as u32) {
             0 as u64

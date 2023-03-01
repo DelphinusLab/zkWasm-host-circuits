@@ -108,17 +108,16 @@ fn get_g1_from_cells(
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn381(a, 0);
     let y_bn = assigned_cells_to_bn381(a, 5);
-
     let is_identity = fr_to_bool(a[10].value().unwrap());
     let x = ctx.base_integer_chip().assign_w(&x_bn);
     let y = ctx.base_integer_chip().assign_w(&y_bn);
-    AssignedG1Affine{
+    AssignedPoint::new(
         x,
         y,
-        z: AssignedCondition(ctx.native_ctx.borrow_mut().assign(
+        AssignedCondition(ctx.native_ctx.borrow_mut().assign(
             if is_identity { Fr::one() } else { Fr::zero() }
-        )),
-    }
+        ))
+    )
 }
 
 fn get_g2_from_cells(
@@ -147,28 +146,31 @@ fn get_cell_of_ctx(
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     cell: &ContextCell,
 ) -> AssignedCell<Fr, Fr> {
-    todo!();
-    //cells[cell.region as usize][cell.row][cell.col].unwrap()
+    cells[cell.region as usize][cell.col][cell.row].clone().unwrap()
 }
 
 fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
-    records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
-) -> () {
-    let x_limb0 = point.x.limbs_le[0].cell;
-    let x_limb0_assigned = get_cell_of_ctx(cells, &x_limb0);
-    region.constrain_equal(input[0].cell(), x_limb0_assigned.cell());
-    //a_g1.x.limbs_le[0].cell.
-    //todo!()
-
+) -> Result<(), Error> {
+    for i in 0..5 {
+        let x_limb0 = point.x.limbs_le[i].cell;
+        let y_limb0 = point.y.limbs_le[i].cell;
+        let x_limb0_assigned = get_cell_of_ctx(cells, &x_limb0);
+        let y_limb0_assigned = get_cell_of_ctx(cells, &y_limb0);
+        region.constrain_equal(input[i].cell(), x_limb0_assigned.cell())?;
+        region.constrain_equal(input[i + 5].cell(), y_limb0_assigned.cell())?;
+    }
+    let z_limb0 = point.z.0.cell;
+    let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
+    region.constrain_equal(input[10].cell(), z_limb0_assigned.cell())?;
+    Ok(())
 }
 
 fn enable_g2affine_permute(
     region: &mut Region<'_, Fr>,
-    records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedG2Affine<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
@@ -179,7 +181,6 @@ fn enable_g2affine_permute(
 
 fn enable_fq12_permute(
     region: &mut Region<'_, Fr>,
-    records: &mut Records<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq12: &AssignedFq12<Bls381Fq, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
@@ -222,7 +223,7 @@ impl Bls381PairChip<Fr> {
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
 
-
+        println!("x: {:?}, y: {:?}", a_g1.x.limbs_le, a_g1.y.limbs_le);
 
         let ab_fq12 = ctx.pairing(&[(&a_g1, &b_g2)]);
 
@@ -241,9 +242,9 @@ impl Bls381PairChip<Fr> {
                 let timer = start_timer!(|| "assign");
                 let cells = records
                     .assign_all(&mut region, &base_chip, &range_chip)?;
-                enable_g1affine_permute(&mut region, &mut records, &cells, &a_g1, a);
-                enable_g2affine_permute(&mut region, &mut records, &cells, &b_g2, b);
-                enable_fq12_permute(&mut region, &mut records, &cells, &ab_fq12, ab);
+                enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
+                enable_g2affine_permute(&mut region, &cells, &b_g2, b);
+                enable_fq12_permute(&mut region, &cells, &ab_fq12, ab);
                 end_timer!(timer);
                 Ok(())
             },

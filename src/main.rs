@@ -6,7 +6,7 @@ use std::{marker::PhantomData, ops::Shl};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
+    plonk::{Advice, Fixed, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
     pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
@@ -63,6 +63,8 @@ struct HostOpConfig {
     filtered_operands: Column<Advice>,
     filtered_opcodes: Column<Advice>,
     filtered_index: Column<Advice>,
+    merged_operands: Column<Advice>,
+    indicator: Column<Fixed>,
     base_chip_config: BaseChipConfig,
     range_chip_config: RangeChipConfig,
     bls381_chip_config: Bls381ChipConfig,
@@ -102,6 +104,8 @@ impl HostOpChip<Fr> {
         filtered_operands: Column<Advice>,
         filtered_opcodes: Column<Advice>,
         filtered_index: Column<Advice>,
+        merged_operands: Column<Advice>,
+        indicator: Column<Fixed>,
         opcode: Fr,
     ) -> <Self as Chip<Fr>>::Config {
         meta.lookup_any("filter-shared-ops", |meta| {
@@ -112,6 +116,14 @@ impl HostOpChip<Fr> {
             let fopc  = meta.query_advice(filtered_opcodes, Rotation::cur());
             let fidx = meta.query_advice(filtered_index, Rotation::cur());
             vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
+        });
+
+        meta.create_gate("merge operands in filtered columns", |meta| {
+            let merged_op_res = meta.query_advice(merged_operands, Rotation::next());
+            let cur_op = meta.query_advice(filtered_operands, Rotation::cur());
+            let next_op = meta.query_advice(filtered_operands, Rotation::next());
+            let indicator = meta.query_fixed(indicator, Rotation::cur());
+            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(2u64^45)) + cur_op))]
         });
 
         let base_chip_config = BaseChip::configure(meta);
@@ -129,6 +141,8 @@ impl HostOpChip<Fr> {
             filtered_operands,
             filtered_opcodes,
             filtered_index,
+            merged_operands,
+            indicator,
             base_chip_config,
             range_chip_config,
             bls381_chip_config,
@@ -141,6 +155,7 @@ impl HostOpChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
+        indicator: fn(usize) -> bool,
         target_opcode: Fr,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>  {
         let mut arg_cells = vec![];
@@ -150,6 +165,7 @@ impl HostOpChip<Fr> {
                 println!("asign_region");
                 let mut offset = 0;
                 let mut picked_offset = 0;
+                let mut toggle: i32 = -1;
                 for opcode in shared_opcodes {
                     println!("opcode is {:?}", opcode);
                     region.assign_advice(
@@ -171,13 +187,13 @@ impl HostOpChip<Fr> {
                         || Ok(shared_index[offset])
                     )?;
                     if opcode.clone() == target_opcode {
-                        let opcell = region.assign_advice(
+                        region.assign_advice(
                             || "picked operands",
                             self.config.filtered_operands,
                             picked_offset,
                             || Ok(shared_operands[offset])
                         )?;
-                        arg_cells.append(&mut vec![opcell]);
+
                         region.assign_advice(
                             || "picked opcodes",
                             self.config.filtered_opcodes,
@@ -191,6 +207,34 @@ impl HostOpChip<Fr> {
                             picked_offset,
                             || Ok(shared_index[offset])
                         )?;
+
+                        let value = if toggle >= 0 {
+                            shared_operands[offset].clone().mul(&Fr::from(2u64^45)).add(&shared_operands[toggle as usize])
+                        } else {
+                            shared_operands[offset].clone()
+                        };
+                        let opcell = region.assign_advice(
+                            || "picked merged operands",
+                            self.config.merged_operands,
+                            picked_offset,
+                            || Ok(value)
+                        )?;
+
+                        let value = if indicator(picked_offset) {
+                            toggle = offset as i32;
+                            Fr::one()
+                        } else {
+                            arg_cells.append(&mut vec![opcell]);
+                            toggle = -1;
+                            Fr::zero()
+                        };
+                        region.assign_fixed(
+                            || "indicator",
+                            self.config.indicator,
+                            picked_offset,
+                            || Ok(value)
+                        )?;
+
                         picked_offset += 1;
                     };
                     offset += 1;
@@ -217,6 +261,10 @@ let range_chip = RangeChip::<N>::new(config.range_chip_config);
 range_chip.init_table(&mut layouter)?;
 */
 
+pub const BLS381FQ_SIZE: usize = 9;
+pub const BLS381G1_SIZE: usize = 19;
+pub const BLS381G2_SIZE: usize = 37;
+pub const BLS381GT_SIZE: usize = 108;
 
 impl Circuit<Fr> for HostOpCircuit<Fr> {
     // Since we are using a single chip for everything, we can just reuse its config.
@@ -235,6 +283,8 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         let filtered_operands = meta.advice_column();
         let filtered_opcodes = meta.advice_column();
         let filtered_index = meta.advice_column();
+        let merged_operands = meta.advice_column();
+        let indicator_index = meta.fixed_column();
 
         HostOpChip::configure(
             meta,
@@ -244,6 +294,8 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
             filtered_operands,
             filtered_opcodes,
             filtered_index,
+            merged_operands,
+            indicator_index,
             Fr::one(),
         )
     }
@@ -253,18 +305,32 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        /* The 0,2,4,6's u45 of every Fq(9 * u45) return true, others false  */
+        let merge_next = |i: usize| {
+            let mut r = i % BLS381FQ_SIZE;
+            if i >= BLS381G1_SIZE - 1 {
+                r += BLS381FQ_SIZE - 1;
+            }
+            if i >= BLS381G1_SIZE + BLS381G2_SIZE - 1 {
+                r += BLS381FQ_SIZE - 1;
+            }
+            r %= BLS381FQ_SIZE;
+            r != BLS381FQ_SIZE - 1 && r % 2 == 0
+        };
         let host_op_chip = HostOpChip::<Fr>::construct(config.clone());
         let mut all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
+            merge_next,
             Fr::one()
         )?;
         all_arg_cells.retain(|x| x.value().is_some());
-        let a = all_arg_cells[0..19].to_vec();
-        let b = all_arg_cells[19..56].to_vec();
-        let ab = all_arg_cells[56..164].to_vec();
+        println!("arg cell num is: {:?}", all_arg_cells.len());
+        let a = all_arg_cells[0..11].to_vec();
+        let b = all_arg_cells[11..32].to_vec();
+        let ab = all_arg_cells[32..92].to_vec();
         let base_chip = BaseChip::new(config.base_chip_config);
         let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
         let bls381_chip = Bls381PairChip::construct(config.bls381_chip_config.clone());

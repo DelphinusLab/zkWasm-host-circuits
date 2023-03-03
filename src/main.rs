@@ -381,9 +381,9 @@ fn opname<'a>() -> Arg<'a> {
         .value_parser(value_parser!(OpType))
 }
 
-fn parse_opname(matches: &ArgMatches) -> PathBuf {
+fn parse_opname(matches: &ArgMatches) -> OpType {
     matches
-        .get_one::<PathBuf>("opname")
+        .get_one::<OpType>("opname")
         .expect("opname is required")
         .clone()
 }

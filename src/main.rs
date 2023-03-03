@@ -2,28 +2,27 @@ mod utils;
 mod circuits;
 mod host;
 
-use std::{marker::PhantomData, ops::Shl};
+use std::marker::PhantomData;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
     plonk::{Advice, Fixed, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
-    pairing::bls12_381::{G1Affine, G2Affine, G1, G2}
 };
-use clap::{arg, value_parser, App, Arg, ArgMatches};
-use halo2_proofs::dev::MockProver;
+use clap::{arg, value_parser, App, Arg, ArgMatches, ArgEnum};
 use std::{
     io::BufReader,
     fs::File,
     path::PathBuf,
 };
 
-use crate::circuits::bls::{
-    Bls381ChipConfig,
-    Bls381PairChip,
+use crate::circuits::{
+    HostOpSelector,
+    bls::{
+        Bls381ChipConfig,
+        Bls381PairChip,
+    }
 };
-
-use crate::utils::field_to_bn;
 
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
@@ -31,7 +30,7 @@ use halo2ecc_s::circuit::{
 };
 
 use halo2_proofs::pairing::bn256::Fr;
-use num_bigint::BigUint;
+use halo2_proofs::dev::MockProver;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(
@@ -45,13 +44,15 @@ trait HostCircuit<F: FieldExt>: Clone {
     ) -> Result<Self, Error>;
 }
 
-use halo2_proofs::pairing::bls12_381::{
-    Fq as Bls381Fq,
-    Gt as Bls381Gt,
-};
-
-#[derive(Clone, Debug)]
-struct SharedOpInfo {
+#[derive(clap::Parser)]
+struct ArgOpName {
+       #[clap(arg_enum)]
+       t: OpType,
+}
+#[derive(clap::ArgEnum, Clone, Debug)]
+enum OpType {
+    BLS381PAIR,
+    POSEDONHASH,
 }
 
 // ANCHOR: add-config
@@ -70,12 +71,12 @@ struct HostOpConfig {
     bls381_chip_config: Bls381ChipConfig,
 }
 
-struct HostOpChip<F: FieldExt> {
+struct HostOpChip<F: FieldExt, S: HostOpSelector> {
     config: HostOpConfig,
-    _marker: PhantomData<F>,
+    _marker: PhantomData<(F, S)>,
 }
 
-impl<F: FieldExt> Chip<F> for HostOpChip<F> {
+impl<F: FieldExt, S: HostOpSelector> Chip<F> for HostOpChip<F, S> {
     type Config = HostOpConfig;
     type Loaded = ();
 
@@ -88,7 +89,7 @@ impl<F: FieldExt> Chip<F> for HostOpChip<F> {
     }
 }
 
-impl HostOpChip<Fr> {
+impl<S: HostOpSelector> HostOpChip<Fr, S> {
     fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
         Self {
             config,
@@ -190,6 +191,18 @@ impl HostOpChip<Fr> {
                         || Ok(shared_index[offset])
                     )?;
                     if opcode.clone() == target_opcode {
+                        /* TODO using the trait below instead
+                        S::assign(
+                            layouter,
+                            self.config.filtered_operands,
+                            self.config.filtered_opcodes,
+                            self.config.filtered_index,
+                            self.config.merged_operands,
+                            self.config.indicator,
+                            offset,
+                            args
+                        )?;
+                        */
                         region.assign_advice(
                             || "picked operands",
                             self.config.filtered_operands,
@@ -251,25 +264,31 @@ impl HostOpChip<Fr> {
     }
 }
 
-#[derive(Default)]
-struct HostOpCircuit<F: FieldExt> {
+struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
     shared_index: Vec<F>,
+    _marker: PhantomData<(F, S)>,
 }
 
-/*
-let base_chip = BaseChip::new(config.base_chip_config);
-let range_chip = RangeChip::<N>::new(config.range_chip_config);
-range_chip.init_table(&mut layouter)?;
-*/
+impl<F:FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
+    fn default() -> Self {
+        HostOpCircuit {
+            shared_operands: Vec::<F>::default(),
+            shared_opcodes: Vec::<F>::default(),
+            shared_index: Vec::<F>::default(),
+            _marker: PhantomData,
+
+        }
+    }
+}
 
 pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
 pub const BLS381GT_SIZE: usize = 96;
 
-impl Circuit<Fr> for HostOpCircuit<Fr> {
+impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = HostOpConfig;
     type FloorPlanner = SimpleFloorPlanner;
@@ -289,7 +308,7 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
         let merged_operands = meta.advice_column();
         let indicator_index = meta.fixed_column();
 
-        HostOpChip::configure(
+        HostOpChip::<Fr, S>::configure (
             meta,
             shared_operands,
             shared_opcodes,
@@ -320,7 +339,7 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
             r %= BLS381FQ_SIZE;
             r % 2 == 0
         };
-        let host_op_chip = HostOpChip::<Fr>::construct(config.clone());
+        let host_op_chip = HostOpChip::<Fr, S>::construct(config.clone());
         let mut all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
@@ -343,18 +362,6 @@ impl Circuit<Fr> for HostOpCircuit<Fr> {
     }
 }
 
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ExternalHostCallEntry {
-    pub op: usize,
-    pub value: u64,
-    pub is_ret: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ExternalHostCallEntryTable(Vec<ExternalHostCallEntry>);
-
 fn input_file<'a>() -> Arg<'a> {
     arg!(-i --input<INPUT_FILES>... "Input file that contains all host function call")
         .max_values(1)
@@ -368,17 +375,34 @@ fn parse_input_file(matches: &ArgMatches) -> PathBuf {
         .clone()
 }
 
+fn opname<'a>() -> Arg<'a> {
+    arg!(-o --opname<OP_NAME>... "Operation name")
+        .max_values(1)
+        .value_parser(value_parser!(OpType))
+}
+
+fn parse_opname(matches: &ArgMatches) -> PathBuf {
+    matches
+        .get_one::<PathBuf>("opname")
+        .expect("opname is required")
+        .clone()
+}
+
+
+
 #[allow(clippy::many_single_char_names)]
 fn main() {
 
     let clap_app = App::new("playground")
-        .arg(input_file());
+        .arg(input_file())
+        .arg(opname());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
+    let opname = parse_opname(&matches);
 
     let file = File::open(input_file).expect("File does not exist");
-    let v: ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
+    let v: host::ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
         Err(e) => {
             println!("load json error {:?}", e);
             unreachable!();
@@ -400,11 +424,11 @@ fn main() {
         .collect();
 
     // Instantiate the circuit with the private inputs.
-    let circuit = HostOpCircuit {
+    let circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
         shared_operands,
         shared_opcodes,
         shared_index,
-        // bls
+        _marker: PhantomData
     };
 
     // Given the correct public input, our circuit will verify.
@@ -412,100 +436,6 @@ fn main() {
     assert_eq!(prover.verify(), Ok(()));
 }
 
-fn bls381_fr_to_pair_args(f: Bls381Fq, is_ret: bool) -> Vec<ExternalHostCallEntry> {
-    let mut bn = field_to_bn(&f);
-    let mut ret = vec![];
-    for _ in 0..8 {
-        let d:BigUint = BigUint::from(2 as u64).shl(54);
-        let r = bn.clone() % d.clone();
-        let value = if r == BigUint::from(0 as u32) {
-            0 as u64
-        } else {
-            r.to_u64_digits()[0]
-        };
-        println!("d is {:?}, remainder is {:?}", d, r);
-        bn = bn / d;
-        let entry = ExternalHostCallEntry {
-            op: 1,
-            value,
-            is_ret,
-        };
-        ret.append(&mut vec![entry]);
-    };
-    ret
-}
-
-fn bls381_gt_to_pair_args(f: Bls381Gt) -> Vec<ExternalHostCallEntry> {
-    let c000 = bls381_fr_to_pair_args(f.0.c0.c0.c0, true);
-    let c001 = bls381_fr_to_pair_args(f.0.c0.c0.c1, true);
-    let c010 = bls381_fr_to_pair_args(f.0.c0.c1.c0, true);
-    let c011 = bls381_fr_to_pair_args(f.0.c0.c1.c1, true);
-    let c020 = bls381_fr_to_pair_args(f.0.c0.c2.c0, true);
-    let c021 = bls381_fr_to_pair_args(f.0.c0.c2.c1, true);
-    let c100 = bls381_fr_to_pair_args(f.0.c1.c0.c0, true);
-    let c101 = bls381_fr_to_pair_args(f.0.c1.c0.c1, true);
-    let c110 = bls381_fr_to_pair_args(f.0.c1.c1.c0, true);
-    let c111 = bls381_fr_to_pair_args(f.0.c1.c1.c1, true);
-    let c120 = bls381_fr_to_pair_args(f.0.c1.c2.c0, true);
-    let c121 = bls381_fr_to_pair_args(f.0.c1.c2.c1, true);
-    vec![c000, c001, c010, c011, c020, c021, c100, c101, c110, c111, c120, c121].into_iter().flatten().collect()
-}
-
-fn bls381_g1_to_pair_args(g:G1Affine) -> Vec<ExternalHostCallEntry> {
-    let mut a = bls381_fr_to_pair_args(g.x, false);
-    let mut b = bls381_fr_to_pair_args(g.y, false);
-    let z:u64 = g.is_identity().unwrap_u8() as u64;
-    a.append(&mut b);
-    a.append(&mut vec![ExternalHostCallEntry{
-        op:1,
-        value: z,
-        is_ret:false,
-    }]);
-    a
-}
-
-fn bls381_g2_to_pair_args(g:G2Affine) -> Vec<ExternalHostCallEntry> {
-    let x0 = bls381_fr_to_pair_args(g.x.c0, false);
-    let x1 = bls381_fr_to_pair_args(g.x.c1, false);
-    let y0 = bls381_fr_to_pair_args(g.y.c0, false);
-    let y1 = bls381_fr_to_pair_args(g.y.c1, false);
-    let z:u64 = g.is_identity().unwrap_u8() as u64;
-    let zentry = ExternalHostCallEntry{
-        op:1,
-        value: z,
-        is_ret:false,
-    };
-    vec![x0,x1,y0,y1, vec![zentry]].into_iter().flatten().collect()
-}
 
 
-#[cfg(test)]
-mod tests {
-    use rand::rngs::OsRng;
-    use halo2_proofs::pairing::bls12_381::pairing;
-    use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine, G1, G2, Gt as Bls381Gt};
-    use halo2_proofs::pairing::group::Group;
-    use crate::{
-        ExternalHostCallEntryTable,
-        bls381_g1_to_pair_args,
-        bls381_g2_to_pair_args,
-        bls381_gt_to_pair_args,
-    };
-    use std::fs::File;
 
-    #[test]
-    fn generate_bls_input() {
-        let a:G1Affine = G1::random(&mut OsRng).into();
-        let b:G2Affine = G2Affine::from(G2::random(&mut OsRng));
-        let ab:Bls381Gt = pairing(&a, &b);
-        let g1_args = bls381_g1_to_pair_args(a);
-        let g2_args = bls381_g2_to_pair_args(b);
-        let ab_args = bls381_gt_to_pair_args(ab);
-        let table = ExternalHostCallEntryTable (
-            vec![g1_args, g2_args, ab_args].into_iter().flatten().collect()
-        );
-        let file = File::create("blstest.json").expect("can not create file");
-        serde_json::to_writer(file, &table).expect("can not write to file");
-        /* todo: output to blstest.json */
-    }
-}

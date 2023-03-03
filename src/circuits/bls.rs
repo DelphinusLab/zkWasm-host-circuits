@@ -1,13 +1,10 @@
 use std::{marker::PhantomData, ops::Add};
 use std::sync::Arc;
 use halo2ecc_s::circuit::base_chip::BaseChipOps;
-use halo2ecc_s::circuit::ecc_chip::EccChipBaseOps;
-use subtle::Choice;
-use halo2_proofs::arithmetic::{BaseExt, CurveAffine};
 use halo2_proofs::{
-    arithmetic::FieldExt,
+    arithmetic::{FieldExt, BaseExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
+    plonk::{Advice, Fixed, Column, ConstraintSystem, Error},
     poly::Rotation,
     pairing::bls12_381::{G1Affine, G2Affine, G1, G2 }
 };
@@ -285,5 +282,19 @@ impl Bls381PairChip<Fr> {
         )?;
         Ok(())
     }
+}
 
+impl super::HostOpSelector for Bls381PairChip<Fr> {
+    fn assign(
+        layouter: &mut impl Layouter<Fr>,
+        filtered_operands: Column<Advice>,
+        filtered_opcodes: Column<Advice>,
+        filtered_index: Column<Advice>,
+        merged_operands: Column<Advice>,
+        indicator: Column<Fixed>,
+        offset: &mut usize,
+        args: [Fr; 3],
+    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        todo!()
+    }
 }

@@ -155,7 +155,7 @@ fn enable_fq_permute(
     for i in 0..4 {
         let limb = fq.limbs_le[i].cell;
         let limb_assigned = get_cell_of_ctx(cells, &limb);
-        region.constrain_equal(input[0].cell(), limb_assigned.cell())?;
+        region.constrain_equal(input[i].cell(), limb_assigned.cell())?;
     }
     Ok(())
 }
@@ -166,14 +166,9 @@ fn enable_g1affine_permute(
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<AssignedCell<Fr, Fr>>
 ) -> Result<(), Error> {
-    for i in 0..4 {
-        let x_limb0 = point.x.limbs_le[i].cell;
-        let y_limb0 = point.y.limbs_le[i].cell;
-        let x_limb0_assigned = get_cell_of_ctx(cells, &x_limb0);
-        let y_limb0_assigned = get_cell_of_ctx(cells, &y_limb0);
-        region.constrain_equal(input[i].cell(), x_limb0_assigned.cell())?;
-        region.constrain_equal(input[i + 4].cell(), y_limb0_assigned.cell())?;
-    }
+    let mut inputs = input.chunks(4);
+    enable_fq_permute(region, cells, &point.x, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, cells, &point.y, &inputs.next().unwrap().to_vec())?;
     let z_limb0 = point.z.0.cell;
     let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
     region.constrain_equal(input[8].cell(), z_limb0_assigned.cell())?;
@@ -274,7 +269,7 @@ impl Bls381PairChip<Fr> {
                 let cells = records
                     .assign_all(&mut region, &base_chip, &range_chip)?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
-          //    enable_g2affine_permute(&mut region, &cells, &b_g2, b);
+                enable_g2affine_permute(&mut region, &cells, &b_g2, b);
                 enable_fq12_permute(&mut region, &cells, &ab_fq12, ab);
                 end_timer!(timer);
                 Ok(())

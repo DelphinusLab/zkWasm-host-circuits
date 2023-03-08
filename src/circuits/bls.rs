@@ -10,6 +10,7 @@ use halo2_proofs::{
 };
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::pairing::bn256::Fr;
+use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -250,7 +251,8 @@ impl Bls381PairChip<Fr> {
 
         //records.enable_permute(cell);
 
-        let ab_fq12 = ctx.pairing(&[(&a_g1, &b_g2)]);
+        let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
+        let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
 
         //println!("x: {:?}, y: {:?}", a_g1.x.limbs_le, a_g1.y.limbs_le);
         /*
@@ -269,8 +271,8 @@ impl Bls381PairChip<Fr> {
                 let cells = records
                     .assign_all(&mut region, &base_chip, &range_chip)?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
-                enable_g2affine_permute(&mut region, &cells, &b_g2, b);
-                enable_fq12_permute(&mut region, &cells, &ab_fq12, ab);
+                enable_g2affine_permute(&mut region, &cells, &b_g2, b)?;
+                enable_fq12_permute(&mut region, &cells, &ab_fq12, ab)?;
                 end_timer!(timer);
                 Ok(())
             },

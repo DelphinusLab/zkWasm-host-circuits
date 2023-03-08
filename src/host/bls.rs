@@ -14,7 +14,7 @@ fn bls381_fr_to_pair_args(f: Bls381Fq, is_ret: bool) -> Vec<ExternalHostCallEntr
     let mut bn = field_to_bn(&f);
     let mut ret = vec![];
     for _ in 0..8 {
-        let d:BigUint = BigUint::from(2 as u64).shl(54);
+        let d:BigUint = BigUint::from(1u64 << 54);
         let r = bn.clone() % d.clone();
         let value = if r == BigUint::from(0 as u32) {
             0 as u64

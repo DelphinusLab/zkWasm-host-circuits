@@ -124,7 +124,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             let cur_op = meta.query_advice(filtered_operands, Rotation::cur());
             let next_op = meta.query_advice(filtered_operands, Rotation::next());
             let indicator = meta.query_fixed(indicator, Rotation::cur());
-            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(2u64^54)) + cur_op))]
+            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(1u64 << 54)) + cur_op))]
         });
 
         meta.enable_equality(merged_operands);
@@ -225,7 +225,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                         )?;
 
                         let value = if toggle >= 0 {
-                            shared_operands[offset].clone().mul(&Fr::from(2u64^54)).add(&shared_operands[toggle as usize])
+                            shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
                         } else {
                             shared_operands[offset].clone()
                         };

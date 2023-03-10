@@ -9,7 +9,7 @@ use halo2_proofs::{
     plonk::{Advice, Fixed, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
     poly::Rotation,
 };
-use clap::{arg, value_parser, App, Arg, ArgMatches, ArgEnum};
+use clap::{arg, value_parser, App, Arg, ArgMatches};
 use std::{
     io::BufReader,
     fs::File,
@@ -18,10 +18,7 @@ use std::{
 
 use crate::circuits::{
     HostOpSelector,
-    bls::{
-        Bls381ChipConfig,
-        Bls381PairChip,
-    }
+    bls::Bls381PairChip,
 };
 
 use halo2ecc_s::circuit::{
@@ -57,7 +54,7 @@ enum OpType {
 
 // ANCHOR: add-config
 #[derive(Clone, Debug)]
-struct HostOpConfig {
+struct HostOpConfig<S: Clone + std::fmt::Debug> {
     shared_operands: Column<Advice>,
     shared_opcodes: Column<Advice>,
     shared_index: Column<Advice>,
@@ -68,16 +65,16 @@ struct HostOpConfig {
     indicator: Column<Fixed>,
     base_chip_config: BaseChipConfig,
     range_chip_config: RangeChipConfig,
-    bls381_chip_config: Bls381ChipConfig,
+    selector_chip_config: S,
 }
 
 struct HostOpChip<F: FieldExt, S: HostOpSelector> {
-    config: HostOpConfig,
+    config: HostOpConfig<S::Config>,
     _marker: PhantomData<(F, S)>,
 }
 
 impl<F: FieldExt, S: HostOpSelector> Chip<F> for HostOpChip<F, S> {
-    type Config = HostOpConfig;
+    type Config = HostOpConfig<S::Config>;
     type Loaded = ();
 
     fn config(&self) -> &Self::Config {
@@ -107,7 +104,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         filtered_index: Column<Advice>,
         merged_operands: Column<Advice>,
         indicator: Column<Fixed>,
-        opcode: Fr,
     ) -> <Self as Chip<Fr>>::Config {
         meta.lookup_any("filter-shared-ops", |meta| {
             let sopc = meta.query_advice(shared_opcodes, Rotation::cur());
@@ -132,11 +128,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
 
         let base_chip_config = BaseChip::configure(meta);
         let range_chip_config = RangeChip::<Fr>::configure(meta);
-        let bls381_chip_config = Bls381PairChip::<Fr>::configure(
-            meta,
-            base_chip_config.clone(),
-            range_chip_config.clone()
-        );
+        let selector_chip_config = S::configure(meta, &base_chip_config, &range_chip_config);
 
         HostOpConfig {
             shared_operands,
@@ -149,7 +141,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             indicator,
             base_chip_config,
             range_chip_config,
-            bls381_chip_config,
+            selector_chip_config,
         }
     }
 
@@ -290,7 +282,7 @@ pub const BLS381GT_SIZE: usize = 96;
 
 impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     // Since we are using a single chip for everything, we can just reuse its config.
-    type Config = HostOpConfig;
+    type Config = HostOpConfig<S::Config>;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -318,7 +310,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             filtered_index,
             merged_operands,
             indicator_index,
-            Fr::one(),
         )
     }
 
@@ -349,15 +340,12 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             Fr::one()
         )?;
         all_arg_cells.retain(|x| x.value().is_some());
-        println!("arg cell num is: {:?}", all_arg_cells.len());
-        let a = all_arg_cells[0..9].to_vec();
-        let b = all_arg_cells[9..26].to_vec();
-        let ab = all_arg_cells[26..74].to_vec();
         let base_chip = BaseChip::new(config.base_chip_config);
         let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
         range_chip.init_table(&mut layouter)?;
-        let bls381_chip = Bls381PairChip::construct(config.bls381_chip_config.clone());
-        bls381_chip.load_bls381_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
+        println!("arg cell num is: {:?}", all_arg_cells.len());
+        let selector_chip = S::construct(config.selector_chip_config);
+        selector_chip.synthesize(&all_arg_cells, &base_chip, &range_chip, &mut layouter)?;
         Ok(())
     }
 }
@@ -424,11 +412,18 @@ fn main() {
         .collect();
 
     // Instantiate the circuit with the private inputs.
-    let circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
-        shared_operands,
-        shared_opcodes,
-        shared_index,
-        _marker: PhantomData
+    let circuit = match opname {
+        OpType::BLS381PAIR => {
+            HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData
+            }
+        },
+        OpType::POSEDONHASH => {
+            todo!()
+        }
     };
 
     // Given the correct public input, our circuit will verify.

@@ -1,12 +1,11 @@
-use std::{marker::PhantomData, ops::Add};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use halo2ecc_s::circuit::base_chip::BaseChipOps;
 use halo2_proofs::{
     arithmetic::{FieldExt, BaseExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
     plonk::{Advice, Fixed, Column, ConstraintSystem, Error},
-    poly::Rotation,
-    pairing::bls12_381::{G1Affine, G2Affine, G1, G2 }
+    pairing::bls12_381::G1Affine
 };
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::pairing::bn256::Fr;
@@ -14,22 +13,12 @@ use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use halo2_proofs::pairing::bls12_381::pairing;
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::assign::{
     AssignedCondition,
-    AssignedG1Affine,
     Cell as ContextCell, AssignedFq
 };
-/*
-use halo2ecc_s::circuit::fq12::Fq12ChipOps;
-use halo2ecc_s::circuit::fq12::Fq2ChipOps;
-use halo2ecc_s::circuit::base_chip::BaseChipOps;
-use halo2ecc_s::circuit::ecc_chip::EccChipBaseOps;
-use halo2_proofs::pairing::group::prime::PrimeCurveAffine;
-use halo2_proofs::pairing::group::Group;
-*/
 use halo2ecc_s::circuit::pairing_chip::PairingChipOps;
 use halo2ecc_s::assign::{
     AssignedPoint,
@@ -42,13 +31,11 @@ use halo2ecc_s::{
         base_chip::{BaseChip, BaseChipConfig},
         range_chip::{RangeChip, RangeChipConfig},
     },
-    context::{Context, Records, GeneralScalarEccContext},
+    context::{Context, GeneralScalarEccContext},
 };
 
-use crate::utils::{field_to_bn, bn_to_field};
 use num_bigint::BigUint;
 use std::ops::{Mul, AddAssign};
-
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {
@@ -241,7 +228,7 @@ impl Bls381PairChip<Fr> {
         ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (4 * 12)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
-        mut layouter: impl Layouter<Fr>,
+        layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);
@@ -282,6 +269,22 @@ impl Bls381PairChip<Fr> {
 }
 
 impl super::HostOpSelector for Bls381PairChip<Fr> {
+    type Config = Bls381ChipConfig;
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        base_config: &BaseChipConfig,
+        range_config: &RangeChipConfig
+    ) -> Self::Config {
+        Bls381PairChip::<Fr>::configure(
+            meta,
+            base_config.clone(),
+            range_config.clone()
+        )
+    }
+
+    fn construct(c: Self::Config) -> Self {
+        Bls381PairChip::construct(c)
+    }
     fn assign(
         layouter: &mut impl Layouter<Fr>,
         filtered_operands: Column<Advice>,
@@ -294,4 +297,18 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         todo!()
     }
+    fn synthesize(
+        &self,
+        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        base_chip: &BaseChip<Fr>,
+        range_chip: &RangeChip<Fr>,
+        layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        let a = arg_cells[0..9].to_vec();
+        let b = arg_cells[9..26].to_vec();
+        let ab = arg_cells[26..74].to_vec();
+        self.load_bls381_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
+        Ok(())
+    }
+
 }

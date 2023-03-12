@@ -151,17 +151,14 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        indicator: fn(usize) -> bool,
         target_opcode: Fr,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>  {
-        let mut arg_cells = vec![];
+        let mut arg_cells = None ;
         layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
                 println!("asign_region");
                 let mut offset = 0;
-                let mut picked_offset = 0;
-                let mut toggle: i32 = -1;
                 for opcode in shared_opcodes {
                     println!("opcode is {:?}", opcode);
                     region.assign_advice(
@@ -182,77 +179,24 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                         offset,
                         || Ok(shared_index[offset])
                     )?;
-                    if opcode.clone() == target_opcode {
-                        /* TODO using the trait below instead
-                        S::assign(
-                            layouter,
-                            self.config.filtered_operands,
-                            self.config.filtered_opcodes,
-                            self.config.filtered_index,
-                            self.config.merged_operands,
-                            self.config.indicator,
-                            offset,
-                            args
-                        )?;
-                        */
-                        region.assign_advice(
-                            || "picked operands",
-                            self.config.filtered_operands,
-                            picked_offset,
-                            || Ok(shared_operands[offset])
-                        )?;
-
-                        region.assign_advice(
-                            || "picked opcodes",
-                            self.config.filtered_opcodes,
-                            picked_offset,
-                            || Ok(target_opcode)
-                        )?;
-
-                        region.assign_advice(
-                            || "picked index",
-                            self.config.filtered_index,
-                            picked_offset,
-                            || Ok(shared_index[offset])
-                        )?;
-
-                        let value = if toggle >= 0 {
-                            shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
-                        } else {
-                            shared_operands[offset].clone()
-                        };
-                        let opcell = region.assign_advice(
-                            || "picked merged operands",
-                            self.config.merged_operands,
-                            picked_offset,
-                            || Ok(value)
-                        )?;
-
-                        let value = if indicator(picked_offset) {
-                            toggle = offset as i32;
-                            Fr::one()
-                        } else {
-                            arg_cells.append(&mut vec![opcell]);
-                            toggle = -1;
-                            Fr::zero()
-                        };
-                        region.assign_fixed(
-                            || "indicator",
-                            self.config.indicator,
-                            picked_offset,
-                            || Ok(value)
-                        )?;
-
-                        picked_offset += 1;
-                    };
                     offset += 1;
                 };
-                println!("picked offset is {:?}", picked_offset);
+                arg_cells = Some (S::assign(
+                    &mut region,
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    self.config.filtered_operands,
+                    self.config.filtered_opcodes,
+                    self.config.filtered_index,
+                    self.config.merged_operands,
+                    self.config.indicator,
+                )?);
                 println!("offset is {:?}", offset);
                 Ok(())
             },
         )?;
-        Ok(arg_cells)
+        Ok(arg_cells.unwrap())
     }
 }
 
@@ -318,25 +262,12 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        /* The 0,2,4,6's u54 of every Fq(8 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            let mut r = i % BLS381FQ_SIZE;
-            if i >= BLS381G1_SIZE - 1 {
-                r += BLS381FQ_SIZE - 1;
-            }
-            if i >= BLS381G1_SIZE + BLS381G2_SIZE - 1 {
-                r += BLS381FQ_SIZE - 1;
-            }
-            r %= BLS381FQ_SIZE;
-            r % 2 == 0
-        };
         let host_op_chip = HostOpChip::<Fr, S>::construct(config.clone());
         let mut all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
-            merge_next,
             Fr::one()
         )?;
         all_arg_cells.retain(|x| x.value().is_some());
@@ -429,6 +360,7 @@ fn main() {
     // Given the correct public input, our circuit will verify.
     let prover = MockProver::run(k, &circuit, vec![]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
+    println!("Mock Verify Pass.");
 }
 
 

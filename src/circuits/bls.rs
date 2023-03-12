@@ -19,12 +19,22 @@ use halo2ecc_s::assign::{
     AssignedCondition,
     Cell as ContextCell, AssignedFq
 };
-use halo2ecc_s::circuit::pairing_chip::PairingChipOps;
+use halo2ecc_s::circuit::{
+    pairing_chip::PairingChipOps,
+    ecc_chip::EccChipBaseOps,
+};
 use halo2ecc_s::assign::{
     AssignedPoint,
     AssignedG2Affine,
     AssignedFq12,
 };
+
+use crate::host::bls::BLSOP;
+
+pub const BLS381FQ_SIZE: usize = 8;
+pub const BLS381G1_SIZE: usize = 17;
+pub const BLS381G2_SIZE: usize = 33;
+pub const BLS381GT_SIZE: usize = 96;
 
 use halo2ecc_s::{
     circuit::{
@@ -39,8 +49,6 @@ use std::ops::{Mul, AddAssign};
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {
-    base_chip_config: BaseChipConfig,
-    range_chip_config: RangeChipConfig,
 }
 
 
@@ -211,14 +219,11 @@ impl Bls381PairChip<Fr> {
     }
 
     pub fn configure(
-        meta: &mut ConstraintSystem<Fr>,
-        base_chip_config: BaseChipConfig,
-        range_chip_config: RangeChipConfig,
+        _meta: &mut ConstraintSystem<Fr>,
+        _base_chip_config: BaseChipConfig,
+        _range_chip_config: RangeChipConfig,
     ) -> <Self as Chip<Fr>>::Config {
-        Bls381ChipConfig {
-            base_chip_config,
-            range_chip_config,
-        }
+        Bls381ChipConfig {}
     }
 
     pub fn load_bls381_pair_circuit(
@@ -241,15 +246,7 @@ impl Bls381PairChip<Fr> {
         let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
         let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
 
-        //println!("x: {:?}, y: {:?}", a_g1.x.limbs_le, a_g1.y.limbs_le);
-        /*
-        ctx.fq12_assert_eq(&ab0, &ab);
-
-        run_circuit_on_bn256(ctx.into(), 22);
-        */
-        let mut records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
-
-        //records.enable_permute(&ab.0.0.0.limbs_le[0].cell);
+        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
 
         layouter.assign_region(
             || "base",
@@ -286,16 +283,91 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
         Bls381PairChip::construct(c)
     }
     fn assign(
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
         filtered_operands: Column<Advice>,
         filtered_opcodes: Column<Advice>,
         filtered_index: Column<Advice>,
         merged_operands: Column<Advice>,
         indicator: Column<Fixed>,
-        offset: &mut usize,
-        args: [Fr; 3],
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
-        todo!()
+        let opcodes: Vec<Fr> = vec![
+            Fr::from(BLSOP::BLSPAIRG1 as u64),
+            Fr::from(BLSOP::BLSPAIRG2 as u64),
+            Fr::from(BLSOP::BLSPAIRGT as u64),
+        ];
+        let mut arg_cells = vec![];
+        /* The 0,2,4,6's u54 of every Fq(8 * u54) return true, others false  */
+        let merge_next = |i: usize| {
+            let mut r = i % BLS381FQ_SIZE;
+            if i >= BLS381G1_SIZE - 1 {
+                r += BLS381FQ_SIZE - 1;
+            }
+            if i >= BLS381G1_SIZE + BLS381G2_SIZE - 1 {
+                r += BLS381FQ_SIZE - 1;
+            }
+            r %= BLS381FQ_SIZE;
+            r % 2 == 0
+        };
+        let mut offset = 0;
+        let mut picked_offset = 0;
+        let mut toggle: i32 = -1;
+        for opcode in shared_opcodes {
+            if opcodes.contains(opcode) {
+                region.assign_advice(
+                    || "picked operands",
+                    filtered_operands,
+                    picked_offset,
+                    || Ok(shared_operands[offset])
+                )?;
+        
+                region.assign_advice(
+                    || "picked opcodes",
+                    filtered_opcodes,
+                    picked_offset,
+                    || Ok(opcode.clone())
+                )?;
+        
+                region.assign_advice(
+                    || "picked index",
+                    filtered_index,
+                    picked_offset,
+                    || Ok(shared_index[offset])
+                )?;
+        
+                let value = if toggle >= 0 {
+                    shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
+                } else {
+                    shared_operands[offset].clone()
+                };
+                let opcell = region.assign_advice(
+                    || "picked merged operands",
+                    merged_operands,
+                    picked_offset,
+                    || Ok(value)
+                )?;
+        
+                let value = if merge_next(picked_offset) {
+                    toggle = offset as i32;
+                    Fr::one()
+                } else {
+                    arg_cells.append(&mut vec![opcell]);
+                    toggle = -1;
+                    Fr::zero()
+                };
+                region.assign_fixed(
+                    || "indicator",
+                    indicator,
+                    picked_offset,
+                    || Ok(value)
+                )?;
+                picked_offset += 1;
+            };
+            offset += 1;
+        }
+        Ok(arg_cells)
     }
     fn synthesize(
         &self,
@@ -312,3 +384,141 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
     }
 
 }
+
+#[derive(Clone, Debug)]
+pub struct Bls381SumChip<N: FieldExt> {
+    config: Bls381ChipConfig,
+    _marker: PhantomData<N>,
+}
+
+impl<N: FieldExt> Chip<N> for Bls381SumChip<N> {
+    type Config = Bls381ChipConfig;
+    type Loaded = ();
+
+    fn config(&self) -> &Self::Config {
+        &self.config
+    }
+
+    fn loaded(&self) -> &Self::Loaded {
+        &()
+    }
+}
+
+impl Bls381SumChip<Fr> {
+    pub fn construct(config: <Self as Chip<Fr>>::Config) -> Self {
+        Self {
+            config,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn configure(
+        _meta: &mut ConstraintSystem<Fr>,
+        _base_chip_config: BaseChipConfig,
+        _range_chip_config: RangeChipConfig,
+    ) -> <Self as Chip<Fr>>::Config {
+        Bls381ChipConfig {}
+    }
+
+    pub fn load_bls381_sum_circuit(
+        &self,
+        ls: &Vec<AssignedCell<Fr, Fr>>, // Vec<G1> (4 * 2 + 1) * k
+        sum: &Vec<AssignedCell<Fr, Fr>>, // G1 (4 * 2 + 1)
+        base_chip: &BaseChip<Fr>,
+        range_chip: &RangeChip<Fr>,
+        layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        let contex = Rc::new(RefCell::new(Context::new()));
+        let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);
+
+        let mut g1s:Vec<AssignedPoint<_, _>> = ls.chunks(9).map(|l| {
+            get_g1_from_cells(&mut ctx, &l.to_vec())
+        }).rev().collect();
+
+        let g0 = g1s.pop().unwrap();
+        let g0 = ctx.to_point_with_curvature(g0);
+
+        let sum_ret = g1s.iter().fold(g0, |acc, x| {
+            let p = ctx.ecc_add(&acc, &x);
+            ctx.to_point_with_curvature(p)
+        });
+
+        let sum_ret = sum_ret.to_point();
+
+        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
+
+        layouter.assign_region(
+            || "base",
+            |mut region| {
+                let timer = start_timer!(|| "assign");
+                let cells = records
+                    .assign_all(&mut region, &base_chip, &range_chip)?;
+                let ls = ls.chunks(9)
+                    .into_iter()
+                    .map(|x| x.to_vec())
+                    .collect::<Vec<_>>();
+                g1s.iter().enumerate().for_each(|(i, x)| {
+                    enable_g1affine_permute(&mut region, &cells, x, &ls[i]).unwrap()
+                });
+                enable_g1affine_permute(&mut region, &cells, &sum_ret, sum)?;
+                end_timer!(timer);
+                Ok(())
+            },
+        )?;
+        Ok(())
+    }
+}
+
+impl super::HostOpSelector for Bls381SumChip<Fr> {
+    type Config = Bls381ChipConfig;
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        base_config: &BaseChipConfig,
+        range_config: &RangeChipConfig
+    ) -> Self::Config {
+        Bls381SumChip::<Fr>::configure(
+            meta,
+            base_config.clone(),
+            range_config.clone()
+        )
+    }
+
+    fn construct(c: Self::Config) -> Self {
+        Bls381SumChip::construct(c)
+    }
+
+    fn assign(
+        region: &mut Region<Fr>,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
+        filtered_operands: Column<Advice>,
+        filtered_opcodes: Column<Advice>,
+        filtered_index: Column<Advice>,
+        merged_operands: Column<Advice>,
+        indicator: Column<Fixed>,
+    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        let opcodes: Vec<Fr> = vec![
+            Fr::from(BLSOP::BLSADD as u64),
+            Fr::from(BLSOP::BLSSUM as u64),
+        ];
+
+        todo!()
+    }
+
+    fn synthesize(
+        &self,
+        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        base_chip: &BaseChip<Fr>,
+        range_chip: &RangeChip<Fr>,
+        layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        let len = arg_cells.len();
+        let args = arg_cells[0..len - 9].to_vec();
+        let ret = arg_cells[len-9..len].to_vec();
+        self.load_bls381_sum_circuit(&args, &ret, &base_chip, &range_chip, layouter)?;
+        Ok(())
+    }
+}
+
+

@@ -3,7 +3,7 @@ pub mod merkle;
 
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
-    circuit::{AssignedCell, Layouter},
+    circuit::{AssignedCell, Layouter, Region},
     plonk::{Advice, Fixed, Column, Error, ConstraintSystem}
 };
 use halo2ecc_s::circuit::{
@@ -20,14 +20,15 @@ pub trait HostOpSelector {
     ) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
     fn assign(
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
         filtered_operands: Column<Advice>,
         filtered_opcodes: Column<Advice>,
         filtered_index: Column<Advice>,
         merged_operands: Column<Advice>,
         indicator: Column<Fixed>,
-        offset: &mut usize,
-        args: [Fr; 3],
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>;
     fn synthesize(
         &self,

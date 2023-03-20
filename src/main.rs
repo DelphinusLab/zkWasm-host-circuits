@@ -19,6 +19,7 @@ use std::{
 use crate::circuits::{
     HostOpSelector,
     bls::Bls381PairChip,
+    bls::Bls381SumChip,
 };
 
 use halo2ecc_s::circuit::{
@@ -49,6 +50,7 @@ struct ArgOpName {
 #[derive(clap::ArgEnum, Clone, Debug)]
 enum OpType {
     BLS381PAIR,
+    BLS381SUM,
     POSEDONHASH,
 }
 
@@ -307,8 +309,6 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
         .clone()
 }
 
-
-
 #[allow(clippy::many_single_char_names)]
 fn main() {
 
@@ -343,23 +343,34 @@ fn main() {
         .collect();
 
     // Instantiate the circuit with the private inputs.
-    let circuit = match opname {
+    // Given the correct public input, our circuit will verify.
+    match opname {
         OpType::BLS381PAIR => {
+            let bls381pair_circuit =
             HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
                 _marker: PhantomData
-            }
+            };
+            let prover = MockProver::run(k, &bls381pair_circuit, vec![]).unwrap();
+            assert_eq!(prover.verify(), Ok(()));
+        },
+        OpType::BLS381SUM => {
+            let bls381sum_circuit =
+            HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData
+            };
+            let prover = MockProver::run(k, &bls381sum_circuit, vec![]).unwrap();
+            assert_eq!(prover.verify(), Ok(()));
         },
         OpType::POSEDONHASH => {
             todo!()
         }
     };
-
-    // Given the correct public input, our circuit will verify.
-    let prover = MockProver::run(k, &circuit, vec![]).unwrap();
-    assert_eq!(prover.verify(), Ok(()));
     println!("Mock Verify Pass.");
 }
 

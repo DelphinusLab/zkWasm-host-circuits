@@ -241,8 +241,6 @@ impl Bls381PairChip<Fr> {
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
 
-        //records.enable_permute(cell);
-
         let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
         let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
 
@@ -322,21 +320,21 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
                     picked_offset,
                     || Ok(shared_operands[offset])
                 )?;
-        
+
                 region.assign_advice(
                     || "picked opcodes",
                     filtered_opcodes,
                     picked_offset,
                     || Ok(opcode.clone())
                 )?;
-        
+
                 region.assign_advice(
                     || "picked index",
                     filtered_index,
                     picked_offset,
                     || Ok(shared_index[offset])
                 )?;
-        
+
                 let value = if toggle >= 0 {
                     shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
                 } else {
@@ -348,7 +346,7 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
                     picked_offset,
                     || Ok(value)
                 )?;
-        
+
                 let value = if merge_next(picked_offset) {
                     toggle = offset as i32;
                     Fr::one()
@@ -433,20 +431,16 @@ impl Bls381SumChip<Fr> {
 
         let mut g1s:Vec<AssignedPoint<_, _>> = ls.chunks(9).map(|l| {
             get_g1_from_cells(&mut ctx, &l.to_vec())
-        }).rev().collect();
+        }).collect();
 
-        let g0 = g1s.pop().unwrap();
-        let g0 = ctx.to_point_with_curvature(g0);
-
+        let g0 = ctx.assign_identity();
         let sum_ret = g1s.iter().fold(g0, |acc, x| {
             let p = ctx.ecc_add(&acc, &x);
             ctx.to_point_with_curvature(p)
         });
-
         let sum_ret = sum_ret.to_point();
-
+        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
         let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
-
         layouter.assign_region(
             || "base",
             |mut region| {
@@ -502,8 +496,69 @@ impl super::HostOpSelector for Bls381SumChip<Fr> {
             Fr::from(BLSOP::BLSADD as u64),
             Fr::from(BLSOP::BLSSUM as u64),
         ];
+        let mut arg_cells = vec![];
+        /* The 0,2,4,6,8,10,12,14's u54 of every G1(17 * u54) return true, others false  */
+        let merge_next = |i: usize| {
+            let r = i % BLS381G1_SIZE;
+            r % 2 == 0 && r != BLS381G1_SIZE - 1
+        };
+        let mut offset = 0;
+        let mut picked_offset = 0;
+        let mut toggle: i32 = -1;
+        for opcode in shared_opcodes {
+            if opcodes.contains(opcode) {
+                region.assign_advice(
+                    || "picked operands",
+                    filtered_operands,
+                    picked_offset,
+                    || Ok(shared_operands[offset])
+                )?;
 
-        todo!()
+                region.assign_advice(
+                    || "picked opcodes",
+                    filtered_opcodes,
+                    picked_offset,
+                    || Ok(opcode.clone())
+                )?;
+
+                region.assign_advice(
+                    || "picked index",
+                    filtered_index,
+                    picked_offset,
+                    || Ok(shared_index[offset])
+                )?;
+
+                let value = if toggle >= 0 {
+                    shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
+                } else {
+                    shared_operands[offset].clone()
+                };
+                let opcell = region.assign_advice(
+                    || "picked merged operands",
+                    merged_operands,
+                    picked_offset,
+                    || Ok(value)
+                )?;
+
+                let value = if merge_next(picked_offset) {
+                    toggle = offset as i32;
+                    Fr::one()
+                } else {
+                    arg_cells.append(&mut vec![opcell]);
+                    toggle = -1;
+                    Fr::zero()
+                };
+                region.assign_fixed(
+                    || "indicator",
+                    indicator,
+                    picked_offset,
+                    || Ok(value)
+                )?;
+                picked_offset += 1;
+            };
+            offset += 1;
+        }
+        Ok(arg_cells)
     }
 
     fn synthesize(
@@ -515,7 +570,7 @@ impl super::HostOpSelector for Bls381SumChip<Fr> {
     ) -> Result<(), Error> {
         let len = arg_cells.len();
         let args = arg_cells[0..len - 9].to_vec();
-        let ret = arg_cells[len-9..len].to_vec();
+        let ret = arg_cells[len - 9..len].to_vec();
         self.load_bls381_sum_circuit(&args, &ret, &base_chip, &range_chip, layouter)?;
         Ok(())
     }

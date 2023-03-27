@@ -20,6 +20,8 @@ use crate::circuits::{
     HostOpSelector,
     bls::Bls381PairChip,
     bls::Bls381SumChip,
+    bn256::Bn256PairChip,
+    bn256::Bn256SumChip,
 };
 
 use halo2ecc_s::circuit::{
@@ -51,6 +53,8 @@ struct ArgOpName {
 enum OpType {
     BLS381PAIR,
     BLS381SUM,
+    BN256PAIR,
+    BN256SUM,
     POSEDONHASH,
 }
 
@@ -122,7 +126,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             let cur_op = meta.query_advice(filtered_operands, Rotation::cur());
             let next_op = meta.query_advice(filtered_operands, Rotation::next());
             let indicator = meta.query_fixed(indicator, Rotation::cur());
-            vec![indicator * (merged_op_res - (next_op * constant!(Fr::from(1u64 << 54)) + cur_op))]
+            vec![indicator.clone() * (merged_op_res - (next_op * indicator + cur_op))]
         });
 
         meta.enable_equality(merged_operands);
@@ -220,11 +224,6 @@ impl<F:FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
         }
     }
 }
-
-pub const BLS381FQ_SIZE: usize = 8;
-pub const BLS381G1_SIZE: usize = 17;
-pub const BLS381G2_SIZE: usize = 33;
-pub const BLS381GT_SIZE: usize = 96;
 
 impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     // Since we are using a single chip for everything, we can just reuse its config.
@@ -365,6 +364,28 @@ fn main() {
                 _marker: PhantomData
             };
             let prover = MockProver::run(k, &bls381sum_circuit, vec![]).unwrap();
+            assert_eq!(prover.verify(), Ok(()));
+        },
+        OpType::BN256PAIR => {
+            let bn256pair_circuit =
+            HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData
+            };
+            let prover = MockProver::run(k, &bn256pair_circuit, vec![]).unwrap();
+            assert_eq!(prover.verify(), Ok(()));
+        },
+        OpType::BN256SUM => {
+            let bn256sum_circuit =
+            HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData
+            };
+            let prover = MockProver::run(k, &bn256sum_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
         },
         OpType::POSEDONHASH => {

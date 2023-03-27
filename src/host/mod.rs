@@ -1,5 +1,6 @@
 pub mod merkle;
 pub mod bls;
+pub mod bn256;
 
 use serde::{Serialize, Deserialize};
 

@@ -10,9 +10,9 @@ use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine,
 use halo2_proofs::pairing::bls12_381::pairing;
 #[derive(Copy, Clone)]
 pub enum BLSOP {
-   BLSPAIRG1 = 1, 
-   BLSPAIRG2, 
-   BLSPAIRGT, 
+   BLSPAIRG1 = 1,
+   BLSPAIRG2,
+   BLSPAIRGT,
    BLSADD,
    BLSSUM,
 }

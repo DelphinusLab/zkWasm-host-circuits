@@ -1,4 +1,5 @@
 pub mod bls;
+pub mod bn256;
 pub mod merkle;
 
 use halo2_proofs::pairing::bn256::Fr;

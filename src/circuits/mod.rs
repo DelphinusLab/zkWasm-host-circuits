@@ -5,7 +5,7 @@ pub mod merkle;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region},
-    plonk::{Advice, Fixed, Column, Error, ConstraintSystem}
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
@@ -17,7 +17,7 @@ pub trait HostOpSelector {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         base_config: &BaseChipConfig,
-        range_config: &RangeChipConfig
+        range_config: &RangeChipConfig,
     ) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
     fn assign(
@@ -39,5 +39,3 @@ pub trait HostOpSelector {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error>;
 }
-
-

@@ -1,53 +1,39 @@
-mod utils;
 mod circuits;
 mod host;
+mod utils;
 
-use std::marker::PhantomData;
+use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner},
-    plonk::{Advice, Fixed, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
+    circuit::{AssignedCell, Chip, Layouter, SimpleFloorPlanner},
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed},
     poly::Rotation,
 };
-use clap::{arg, value_parser, App, Arg, ArgMatches};
-use std::{
-    io::BufReader,
-    fs::File,
-    path::PathBuf,
-};
+use std::marker::PhantomData;
+use std::{fs::File, io::BufReader, path::PathBuf};
 
 use crate::circuits::{
+    bls::Bls381PairChip, bls::Bls381SumChip, bn256::Bn256PairChip, bn256::Bn256SumChip,
     HostOpSelector,
-    bls::Bls381PairChip,
-    bls::Bls381SumChip,
-    bn256::Bn256PairChip,
-    bn256::Bn256SumChip,
 };
 
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
-    range_chip::{RangeChip, RangeChipConfig}
+    range_chip::{RangeChip, RangeChipConfig},
 };
 
-use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::dev::MockProver;
+use halo2_proofs::pairing::bn256::Fr;
 
 trait HostCircuit<F: FieldExt>: Clone {
-    fn load_shared_operands(
-        &self,
-        layouter: impl Layouter<F>,
-        a: Vec<F>
-    ) -> Result<Self, Error>;
-    fn filter(
-        &self,
-        layouter: impl Layouter<F>,
-    ) -> Result<Self, Error>;
+    fn load_shared_operands(&self, layouter: impl Layouter<F>, a: Vec<F>) -> Result<Self, Error>;
+    fn filter(&self, layouter: impl Layouter<F>) -> Result<Self, Error>;
 }
 
 #[derive(clap::Parser)]
 struct ArgOpName {
-       #[clap(arg_enum)]
-       t: OpType,
+    #[clap(arg_enum)]
+    t: OpType,
 }
 #[derive(clap::ArgEnum, Clone, Debug)]
 enum OpType {
@@ -116,7 +102,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             let soper = meta.query_advice(shared_operands, Rotation::cur());
             let sidx = meta.query_advice(shared_index, Rotation::cur());
             let foper = meta.query_advice(filtered_operands, Rotation::cur());
-            let fopc  = meta.query_advice(filtered_opcodes, Rotation::cur());
+            let fopc = meta.query_advice(filtered_opcodes, Rotation::cur());
             let fidx = meta.query_advice(filtered_index, Rotation::cur());
             vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
         });
@@ -130,7 +116,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         });
 
         meta.enable_equality(merged_operands);
-
 
         let base_chip_config = BaseChip::configure(meta);
         let range_chip_config = RangeChip::<Fr>::configure(meta);
@@ -157,9 +142,8 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        target_opcode: Fr,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>  {
-        let mut arg_cells = None ;
+    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        let mut arg_cells = None;
         layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
@@ -171,23 +155,23 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                         || "shared opcodes",
                         self.config.shared_opcodes,
                         offset,
-                        || Ok(opcode.clone())
+                        || Ok(opcode.clone()),
                     )?;
                     region.assign_advice(
                         || "shared operands",
                         self.config.shared_operands,
                         offset,
-                        || Ok(shared_operands[offset])
+                        || Ok(shared_operands[offset]),
                     )?;
                     region.assign_advice(
                         || "shared index",
                         self.config.shared_index,
                         offset,
-                        || Ok(shared_index[offset])
+                        || Ok(shared_index[offset]),
                     )?;
                     offset += 1;
-                };
-                arg_cells = Some (S::assign(
+                }
+                arg_cells = Some(S::assign(
                     &mut region,
                     shared_operands,
                     shared_opcodes,
@@ -213,14 +197,13 @@ struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     _marker: PhantomData<(F, S)>,
 }
 
-impl<F:FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
+impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
     fn default() -> Self {
         HostOpCircuit {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
             shared_index: Vec::<F>::default(),
             _marker: PhantomData,
-
         }
     }
 }
@@ -245,7 +228,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         let merged_operands = meta.advice_column();
         let indicator_index = meta.fixed_column();
 
-        HostOpChip::<Fr, S>::configure (
+        HostOpChip::<Fr, S>::configure(
             meta,
             shared_operands,
             shared_opcodes,
@@ -269,7 +252,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
-            Fr::one()
         )?;
         all_arg_cells.retain(|x| x.value().is_some());
         let base_chip = BaseChip::new(config.base_chip_config);
@@ -310,10 +292,7 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-
-    let clap_app = App::new("playground")
-        .arg(input_file())
-        .arg(opname());
+    let clap_app = App::new("playground").arg(input_file()).arg(opname());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
@@ -324,8 +303,8 @@ fn main() {
         Err(e) => {
             println!("load json error {:?}", e);
             unreachable!();
-        },
-        Ok(o) => o
+        }
+        Ok(o) => o,
     };
 
     // ANCHOR: test-circuit
@@ -336,65 +315,58 @@ fn main() {
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
     let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
-    let shared_index = v.0.iter()
-        .enumerate()
-        .map(|(i, _)| Fr::from(i as u64))
-        .collect();
+    let shared_index =
+        v.0.iter()
+            .enumerate()
+            .map(|(i, _)| Fr::from(i as u64))
+            .collect();
 
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
     match opname {
         OpType::BLS381PAIR => {
-            let bls381pair_circuit =
-            HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
+            let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
-                _marker: PhantomData
+                _marker: PhantomData,
             };
             let prover = MockProver::run(k, &bls381pair_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
-        },
+        }
         OpType::BLS381SUM => {
-            let bls381sum_circuit =
-            HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
+            let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
-                _marker: PhantomData
+                _marker: PhantomData,
             };
             let prover = MockProver::run(k, &bls381sum_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
-        },
+        }
         OpType::BN256PAIR => {
-            let bn256pair_circuit =
-            HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
+            let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
-                _marker: PhantomData
+                _marker: PhantomData,
             };
             let prover = MockProver::run(k, &bn256pair_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
-        },
+        }
         OpType::BN256SUM => {
-            let bn256sum_circuit =
-            HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
+            let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
-                _marker: PhantomData
+                _marker: PhantomData,
             };
             let prover = MockProver::run(k, &bn256sum_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
-        },
+        }
         OpType::POSEDONHASH => {
             todo!()
         }
     };
     println!("Mock Verify Pass.");
 }
-
-
-
-

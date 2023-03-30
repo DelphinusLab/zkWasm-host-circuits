@@ -1,8 +1,8 @@
-pub mod merkle;
 pub mod bls;
 pub mod bn256;
+pub mod merkle;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExternalHostCallEntryTable(pub Vec<ExternalHostCallEntry>);

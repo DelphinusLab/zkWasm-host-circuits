@@ -1,61 +1,44 @@
-use std::marker::PhantomData;
-use std::sync::Arc;
-use halo2ecc_s::circuit::base_chip::BaseChipOps;
-use halo2_proofs::{
-    arithmetic::{FieldExt, BaseExt},
-    circuit::{AssignedCell, Chip, Layouter, Region},
-    plonk::{Advice, Fixed, Column, ConstraintSystem, Error},
-    pairing::bn256::G1Affine
-};
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::{
+    arithmetic::{BaseExt, FieldExt},
+    circuit::{AssignedCell, Chip, Layouter, Region},
+    pairing::bn256::G1Affine,
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
+};
+use halo2ecc_s::circuit::base_chip::BaseChipOps;
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use halo2_proofs::pairing::bn256::Fq as Bn256Fq;
+use halo2ecc_s::assign::{AssignedCondition, AssignedFq, Cell as ContextCell};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
-use halo2ecc_s::assign::{
-    AssignedCondition,
-    Cell as ContextCell, AssignedFq
-};
-use halo2ecc_s::circuit::{
-    pairing_chip::PairingChipOps,
-    ecc_chip::EccChipBaseOps,
-};
+use halo2ecc_s::circuit::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps};
 
-use halo2ecc_s::assign::{
-    AssignedPoint,
-    AssignedG2Affine,
-    AssignedFq12,
-};
+use halo2ecc_s::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
 
 use crate::host::bn256::BN256OP;
 
 pub const BN256FQ_SIZE: usize = 5;
 pub const BN256G1_SIZE: usize = 11;
 pub const BN256G2_SIZE: usize = 21;
-pub const BN256GT_SIZE: usize = 60;
 
 use halo2ecc_s::{
     circuit::{
         base_chip::{BaseChip, BaseChipConfig},
         range_chip::{RangeChip, RangeChipConfig},
     },
-    context::{
-        Context,
-        NativeScalarEccContext,
-        IntegerContext
-    },
+    context::{Context, IntegerContext, NativeScalarEccContext},
 };
 
 use num_bigint::BigUint;
-use std::ops::{Mul, AddAssign};
+use std::ops::{AddAssign, Mul};
 
 #[derive(Clone, Debug)]
-pub struct Bn256ChipConfig {
-}
-
+pub struct Bn256ChipConfig {}
 
 #[derive(Clone, Debug)]
 pub struct Bn256PairChip<N: FieldExt> {
@@ -88,9 +71,9 @@ pub fn fr_to_bool(f: &Fr) -> bool {
     return bytes[0] == 1u8;
 }
 
-fn assigned_cells_to_bn256 (
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (3 * 2 + 1)
-    start: usize
+fn assigned_cells_to_bn256(
+    a: &Vec<AssignedCell<Fr, Fr>>, //G1 (3 * 2 + 1)
+    start: usize,
 ) -> BigUint {
     let mut bn = BigUint::from(0 as u64);
     for i in start..start + 4 {
@@ -102,7 +85,7 @@ fn assigned_cells_to_bn256 (
 
 fn get_g1_from_cells(
     ctx: &mut NativeScalarEccContext<G1Affine>,
-    a:&Vec<AssignedCell<Fr, Fr>>, //G1 (3 * 2 + 1)
+    a: &Vec<AssignedCell<Fr, Fr>>, //G1 (3 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn256(a, 0);
     let y_bn = assigned_cells_to_bn256(a, 3);
@@ -112,15 +95,17 @@ fn get_g1_from_cells(
     AssignedPoint::new(
         x,
         y,
-        AssignedCondition(ctx.0.ctx.borrow_mut().assign(
-            if is_identity { Fr::one() } else { Fr::zero() }
-        ))
+        AssignedCondition(ctx.0.ctx.borrow_mut().assign(if is_identity {
+            Fr::one()
+        } else {
+            Fr::zero()
+        })),
     )
 }
 
 fn get_g2_from_cells(
     ctx: &mut NativeScalarEccContext<G1Affine>,
-    b:&Vec<AssignedCell<Fr, Fr>>, //G2 (3 * 4 + 1)
+    b: &Vec<AssignedCell<Fr, Fr>>, //G2 (3 * 4 + 1)
 ) -> AssignedG2Affine<G1Affine, Fr> {
     let x1_bn = assigned_cells_to_bn256(b, 0);
     let x2_bn = assigned_cells_to_bn256(b, 3);
@@ -134,9 +119,11 @@ fn get_g2_from_cells(
     AssignedG2Affine::new(
         (x1, x2),
         (y1, y2),
-        AssignedCondition(ctx.0.ctx.borrow_mut().assign(
-            if is_identity { Fr::one() } else { Fr::zero() }
-        ))
+        AssignedCondition(ctx.0.ctx.borrow_mut().assign(if is_identity {
+            Fr::one()
+        } else {
+            Fr::zero()
+        })),
     )
 }
 
@@ -144,14 +131,16 @@ fn get_cell_of_ctx(
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     cell: &ContextCell,
 ) -> AssignedCell<Fr, Fr> {
-    cells[cell.region as usize][cell.col][cell.row].clone().unwrap()
+    cells[cell.region as usize][cell.col][cell.row]
+        .clone()
+        .unwrap()
 }
 
 fn enable_fq_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq: &AssignedFq<Bn256Fq, Fr>,
-    input: &Vec<AssignedCell<Fr, Fr>>
+    input: &Vec<AssignedCell<Fr, Fr>>,
 ) -> Result<(), Error> {
     for i in 0..3 {
         let limb = fq.limbs_le[i].cell;
@@ -165,7 +154,7 @@ fn enable_g1affine_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedPoint<G1Affine, Fr>,
-    input: &Vec<AssignedCell<Fr, Fr>>
+    input: &Vec<AssignedCell<Fr, Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(3);
     enable_fq_permute(region, cells, &point.x, &inputs.next().unwrap().to_vec())?;
@@ -180,7 +169,7 @@ fn enable_g2affine_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedG2Affine<G1Affine, Fr>,
-    input: &Vec<AssignedCell<Fr, Fr>>
+    input: &Vec<AssignedCell<Fr, Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(3);
     enable_fq_permute(region, cells, &point.x.0, &inputs.next().unwrap().to_vec())?;
@@ -197,21 +186,81 @@ fn enable_fq12_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq12: &AssignedFq12<Bn256Fq, Fr>,
-    input: &Vec<AssignedCell<Fr, Fr>>
+    input: &Vec<AssignedCell<Fr, Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(3);
-    enable_fq_permute(region, cells, &fq12.0.0.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.0.0.1, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.0.1.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.0.1.1, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.0.2.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.0.2.1, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.0.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.0.1, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.1.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.1.1, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.2.0, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region, cells, &fq12.1.2.1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .0 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .0 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .1 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .1 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .2 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.0 .2 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .0 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .0 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .1 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .1 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .2 .0,
+        &inputs.next().unwrap().to_vec(),
+    )?;
+    enable_fq_permute(
+        region,
+        cells,
+        &fq12.1 .2 .1,
+        &inputs.next().unwrap().to_vec(),
+    )?;
     Ok(())
 }
 
@@ -233,8 +282,8 @@ impl Bn256PairChip<Fr> {
 
     pub fn load_bn256_pair_circuit(
         &self,
-        a: &Vec<AssignedCell<Fr, Fr>>, //G1 (3 * 2 + 1)
-        b: &Vec<AssignedCell<Fr, Fr>>, //G2 (3 * 4 + 1)
+        a: &Vec<AssignedCell<Fr, Fr>>,  //G1 (3 * 2 + 1)
+        b: &Vec<AssignedCell<Fr, Fr>>,  //G2 (3 * 4 + 1)
         ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (3 * 12)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
@@ -250,14 +299,16 @@ impl Bn256PairChip<Fr> {
         let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
         let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
 
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
+        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
+            .unwrap()
+            .into_inner()
+            .unwrap();
 
         layouter.assign_region(
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
-                let cells = records
-                    .assign_all(&mut region, &base_chip, &range_chip)?;
+                let cells = records.assign_all(&mut region, &base_chip, &range_chip)?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
                 enable_g2affine_permute(&mut region, &cells, &b_g2, b)?;
                 enable_fq12_permute(&mut region, &cells, &ab_fq12, ab)?;
@@ -274,13 +325,9 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         base_config: &BaseChipConfig,
-        range_config: &RangeChipConfig
+        range_config: &RangeChipConfig,
     ) -> Self::Config {
-        Bn256PairChip::<Fr>::configure(
-            meta,
-            base_config.clone(),
-            range_config.clone()
-        )
+        Bn256PairChip::<Fr>::configure(meta, base_config.clone(), range_config.clone())
     }
 
     fn construct(c: Self::Config) -> Self {
@@ -324,25 +371,28 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
                     || "picked operands",
                     filtered_operands,
                     picked_offset,
-                    || Ok(shared_operands[offset])
+                    || Ok(shared_operands[offset]),
                 )?;
 
                 region.assign_advice(
                     || "picked opcodes",
                     filtered_opcodes,
                     picked_offset,
-                    || Ok(opcode.clone())
+                    || Ok(opcode.clone()),
                 )?;
 
                 region.assign_advice(
                     || "picked index",
                     filtered_index,
                     picked_offset,
-                    || Ok(shared_index[offset])
+                    || Ok(shared_index[offset]),
                 )?;
 
                 let value = if toggle >= 0 {
-                    shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
+                    shared_operands[offset]
+                        .clone()
+                        .mul(&Fr::from(1u64 << 54))
+                        .add(&shared_operands[toggle as usize])
                 } else {
                     shared_operands[offset].clone()
                 };
@@ -350,7 +400,7 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
                     || "picked merged operands",
                     merged_operands,
                     picked_offset,
-                    || Ok(value)
+                    || Ok(value),
                 )?;
 
                 let value = if merge_next(picked_offset) {
@@ -361,12 +411,7 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
                     toggle = -1;
                     Fr::zero()
                 };
-                region.assign_fixed(
-                    || "indicator",
-                    indicator,
-                    picked_offset,
-                    || Ok(value)
-                )?;
+                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
                 picked_offset += 1;
             };
             offset += 1;
@@ -386,7 +431,6 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
         self.load_bn256_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
         Ok(())
     }
-
 }
 
 #[derive(Clone, Debug)]
@@ -426,7 +470,7 @@ impl Bn256SumChip<Fr> {
 
     pub fn load_bn256_sum_circuit(
         &self,
-        ls: &Vec<AssignedCell<Fr, Fr>>, // Vec<G1> (3 * 2 + 1) * k
+        ls: &Vec<AssignedCell<Fr, Fr>>,  // Vec<G1> (3 * 2 + 1) * k
         sum: &Vec<AssignedCell<Fr, Fr>>, // G1 (3 * 2 + 1)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
@@ -436,9 +480,10 @@ impl Bn256SumChip<Fr> {
         let ctx = IntegerContext::<Bn256Fq, Fr>::new(context);
         let mut ctx = NativeScalarEccContext(ctx);
 
-        let mut g1s:Vec<AssignedPoint<_, _>> = ls.chunks(7).map(|l| {
-            get_g1_from_cells(&mut ctx, &l.to_vec())
-        }).collect();
+        let g1s: Vec<AssignedPoint<_, _>> = ls
+            .chunks(7)
+            .map(|l| get_g1_from_cells(&mut ctx, &l.to_vec()))
+            .collect();
 
         let g0 = ctx.assign_identity();
         let sum_ret = g1s.iter().fold(g0, |acc, x| {
@@ -447,14 +492,17 @@ impl Bn256SumChip<Fr> {
         });
         let sum_ret = sum_ret.to_point();
         ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.z.0);
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records).unwrap().into_inner().unwrap();
+        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
+            .unwrap()
+            .into_inner()
+            .unwrap();
         layouter.assign_region(
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
-                let cells = records
-                    .assign_all(&mut region, &base_chip, &range_chip)?;
-                let ls = ls.chunks(7)
+                let cells = records.assign_all(&mut region, &base_chip, &range_chip)?;
+                let ls = ls
+                    .chunks(7)
                     .into_iter()
                     .map(|x| x.to_vec())
                     .collect::<Vec<_>>();
@@ -475,13 +523,9 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         base_config: &BaseChipConfig,
-        range_config: &RangeChipConfig
+        range_config: &RangeChipConfig,
     ) -> Self::Config {
-        Bn256SumChip::<Fr>::configure(
-            meta,
-            base_config.clone(),
-            range_config.clone()
-        )
+        Bn256SumChip::<Fr>::configure(meta, base_config.clone(), range_config.clone())
     }
 
     fn construct(c: Self::Config) -> Self {
@@ -519,25 +563,28 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
                     || "picked operands",
                     filtered_operands,
                     picked_offset,
-                    || Ok(shared_operands[offset])
+                    || Ok(shared_operands[offset]),
                 )?;
 
                 region.assign_advice(
                     || "picked opcodes",
                     filtered_opcodes,
                     picked_offset,
-                    || Ok(opcode.clone())
+                    || Ok(opcode.clone()),
                 )?;
 
                 region.assign_advice(
                     || "picked index",
                     filtered_index,
                     picked_offset,
-                    || Ok(shared_index[offset])
+                    || Ok(shared_index[offset]),
                 )?;
 
                 let value = if toggle >= 0 {
-                    shared_operands[offset].clone().mul(&Fr::from(1u64 << 54)).add(&shared_operands[toggle as usize])
+                    shared_operands[offset]
+                        .clone()
+                        .mul(&Fr::from(1u64 << 54))
+                        .add(&shared_operands[toggle as usize])
                 } else {
                     shared_operands[offset].clone()
                 };
@@ -545,7 +592,7 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
                     || "picked merged operands",
                     merged_operands,
                     picked_offset,
-                    || Ok(value)
+                    || Ok(value),
                 )?;
 
                 let value = if merge_next(picked_offset) {
@@ -556,12 +603,7 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
                     toggle = -1;
                     Fr::zero()
                 };
-                region.assign_fixed(
-                    || "indicator",
-                    indicator,
-                    picked_offset,
-                    || Ok(value)
-                )?;
+                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
                 picked_offset += 1;
             };
             offset += 1;
@@ -583,5 +625,3 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
         Ok(())
     }
 }
-
-

@@ -1,6 +1,7 @@
 pub mod bls;
 pub mod bn256;
 pub mod merkle;
+pub mod rmd160;
 
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{

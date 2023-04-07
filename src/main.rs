@@ -1,3 +1,4 @@
+#![feature(array_zip)]
 mod circuits;
 mod host;
 mod utils;

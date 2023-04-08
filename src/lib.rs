@@ -1,5 +1,5 @@
 #![feature(array_zip)]
-mod utils;
-mod circuits;
-mod host;
+pub mod utils;
+pub mod circuits;
+pub mod host;
 

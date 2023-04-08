@@ -23,8 +23,10 @@ impl fmt::Display for MerkleError {
 impl Error for MerkleError {
 }
 
+/*
 const LEAF_SIG: u8 = 0u8;
 const INTERNAL_SIG: u8 = 1u8;
+*/
 
 pub trait MerkleLeaf<H: Debug+Clone> {
     fn hash(&self) -> H;
@@ -175,6 +177,7 @@ mod tests {
     #[test]
     fn test_merkle_path() {
        let mut mt = MerkleAsArray::construct("test".to_string());
+       println!("MerkleyAsArray with id {:}", mt.id);
        let mut leaf = mt.get_leaf((2_u32.pow(6) - 1) as usize).unwrap();
        leaf.value = 1;
        mt.set_leaf_with_proof(&leaf).unwrap();

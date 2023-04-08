@@ -1,3 +1,14 @@
+use lazy_static::lazy_static;
+use rand::rngs::OsRng;
+
+const TREE_LAYERS: usize = PATH_LEN + 1;
+
+// The number of rows used in the constraint system matrix (two rows per path element).
+const N_ROWS_USED: usize = 2 * PATH_LEN;
+const LAST_ROW: usize = N_ROWS_USED - 1;
+
+
+
 struct Tree(Vec<Vec<Fp>>);
 
 impl Tree {

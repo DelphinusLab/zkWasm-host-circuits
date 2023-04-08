@@ -2,26 +2,22 @@
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Cell, Chip, Layouter, Region, AssignedCell, SimpleFloorPlanner},
+    circuit::{Chip, Layouter, Region, AssignedCell},
     plonk::{
-        Fixed, Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
-        Selector,
+        Fixed, Advice, Column, ConstraintSystem, Error, Expression, Selector,
     },
     poly::Rotation,
 };
 
 use std::marker::PhantomData;
-use lazy_static::lazy_static;
-use rand::rngs::OsRng;
 use crate::host::rmd160::gen_modifier_witness;
-use std::fmt::format;                                                                                                            
 use crate::host::rmd160::{
     ROUNDS_OFFSET,
     PROUNDS_OFFSET,
     R, O, PR, PO
 };
 
-struct RMD160Chip<Fp: FieldExt> {
+pub struct RMD160Chip<Fp: FieldExt> {
     config: RMD160Config,
     _marker: PhantomData<Fp>,
 }
@@ -29,7 +25,7 @@ struct RMD160Chip<Fp: FieldExt> {
 fn field_to_u32<F: FieldExt>(f: &F) -> u32 {
     let mut bytes: Vec<u8> = Vec::new();
     f.write(&mut bytes).unwrap();
-    u32::from_le_bytes(bytes.try_into().unwrap())
+    u32::from_le_bytes(bytes[0..4].try_into().unwrap())
 }
 
 fn u32_to_limbs<Fp: FieldExt>(v: u32) -> [Fp; 8] {
@@ -67,14 +63,14 @@ impl<Fp: FieldExt> Chip<Fp> for RMD160Chip<Fp> {
 }
 
 impl<Fp: FieldExt> RMD160Chip<Fp> {
-    fn new(config: RMD160Config) -> Self {
+    pub fn new(config: RMD160Config) -> Self {
         RMD160Chip {
             config,
             _marker: PhantomData,
         }
     }
 
-    fn configure(cs: &mut ConstraintSystem<Fp>) -> RMD160Config {
+    pub fn configure(cs: &mut ConstraintSystem<Fp>) -> RMD160Config {
         let limb_col = [0; 5]
                 .map(|_|cs.advice_column());
         let arith_limb_col = [cs.advice_column(); 5];
@@ -83,6 +79,10 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         let offset = cs.fixed_column();
         let shift = cs.fixed_column();
         let sum_limb_carry = [cs.advice_column(); 2];
+
+        limb_col.map(|x| cs.enable_equality(x));
+        arith_limb_col.map(|x| cs.enable_equality(x));
+        cs.enable_equality(input_limb_col);
 
         RMD160Config {
             limb_col,
@@ -100,7 +100,7 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         region: &mut Region<Fp>,
         start_offset: usize,
         previous: &[[AssignedCell<Fp, Fp>; 8]; 5],
-        input_limbs: &[Fp; 8],
+        input_limbs: &[AssignedCell<Fp, Fp>; 8],
         round: usize,
         index: usize,
         shift: &[[u32; 16]; 5],
@@ -112,10 +112,10 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
             previous[2].clone(),
             previous[3].clone(),
             previous[4].clone(),
-        ]; 
+        ];
         let abcde = [0; 5].map(|i| {
-            previous.into_iter().fold(0, |acc, x| 
-                field_to_u32(x[i].clone().value().unwrap()) + acc
+            previous.into_iter().fold(0, |acc, x|
+                field_to_u32(x[i].value().map_or(&Fp::zero(), |x| x)) + acc
             )
         });
         let input = self.limbs_to_u32(input_limbs);
@@ -138,13 +138,9 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         Ok(rotated)
     }
 
-    fn get_init_carry(&self) -> [[AssignedCell<Fp, Fp>; 8]; 5] {
-        todo!();
-    }
-
-    fn limbs_to_u32(&self, inputs: &[Fp; 8]) -> u32 {
+    fn limbs_to_u32(&self, inputs: &[AssignedCell<Fp, Fp>; 8]) -> u32 {
         (*inputs).to_vec().into_iter().fold(0, |acc, x| {
-            field_to_u32(&x) + acc
+            field_to_u32(x.value().map_or(&Fp::zero(), |x| x)) + acc
         })
     }
 
@@ -152,7 +148,7 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         &self,
         region: &mut Region<Fp>,
         start_offset: usize,
-        input: &[Fp; 8],
+        input: &[AssignedCell<Fp, Fp>; 8],
         round: usize,
         index: usize,
     ) -> Result<(), Error> {
@@ -161,7 +157,7 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
                 || format!("input at {}{}", round, index),
                 self.config.input_limb_col,
                 start_offset + round * 16 + index,
-                || Ok(input[limb])
+                || Ok(input[limb].value().map_or(Fp::zero(), |x| x.clone()))
             )?;
         }
         Ok(())
@@ -237,13 +233,14 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         round: usize,
         index: usize
     ) -> Result<(), Error> {
+        println!("row size {} {} {} {:?}", start_offset, round, index, (start_offset + round * 16 + index) * 8);
         for col in 0..5 {
             for limb in 0..8 as usize  {
                 let cell = region.assign_advice(
                     || format!("input at {}{}", round, index),
                     self.config.arith_limb_col[col],
                     (start_offset + round * 16 + index) * 8 + limb,
-                    || Ok(limbs[col][limb].value().unwrap().clone())
+                    || Ok(limbs[col][limb].value().map_or(Fp::zero(), |x| x.clone()))
                 )?;
                 region.constrain_equal(cell.cell(), limbs[col][limb].cell())?;
             }
@@ -251,26 +248,27 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         Ok(())
     }
 
-    fn rotate_inputs(&self, 
-        input_limbs: &[[Fp; 8]; 16],
+    fn rotate_inputs(
+        &self,
+        input_limbs: &[[AssignedCell<Fp, Fp>; 8]; 16],
         round_shift: [usize; 16],
-    ) -> [[Fp; 8]; 16] {
+    ) -> [[AssignedCell<Fp, Fp>; 8]; 16] {
         round_shift.map(|i| input_limbs[i].clone())
     }
 
-    fn assign(
+    pub fn assign_content(
         &self,
         layouter: &mut impl Layouter<Fp>,
-        input_limbs: [[Fp; 8]; 16],
+        start_buf: &[[AssignedCell<Fp, Fp>; 8]; 5],
+        input_limbs: &[[AssignedCell<Fp, Fp>; 8]; 16],
     ) -> Result<(), Error> {
-        let mut r1 = self.get_init_carry();
+        let mut r1 = start_buf.clone();
         let start_offset = 0;
         for round in 0..5 {
             for index in 0..16 {
                 layouter.assign_region(
                     || "leaf layer",
                     |mut region| {
-                        let row_offset = round*8;
                         self.assign_rotate(
                             &mut region,
                             start_offset,
@@ -283,7 +281,7 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
                             &mut region,
                             start_offset,
                             &r1,
-                            &self.rotate_inputs(&input_limbs, O[round])[index],
+                            &self.rotate_inputs(input_limbs, O[round])[index],
                             round,
                             index,
                             &R,
@@ -318,14 +316,14 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
                 )?;
             }
         }
-        let mut r2 = self.get_init_carry();
-        let start_offset = 16 * 8 * 5;
+        println!("continue assign");
+        let mut r2 = start_buf.clone();
+        let start_offset = 16 * 5;
         for round in 0..5 {
             for index in 0..16 {
                 layouter.assign_region(
                     || "leaf layer",
                     |mut region| {
-                        let row_offset = round*8;
                         self.assign_rotate(
                             &mut region,
                             start_offset,
@@ -382,11 +380,9 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
 #[cfg(test)]
 mod tests {
     use halo2_proofs::pairing::bn256::Fr;
-    use halo2_proofs::pairing::group::Group;
     use halo2_proofs::dev::MockProver;
 
     use halo2_proofs::{
-        arithmetic::FieldExt,
         circuit::{Cell, Chip, Layouter, Region, AssignedCell, SimpleFloorPlanner},
         plonk::{
             Fixed, Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
@@ -394,9 +390,9 @@ mod tests {
         },
     };
 
-    use super::RMD160Chip;                                                                                     
-    use super::u32_to_limbs;                                                                                     
-    use super::RMD160Config;                                                                                   
+    use super::RMD160Chip;
+    use super::RMD160Config;
+    use super::u32_to_limbs;
 
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
@@ -407,15 +403,15 @@ mod tests {
     pub struct HelperChip {
         config: HelperChipConfig
     }
-    
+
     impl Chip<Fr> for HelperChip {
         type Config = HelperChipConfig;
         type Loaded = ();
-    
+
         fn config(&self) -> &Self::Config {
             &self.config
         }
-    
+
         fn loaded(&self) -> &Self::Loaded {
             &()
         }
@@ -427,45 +423,46 @@ mod tests {
                 config,
             }
         }
-    
+
         fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
             let limb= cs.advice_column();
+            cs.enable_equality(limb);
             HelperChipConfig {
                 limb,
             }
         }
-    
+
         fn assign_w(
             &self,
             layouter: &mut impl Layouter<Fr>,
             input_limbs: &[u32; 5],
             offset: usize,
         ) -> Result<[[AssignedCell<Fr, Fr>; 8]; 5], Error> {
-            let mut r = vec![];
-            for round in 0..5 {
-                layouter.assign_region(
-                    || "helper layer",
-                    |mut region| {
+            let ret  = layouter.assign_region(
+                || "leaf layer",
+                |mut region| {
+                    let mut r = vec![];
+                    for round in 0..5 {
                         let limbs = u32_to_limbs(input_limbs[round]);
                         for limb in 0..8 {
                             r.push(region.assign_advice(
                                 || format!("assign w"),
                                 self.config.limb,
-                                offst + round * 8 + limb,
+                                offset + round * 8 + limb,
                                 || Ok(limbs[limb])
                             )?);
                         }
-                        Ok(())
                     }
-                )?;
-            }
-            todo!()
-            /*
-            let b = r.chunks(8)
-                .map(|x| *x.clone())
-                .collect::<Vec<_>>();
-            Ok(b.try_into().unwrap())
-            */
+                    let b = r.chunks(8)
+                        .into_iter()
+                        .map(|x| x.to_vec().try_into().unwrap())
+                        .collect::<Vec<[_; 8]>>()
+                        .try_into()
+                        .unwrap();
+                    Ok(b)
+                }
+            );
+            ret
         }
 
         fn assign_inputs(
@@ -474,58 +471,72 @@ mod tests {
             input_limbs: &[u32; 16],
             offset: usize
         ) -> Result<[[AssignedCell<Fr, Fr>; 8]; 16], Error> {
-            let mut r = vec![];
-            for round in 0..16 {
-                layouter.assign_region(
-                    || "helper layer",
-                    |mut region| {
+            let ret  = layouter.assign_region(
+                || "leaf layer",
+                |mut region| {
+                    let mut r = vec![];
+                    for round in 0..16 {
                         let limbs = u32_to_limbs(input_limbs[round]);
                         for limb in 0..8 {
-                            r.push(region.assign_advice(
-                                || format!("assign w"),
+                            let cell = region.assign_advice(
+                                || format!("assign input"),
                                 self.config.limb,
-                                offst + round * 8 + limb,
+                                offset + round * 8 + limb,
                                 || Ok(limbs[limb])
-                            )?);
+                            )?;
+                            r.push(cell);
                         }
-                        Ok(())
                     }
-                )?;
-            }
-            let b = r.chunks(8)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|x| *x)
-                .collect::<Vec<_>>();
-            Ok(b.try_into().unwrap())
+                    let b = r.chunks(8)
+                        .into_iter()
+                        .map(|x| x.to_vec().try_into().unwrap())
+                        .collect::<Vec<[_; 8]>>();
+                    let b = b
+                        .try_into()
+                        .unwrap();
+                    Ok(b)
+                }
+            );
+            ret
         }
-
     }
 
     #[derive(Clone, Debug, Default)]
     struct RMD160Circuit {
         input_limbs: Vec<[Fr; 8]>,
     }
-    
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        rmd160config: RMD160Config,
+        helperconfig: HelperChipConfig,
+    }
+
     impl Circuit<Fr> for RMD160Circuit {
-        type Config = RMD160Config;
+        type Config = TestConfig;
         type FloorPlanner = SimpleFloorPlanner;
-    
+
         fn without_witnesses(&self) -> Self {
             Self::default()
         }
-    
+
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-            RMD160Chip::<Fr>::configure(meta)
+            Self::Config {
+               rmd160config: RMD160Chip::<Fr>::configure(meta),
+               helperconfig: HelperChip::configure(meta)
+            }
         }
-    
+
         fn synthesize(
             &self,
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let chip = RMD160Chip::<Fr>::new(config.clone());
-            chip.assign(&mut layouter, self.input_limbs.clone().try_into().unwrap())?;
+            let rmd160chip = RMD160Chip::<Fr>::new(config.clone().rmd160config);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let w_limbs = helperchip.assign_w(&mut layouter, &[1;5], 0)?;
+            let input_limbs = helperchip.assign_inputs(&mut layouter, &[1;16], 0)?;
+            rmd160chip.assign_content(&mut layouter, &w_limbs, &input_limbs)?;
             println!("synthesize");
             Ok(())
         }
@@ -535,8 +546,8 @@ mod tests {
     #[test]
     fn test_rmd160_circuit() {
         let test_circuit = RMD160Circuit {input_limbs: [[Fr::zero();8]; 16].to_vec()} ;
-        let prover = MockProver::run(18, &test_circuit, vec![]);
-        println!("{:?}", prover);
+        let prover = MockProver::run(19, &test_circuit, vec![]);
+        //println!("{:?}", prover);
         prover.unwrap();
     }
 }

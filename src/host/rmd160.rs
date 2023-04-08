@@ -28,7 +28,7 @@ impl RMD160Atomic for u32 {
     fn i(x: u32, y: u32, z: u32) -> u32 {
         (x & z) | (y & (!z))
     }
-    
+
     fn j(x: u32, y: u32, z: u32) -> u32 {
         x ^ (y | (!z))
     }
@@ -44,8 +44,8 @@ fn rol_modifier(round: usize, rol: &mut Vec<u32>, x: u32, offset: u32, shift: u3
         4 => u32::j(rol[1], rol[2], rol[3]),
         _ => unreachable!(),
     };
-    rol[0] = rol[0] + x + offset;
-    rol[0] = rol[0].rotate_left(shift) + rol[4];
+    rol[0] = rol[0].overflowing_add(x).0.overflowing_add(offset).0;
+    rol[0] = rol[0].rotate_left(shift).overflowing_add(rol[4]).0;
     rol[2] = rol[2].rotate_left(10);
     rol.rotate_right(1);
 }
@@ -107,21 +107,23 @@ fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
     let mut rol2 = w.clone();
     let mut round = 0;
     for ((idxs,shift), offset) in O.zip(R).zip(ROUNDS_OFFSET) {
-        for idx in 0..16 {
+        for limb_index in 0..16 {
+            let idx = idxs[limb_index];
             rol_modifier(round, &mut rol1, values[idx], offset, shift[idx]);
         }
         round += 1;
     }
     round = 0;
-    for ((idx,shift), offset) in PO.zip(PR).zip(PROUNDS_OFFSET) {
-        for idx in 0..16 {
+    for ((idxs,shift), offset) in PO.zip(PR).zip(PROUNDS_OFFSET) {
+        for limb_index in 0..16 {
+            let idx = idxs[limb_index];
             rol_modifier(round, &mut rol2, values[idx], offset, shift[idx]);
         }
         round += 1;
     }
     let mut r = vec![];
     for i in 0..w.len() {
-        r.push(w[i] + rol1[i] + rol2[(i+1)%w.len()]);
+        r.push(w[i].overflowing_add(rol1[i]).0.overflowing_add(rol2[(i+1)%w.len()]).0);
     }
     r.rotate_left(1);
     r

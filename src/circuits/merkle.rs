@@ -15,26 +15,19 @@
 //   "*" = copy
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Cell, Chip, Layouter, Region, AssignedCell},
+    circuit::{Cell, Chip, Layouter, AssignedCell},
     plonk::{
-        Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
+        Advice, Column, ConstraintSystem, Error, Expression, Instance,
         Selector,
     },
     poly::Rotation,
 };
 
 use std::marker::PhantomData;
-use lazy_static::lazy_static;
-use rand::rngs::OsRng;
 
 // The number of leafs in the Merkle tree. This value can be changed to any power of two.
 const N_LEAFS: usize = 8;
 const PATH_LEN: usize = N_LEAFS.trailing_zeros() as usize;
-const TREE_LAYERS: usize = PATH_LEN + 1;
-
-// The number of rows used in the constraint system matrix (two rows per path element).
-const N_ROWS_USED: usize = 2 * PATH_LEN;
-const LAST_ROW: usize = N_ROWS_USED - 1;
 
 // This serves as a mock hash function because the Poseidon chip has not yet been implemented.
 fn mock_hash<Fp: FieldExt>(a: Fp, b: Fp) -> Fp {
@@ -62,13 +55,13 @@ impl<Fp: FieldExt> MaybeAlloc<Fp> {
     }
 }
 
-struct MerkleChip<Fp: FieldExt> {
+pub struct MerkleChip<Fp: FieldExt> {
     config: MerkleChipConfig,
     _marker: PhantomData<Fp>,
 }
 
 #[derive(Clone, Debug)]
-struct MerkleChipConfig {
+pub struct MerkleChipConfig {
     a_col: Column<Advice>,
     b_col: Column<Advice>,
     c_col: Column<Advice>,
@@ -94,14 +87,14 @@ impl<Fp: FieldExt> Chip<Fp> for MerkleChip<Fp> {
 }
 
 impl<Fp: FieldExt> MerkleChip<Fp> {
-    fn new(config: MerkleChipConfig) -> Self {
+    pub fn new(config: MerkleChipConfig) -> Self {
         MerkleChip {
             config,
             _marker: PhantomData,
         }
     }
 
-    fn configure(cs: &mut ConstraintSystem<Fp>) -> MerkleChipConfig {
+    pub fn configure(cs: &mut ConstraintSystem<Fp>) -> MerkleChipConfig {
         let a_col = cs.advice_column();
         let b_col = cs.advice_column();
         let c_col = cs.advice_column();
@@ -179,7 +172,7 @@ impl<Fp: FieldExt> MerkleChip<Fp> {
         }
     }
 
-    fn assign(
+    pub fn assign(
         &self,
         layouter: &mut impl Layouter<Fp>,
         leaf: Fp,

@@ -1,7 +1,7 @@
 #![feature(array_zip)]
-mod circuits;
-mod host;
-mod utils;
+pub mod circuits;
+pub mod host;
+pub mod utils;
 
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::{

@@ -14,6 +14,7 @@ pub trait RMD160Atomic{
     fn h(x: Self, y: Self, z: Self) -> Self;
     fn i(x: Self, y: Self, z: Self) -> Self;
     fn j(x: Self, y: Self, z: Self) -> Self;
+    fn atomic(round: usize, x: u32, y:u32, z:u32) -> u32;
 }
 
 impl RMD160Atomic for u32 {
@@ -33,7 +34,19 @@ impl RMD160Atomic for u32 {
     fn j(x: u32, y: u32, z: u32) -> u32 {
         x ^ (y | (!z))
     }
+
+    fn atomic(round: usize, x: u32, y:u32, z:u32) -> u32 {
+        match round {
+            0 => u32::f(x, y, z),
+            1 => u32::g(x, y, z),
+            2 => u32::h(x, y, z),
+            3 => u32::i(x, y, z),
+            4 => u32::j(x, y, z),
+            _ => unreachable!(),
+        }
+    }
 }
+
 
 fn rol_modifier(round: usize, rol: &mut Vec<u32>, x: u32, offset: u32, shift: u32) {
     let v = match round {
@@ -90,14 +103,6 @@ pub(crate) const PO: [[usize; 16]; DIGEST_BUF_LEN] = [
     [8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14],
     [12,15,10,4,1,5,8,7,6,2,13,14,0,3,9,11],
 ];
-
-pub fn gen_modifier_witness(rol: &[u32; DIGEST_BUF_LEN], x: u32, shift:u32, offset:u32) -> [u32; 4] {
-    let w0 = u32::f(rol[1], rol[2], rol[3]);
-    let w1 = rol[0] + w0 + x + offset;
-    let w2 = w1.rotate_left(shift) + rol[4];
-    let w3 = rol[2].rotate_left(10);
-    [w0,w1,w2,w3]
-}
 
 pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
     let mut rol1 = w.clone();

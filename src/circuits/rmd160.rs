@@ -10,16 +10,17 @@ use halo2_proofs::{
 };
 
 use std::marker::PhantomData;
-use crate::host::rmd160::gen_modifier_witness;
+use std::ops::{Shr, Shl};
 use crate::host::rmd160::{
     ROUNDS_OFFSET,
     PROUNDS_OFFSET,
-    R, O, PR, PO
+    R, O, PR, PO,
+    RMD160Atomic,
 };
 
-pub struct RMD160Chip<Fp: FieldExt> {
+pub struct RMD160Chip<F: FieldExt> {
     config: RMD160Config,
-    _marker: PhantomData<Fp>,
+    _marker: PhantomData<F>,
 }
 
 fn field_to_u32<F: FieldExt>(f: &F) -> u32 {
@@ -28,28 +29,147 @@ fn field_to_u32<F: FieldExt>(f: &F) -> u32 {
     u32::from_le_bytes(bytes[0..4].try_into().unwrap())
 }
 
-fn u32_to_limbs<Fp: FieldExt>(v: u32) -> [Fp; 8] {
+fn field_to_u64<F: FieldExt>(f: &F) -> u64 {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    u64::from_le_bytes(bytes[0..8].try_into().unwrap())
+}
+
+
+
+fn u32_to_limbs<F: FieldExt>(v: u32) -> [F; 4] {
     let mut rem = v;
     let mut r = vec![];
-    for _ in 0..8 {
-        r.append(&mut vec![Fp::from((rem % 16) as u64)]);
-        rem = rem/16;
+    for _ in 0..4 {
+        r.append(&mut vec![F::from((rem % 256) as u64)]);
+        rem = rem/256;
     }
     r.try_into().unwrap()
 }
 
-#[derive(Clone, Debug)]
-pub struct RMD160Config {
-    limb_col: [Column<Advice>; 5],
-    arith_limb_col: [Column<Advice>; 5],
-    sum_limb_carry: [Column<Advice>; 2],
-    input_limb_col: Column<Advice>,
-    limb_index: Column<Fixed>,
-    offset: Column<Fixed>,
-    shift: Column<Fixed>,
+fn cell_to_u32<F: FieldExt>(cell: &AssignedCell<F, F>) -> u32 {
+    cell.value().map_or(0, |x| field_to_u32(x))
 }
 
-impl<Fp: FieldExt> Chip<Fp> for RMD160Chip<Fp> {
+fn cell_to_limbs<F: FieldExt>(cell: &AssignedCell<F, F>) -> [F; 4] {
+    let a = cell_to_u32(cell);
+    u32_to_limbs(a)
+}
+
+
+/*
+ * | h_sel | r_sel | col0| col1  | col2 | col3 | col4 | col5  | col6   |  fix0     |
+ * | h_sel | r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset   |
+ * |       |       | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r     |
+ * |       |       | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r     |
+ * |       |       | wc  | b2    | c2   |  d2  | r2   | a_next| w2b    |           |
+ * |       |       | w1  | b3    | c3   |  d3  | r3   |       | w2c    |           |
+ * 
+ */
+
+/* All witness we need to fill the gate */
+struct RoundWitness<F: FieldExt> {
+    r: u32,  // atomic(b, c, d)
+    w0: u32, // a + r + x + offset
+    wb: F, // a + r + x + offset u64
+    wc: u64, // wb - w0
+    w1: u32, // w0 rorate_left w1_r
+    w1_h: u32,  //w1 >> w1_r
+    w1_l: u32,  //w1 % w1_r
+    a_next: u32, // w1 + e
+    w2b: F, // w1+e u64 
+    w2c: u64, // w2b - a_next
+    w4_h: u32, // c >> w4_r
+    w4_l: u32, // c % w4_r
+    c_next: u32, // c rotate_left 10
+}
+
+
+fn get_witnesses<F: FieldExt>(round: usize, rol: &[u32; 5], x: u32, shift: u32, offset:u32) -> RoundWitness<F> {
+    let r = u32::atomic(round, rol[1], rol[2], rol[3]);
+    println!("r is {}", r);
+    let w0 = r.wrapping_add(rol[0]).wrapping_add(x).wrapping_add(offset);
+    let wb = F::from(r as u64) + F::from(rol[0] as u64) + F::from(x as u64) + F::from(offset as u64);
+    let wc = (field_to_u64(&wb) - (w0 as u64)) >> 32;
+    let w1 = w0.rotate_left(shift);
+    let w1_h = w1 >> (32 - shift);
+    let w1_l = w1 % (2u32.pow(shift));
+    let a_next = w1.wrapping_add(rol[4]);
+    let w2b = F::from(w1 as u64) + F::from(rol[4] as u64);
+    let w2c = (field_to_u64(&w2b) - (a_next as u64)) >> 32;
+    let w4_h = rol[2] >> 22;
+    let w4_l = rol[2] % (2u32.pow(22));
+    let c_next = rol[2].rotate_left(10);
+
+    RoundWitness {
+        r, w0, wb, wc, w1, w1_h, w1_l, a_next, w2b, w2c, w4_h, w4_l, c_next
+    }
+}
+
+struct GateCell {
+    cell: [usize;3],
+    name: String,
+}
+
+impl GateCell {
+    fn adv(col: usize, row: usize, dbg: &str) -> Self {
+        GateCell {
+            cell: [0, col, row],
+            name: String::from(dbg),
+        }
+    }
+    fn fix(col: usize, row: usize, dbg: &str) -> Self {
+        GateCell {
+            cell: [0, col, row],
+            name: String::from(dbg),
+        }
+    }
+    fn sel(col: usize, row: usize, dbg: &str) -> Self {
+        GateCell {
+            cell: [0, col, row],
+            name: String::from(dbg),
+        }
+    }
+
+    fn hsel(i: usize) -> Self { Self::sel(0,i, format!("hsel{}", i).as_str()) }
+    fn rsel(i: usize) -> Self { Self::sel(1,i, format!("hsel{}", i).as_str()) }
+    fn offset() -> Self { Self::fix(0,0, "offset") }
+    fn w1_r() -> Self { Self::fix(0, 1, "w1r") }
+    fn w4_r() -> Self { Self::fix(0, 2, "w4r") }
+
+    fn a() -> Self { Self::adv(0,0, "a") }
+    fn w0() -> Self { Self::adv(0,1, "w0") }
+    fn wb() -> Self { Self::adv(0,2, "wb") }
+    fn wc() -> Self { Self::adv(0,3, "wc") }
+    fn w1() -> Self { Self::adv(0,4, "w1") }
+
+    fn b() -> Self { Self::adv(1,0, "b") }
+    fn c() -> Self { Self::adv(2,0, "c") }
+    fn d() -> Self { Self::adv(3,0, "d") }
+    fn x() -> Self { Self::adv(4,0, "x") }
+    fn e() -> Self { Self::adv(5,0, "e") }
+    fn blimb(i: usize) -> Self { Self::adv(1,i+1, format!("blimb{}",i).as_str()) }
+    fn climb(i: usize) -> Self { Self::adv(2,i+1, format!("blimb{}",i).as_str()) }
+    fn dlimb(i: usize) -> Self { Self::adv(3,i+1, format!("blimb{}",i).as_str()) }
+    fn rlimb(i: usize) -> Self { Self::adv(4,i+1, format!("blimb{}",i).as_str()) }
+    fn w1_h() -> Self { Self::adv(5,1, "w1h") }
+    fn w1_l() -> Self { Self::adv(5,2, "w1l") }
+    fn a_next() -> Self { Self::adv(5,3, "anext") }
+    fn c_next() -> Self { Self::adv(6,0, "cnext") }
+    fn w4_h() -> Self { Self::adv(6,1, "w4h") }
+    fn w4_l() -> Self { Self::adv(6,2, "w4l") }
+    fn w2b() -> Self { Self::adv(6,3, "w2b") }
+    fn w2c() -> Self { Self::adv(6,4, "w2c") }
+}
+
+#[derive(Clone, Debug)]
+pub struct RMD160Config {
+    witness: [Column<Advice>; 7],
+    selector: [Selector; 2],
+    fixed: [Column<Fixed>; 1],
+}
+
+impl<F: FieldExt> Chip<F> for RMD160Chip<F> {
     type Config = RMD160Config;
     type Loaded = ();
 
@@ -62,7 +182,7 @@ impl<Fp: FieldExt> Chip<Fp> for RMD160Chip<Fp> {
     }
 }
 
-impl<Fp: FieldExt> RMD160Chip<Fp> {
+impl<F: FieldExt> RMD160Chip<F> {
     pub fn new(config: RMD160Config) -> Self {
         RMD160Chip {
             config,
@@ -70,305 +190,201 @@ impl<Fp: FieldExt> RMD160Chip<Fp> {
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fp>) -> RMD160Config {
-        let limb_col = [0; 5]
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> RMD160Config {
+        let witness= [0; 7]
                 .map(|_|cs.advice_column());
-        let arith_limb_col = [cs.advice_column(); 5];
-        let input_limb_col = cs.advice_column();
-        let limb_index = cs.fixed_column();
-        let offset = cs.fixed_column();
-        let shift = cs.fixed_column();
-        let sum_limb_carry = [cs.advice_column(); 2];
+        let fixed= [0; 1]
+                .map(|_|cs.fixed_column());
+        let selector= [0; 2]
+                .map(|_|cs.selector());
+        witness.map(|x| cs.enable_equality(x));
 
-        limb_col.map(|x| cs.enable_equality(x));
-        arith_limb_col.map(|x| cs.enable_equality(x));
-        cs.enable_equality(input_limb_col);
+        RMD160Config { fixed, selector, witness }
+    }
 
-        RMD160Config {
-            limb_col,
-            arith_limb_col,
-            input_limb_col,
-            limb_index,
-            offset,
-            sum_limb_carry,
-            shift
+    fn assign_cell(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        gate_cell: GateCell, 
+        value: F,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        let cell = gate_cell.cell;
+        //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+        if cell[0] == 0 { // advice
+            region.assign_advice(
+                || format!("assign cell"),
+                self.config.witness[cell[1]],
+                start_offset + cell[2],
+                || Ok(value)
+            )
+        } else if cell[0] == 1 { // fix
+            region.assign_fixed(
+                || format!("assign cell"),
+                self.config.fixed[cell[1]],
+                start_offset + cell[2],
+                || Ok(value)
+            )
+        } else { // selector
+            todo!()
+            /* Set selector
+            region.assign_fixed(
+                || format!("assign cell"),
+                self.config.selector[cell[1]],
+                start_offset + cell[2],
+                || Ok(value)
+            )
+            */
         }
     }
 
+    fn bind_cell(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        cell: GateCell, 
+        value: &AssignedCell<F, F>,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        let f = value.value().map_or(F::zero(), |x| *x);
+        let cell = self.assign_cell(region, start_offset,cell, f)?;
+        region.constrain_equal(cell.cell(), value.cell())?;
+        //println!("Cell binded");
+        Ok(cell)
+    }
+
+    fn bind_cell2(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        cell: GateCell, 
+        value: &AssignedCell<F, F>,
+    ) -> Result<AssignedCell<F, F>, Error> {
+        let f = value.value().map_or(F::zero(), |x| *x);
+        let cell = self.assign_cell(region, start_offset,cell, f)?;
+        Ok(cell)
+    }
+
+
     fn assign_next(
         &self,
-        region: &mut Region<Fp>,
+        region: &mut Region<F>,
         start_offset: usize,
-        previous: &[[AssignedCell<Fp, Fp>; 8]; 5],
-        input_limbs: &[AssignedCell<Fp, Fp>; 8],
+        previous: &[AssignedCell<F, F>; 5],
+        input: &AssignedCell<F, F>,
         round: usize,
         index: usize,
         shift: &[[u32; 16]; 5],
         offset: &[u32; 5],
-    ) -> Result<[[AssignedCell<Fp, Fp>; 8]; 5], Error> {
-        let mut rotated = [
-            previous[0].clone(),
-            previous[1].clone(),
-            previous[2].clone(),
-            previous[3].clone(),
-            previous[4].clone(),
-        ];
-        let abcde = [0; 5].map(|i| {
-            previous.into_iter().fold(0, |acc, x|
-                field_to_u32(x[i].value().map_or(&Fp::zero(), |x| x)) + acc
-            )
-        });
-        let input = self.limbs_to_u32(input_limbs);
-        self.assign_input_col(region, start_offset, input_limbs, round, index)?;
-        let witness = gen_modifier_witness(&abcde, input, shift[round][index], offset[round]);
+    ) -> Result<[AssignedCell<F, F>; 5], Error> {
+        println!("rol: {:?}", previous.clone().map(|x| cell_to_u32(&x)));
+        self.bind_cell(region, start_offset, GateCell::a(), &previous[0])?;
+        let b = self.bind_cell(region, start_offset, GateCell::b(), &previous[1])?;
+        self.bind_cell(region, start_offset, GateCell::c(), &previous[2])?;
+        let d = self.bind_cell(region, start_offset, GateCell::d(), &previous[3])?;
+        self.bind_cell(region, start_offset, GateCell::e(), &previous[4])?;
+        let e = self.bind_cell(region, start_offset, GateCell::x(), &input)?;
+
+        self.assign_cell(region, start_offset, GateCell::w1_r(), F::from(1u64 << shift[round][index]))?;
+        self.assign_cell(region, start_offset, GateCell::w4_r(), F::from(1u64 << 10))?;
+
+        let blimbs = cell_to_limbs(&previous[1]);
         for i in 0..4 {
-            let col = self.assign_modifier_witness(
-                region,
-                start_offset,
-                witness[i],
-                i,
-                round,
-            index)?;
-            if i == 2 {
-                rotated[4] = col;
-            } else if i == 3 {
-                rotated[1] = col;
-            }
+            self.assign_cell(region, start_offset, GateCell::blimb(i), blimbs[i])?;
         }
-        Ok(rotated)
-    }
 
-    fn limbs_to_u32(&self, inputs: &[AssignedCell<Fp, Fp>; 8]) -> u32 {
-        (*inputs).to_vec().into_iter().fold(0, |acc, x| {
-            field_to_u32(x.value().map_or(&Fp::zero(), |x| x)) + acc
-        })
-    }
-
-    fn assign_input_col(
-        &self,
-        region: &mut Region<Fp>,
-        start_offset: usize,
-        input: &[AssignedCell<Fp, Fp>; 8],
-        round: usize,
-        index: usize,
-    ) -> Result<(), Error> {
-        for limb in 0..8 {
-            region.assign_advice(
-                || format!("input at {}{}", round, index),
-                self.config.input_limb_col,
-                start_offset + round * 16 + index,
-                || Ok(input[limb].value().map_or(Fp::zero(), |x| x.clone()))
-            )?;
+        let climbs = cell_to_limbs(&previous[2]);
+        for i in 0..4 {
+            self.assign_cell(region, start_offset, GateCell::climb(i), climbs[i])?;
         }
-        Ok(())
-    }
 
-    fn assign_offset_col(
-        &self,
-        region: &mut Region<Fp>,
-        start_offset: usize,
-        round: usize,
-        index: usize,
-        round_offset: &[u32; 5]
-    ) -> Result<(), Error> {
-        for limb in 0..8 {
-            region.assign_fixed(
-                || format!("offset at {}{}", round, index),
-                self.config.offset,
-                (start_offset + round * 16 + index) * 8 + limb,
-                || Ok(Fp::from(round_offset[round] as u64))
-            )?;
+        let dlimbs = cell_to_limbs(&previous[3]);
+        for i in 0..4 {
+            self.assign_cell(region, start_offset, GateCell::dlimb(i), dlimbs[i])?;
         }
-        Ok(())
-    }
 
-    fn assign_shift_col(
-        &self,
-        region: &mut Region<Fp>,
-        start_offset: usize,
-        round: usize,
-        index: usize,
-        shift: &[[u32; 16]; 5]
-    ) -> Result<(), Error> {
-        for limb in 0..8 {
-            region.assign_fixed(
-                || format!("shift at {}{}", round, index),
-                self.config.shift,
-                (start_offset + round * 16 + index) * 8 + limb,
-                || Ok(Fp::from(shift[round][index] as u64))
-            )?;
-        }
-        Ok(())
-    }
+        let rol = previous.into_iter()
+            .map(|c| {
+                cell_to_u32(c)
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
-    fn assign_modifier_witness(
-        &self,
-        region: &mut Region<Fp>,
-        start_offset: usize,
-        w: u32,
-        col: usize,
-        round: usize,
-        index: usize,
-    ) -> Result<[AssignedCell<Fp, Fp>; 8], Error> {
-        let limbs = u32_to_limbs(w);
-        let mut assigned_cells = vec![];
-        for limb in 0..8 as usize  {
-            let cell = region.assign_advice(
-                || format!("input at {}{}", round, index),
-                self.config.arith_limb_col[col],
-                (start_offset + round * 16 + index) * 8 + limb,
-                || Ok(limbs[limb])
-            )?;
-            assigned_cells.append(&mut vec![cell]);
-        }
-        Ok(assigned_cells.try_into().unwrap())
-    }
-
-
-    fn assign_rotate(
-        &self,
-        region: &mut Region<Fp>,
-        start_offset: usize,
-        limbs: &[[AssignedCell<Fp, Fp>; 8]; 5],
-        round: usize,
-        index: usize
-    ) -> Result<(), Error> {
-        println!("row size {} {} {} {:?}", start_offset, round, index, (start_offset + round * 16 + index) * 8);
-        for col in 0..5 {
-            for limb in 0..8 as usize  {
-                let cell = region.assign_advice(
-                    || format!("input at {}{}", round, index),
-                    self.config.arith_limb_col[col],
-                    (start_offset + round * 16 + index) * 8 + limb,
-                    || Ok(limbs[col][limb].value().map_or(Fp::zero(), |x| x.clone()))
-                )?;
-                region.constrain_equal(cell.cell(), limbs[col][limb].cell())?;
-            }
-        }
-        Ok(())
+        let witness = get_witnesses(round, &rol, cell_to_u32(&input), shift[round][index], offset[round]);
+        //self.assign_cell(region, start_offset, GateCell::r(), F::from(witness.r as u64));
+        self.assign_cell(region, start_offset, GateCell::w0(), F::from(witness.w0 as u64))?;
+        self.assign_cell(region, start_offset, GateCell::wb(), witness.wb)?;
+        self.assign_cell(region, start_offset, GateCell::wc(), F::from(witness.wc as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w1(), F::from(witness.w1 as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w1_h(), F::from(witness.w1_h as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w1_l(), F::from(witness.w1_l as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w4_h(), F::from(witness.w4_h as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w4_l(),F::from(witness.w4_l as u64))?;
+        self.assign_cell(region, start_offset, GateCell::w2b(),witness.w2b)?;
+        self.assign_cell(region, start_offset, GateCell::w2c(),F::from(witness.w2c as u64))?;
+        let a = self.assign_cell(region, start_offset, GateCell::a_next(), F::from(witness.a_next as u64))?;
+        let c = self.assign_cell(region, start_offset, GateCell::c_next(), F::from(witness.c_next as u64))?;
+        Ok([b,c,d,e,a])
     }
 
     fn rotate_inputs(
         &self,
-        input_limbs: &[[AssignedCell<Fp, Fp>; 8]; 16],
+        inputs: &[AssignedCell<F, F>; 16],
         round_shift: [usize; 16],
-    ) -> [[AssignedCell<Fp, Fp>; 8]; 16] {
-        round_shift.map(|i| input_limbs[i].clone())
+    ) -> [AssignedCell<F, F>; 16] {
+        round_shift.map(|i| inputs[i].clone())
     }
 
     pub fn assign_content(
         &self,
-        layouter: &mut impl Layouter<Fp>,
-        start_buf: &[[AssignedCell<Fp, Fp>; 8]; 5],
-        input_limbs: &[[AssignedCell<Fp, Fp>; 8]; 16],
+        layouter: &mut impl Layouter<F>,
+        start_buf: &[AssignedCell<F, F>; 5],
+        inputs: &[AssignedCell<F, F>; 16],
     ) -> Result<(), Error> {
         let mut r1 = start_buf.clone();
-        let start_offset = 0;
+        let mut start_offset = 0;
         for round in 0..5 {
             for index in 0..16 {
                 layouter.assign_region(
                     || "leaf layer",
                     |mut region| {
-                        self.assign_rotate(
-                            &mut region,
-                            start_offset,
-                            &r1,
-                            round,
-                            index
-                        )?;
-
                         r1 = self.assign_next(
                             &mut region,
                             start_offset,
                             &r1,
-                            &self.rotate_inputs(input_limbs, O[round])[index],
+                            &self.rotate_inputs(inputs, O[round])[index],
                             round,
                             index,
                             &R,
                             &ROUNDS_OFFSET
                         )?;
-
-                        self.assign_input_col(
-                            &mut region,
-                            start_offset,
-                            &self.rotate_inputs(&input_limbs, O[round])[index],
-                            round,
-                            index
-                        )?;
-
-                        self.assign_offset_col(
-                            &mut region,
-                            start_offset,
-                            round,
-                            index,
-                            &ROUNDS_OFFSET
-                        )?;
-
-                        self.assign_shift_col(
-                            &mut region,
-                            start_offset,
-                            round,
-                            index,
-                            &R
-                        )?;
                         Ok(())
                     }
                 )?;
+                start_offset += 5;
             }
         }
         println!("continue assign");
         let mut r2 = start_buf.clone();
-        let start_offset = 16 * 5;
         for round in 0..5 {
             for index in 0..16 {
                 layouter.assign_region(
                     || "leaf layer",
                     |mut region| {
-                        self.assign_rotate(
-                            &mut region,
-                            start_offset,
-                            &r2,
-                            round,
-                            index
-                        )?;
-
                         r2 = self.assign_next(
                             &mut region,
                             start_offset,
                             &r2,
-                            &self.rotate_inputs(&input_limbs, PO[round])[index],
+                            &self.rotate_inputs(&inputs, PO[round])[index],
                             round,
                             index,
                             &PR,
                             &ROUNDS_OFFSET
                         )?;
-
-                        self.assign_input_col(
-                            &mut region,
-                            start_offset,
-                            &self.rotate_inputs(&input_limbs, PO[round])[index],
-                            round,
-                            index
-                        )?;
-
-                        self.assign_offset_col(
-                            &mut region,
-                            start_offset,
-                            round,
-                            index,
-                            &PROUNDS_OFFSET
-                        )?;
-
-                        self.assign_shift_col(
-                            &mut region,
-                            start_offset,
-                            round,
-                            index,
-                            &R
-                        )?;
                         Ok(())
                     }
                 )?;
+                start_offset += 5;
             }
         }
         Ok(())
@@ -393,6 +409,7 @@ mod tests {
     use super::RMD160Chip;
     use super::RMD160Config;
     use super::u32_to_limbs;
+    use crate::host::rmd160::H0;
 
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
@@ -435,75 +452,54 @@ mod tests {
         fn assign_w(
             &self,
             layouter: &mut impl Layouter<Fr>,
-            input_limbs: &[u32; 5],
+            inputs: &[u32; 5],
             offset: usize,
-        ) -> Result<[[AssignedCell<Fr, Fr>; 8]; 5], Error> {
-            let ret  = layouter.assign_region(
+        ) -> Result<[AssignedCell<Fr, Fr>; 5], Error> {
+            layouter.assign_region(
                 || "leaf layer",
                 |mut region| {
                     let mut r = vec![];
                     for round in 0..5 {
-                        let limbs = u32_to_limbs(input_limbs[round]);
-                        for limb in 0..8 {
-                            r.push(region.assign_advice(
-                                || format!("assign w"),
-                                self.config.limb,
-                                offset + round * 8 + limb,
-                                || Ok(limbs[limb])
-                            )?);
-                        }
+                        r.push(region.assign_advice(
+                            || format!("assign w"),
+                            self.config.limb,
+                            offset + round,
+                            || Ok(Fr::from(inputs[round] as u64))
+                        )?);
                     }
-                    let b = r.chunks(8)
-                        .into_iter()
-                        .map(|x| x.to_vec().try_into().unwrap())
-                        .collect::<Vec<[_; 8]>>()
-                        .try_into()
-                        .unwrap();
-                    Ok(b)
+                    Ok(r.try_into().unwrap())
                 }
-            );
-            ret
+            )
         }
 
         fn assign_inputs(
             &self,
             layouter: &mut impl Layouter<Fr>,
-            input_limbs: &[u32; 16],
+            inputs: &[Fr; 16],
             offset: usize
-        ) -> Result<[[AssignedCell<Fr, Fr>; 8]; 16], Error> {
-            let ret  = layouter.assign_region(
+        ) -> Result<[AssignedCell<Fr, Fr>; 16], Error> {
+            layouter.assign_region(
                 || "leaf layer",
                 |mut region| {
                     let mut r = vec![];
-                    for round in 0..16 {
-                        let limbs = u32_to_limbs(input_limbs[round]);
-                        for limb in 0..8 {
-                            let cell = region.assign_advice(
-                                || format!("assign input"),
-                                self.config.limb,
-                                offset + round * 8 + limb,
-                                || Ok(limbs[limb])
-                            )?;
-                            r.push(cell);
-                        }
+                    for i in 0..16 {
+                        let cell = region.assign_advice(
+                            || format!("assign input"),
+                            self.config.limb,
+                            offset + i,
+                            || Ok(inputs[i])
+                        )?;
+                        r.push(cell);
                     }
-                    let b = r.chunks(8)
-                        .into_iter()
-                        .map(|x| x.to_vec().try_into().unwrap())
-                        .collect::<Vec<[_; 8]>>();
-                    let b = b
-                        .try_into()
-                        .unwrap();
-                    Ok(b)
+                    Ok(r.try_into().unwrap())
                 }
-            );
-            ret
+            )
         }
     }
 
     #[derive(Clone, Debug, Default)]
     struct RMD160Circuit {
-        input_limbs: Vec<[Fr; 8]>,
+        inputs: [Fr; 16],
     }
 
     #[derive(Clone, Debug)]
@@ -534,9 +530,9 @@ mod tests {
         ) -> Result<(), Error> {
             let rmd160chip = RMD160Chip::<Fr>::new(config.clone().rmd160config);
             let helperchip = HelperChip::new(config.clone().helperconfig);
-            let w_limbs = helperchip.assign_w(&mut layouter, &[1;5], 0)?;
-            let input_limbs = helperchip.assign_inputs(&mut layouter, &[1;16], 0)?;
-            rmd160chip.assign_content(&mut layouter, &w_limbs, &input_limbs)?;
+            let w= helperchip.assign_w(&mut layouter, &H0, 0)?;
+            let input = helperchip.assign_inputs(&mut layouter, &self.inputs, 0)?;
+            rmd160chip.assign_content(&mut layouter, &w, &input)?;
             println!("synthesize");
             Ok(())
         }
@@ -545,10 +541,9 @@ mod tests {
 
     #[test]
     fn test_rmd160_circuit() {
-        let test_circuit = RMD160Circuit {input_limbs: [[Fr::zero();8]; 16].to_vec()} ;
-        let prover = MockProver::run(19, &test_circuit, vec![]);
-        //println!("{:?}", prover);
-        prover.unwrap();
+        let test_circuit = RMD160Circuit {inputs: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].map(|x| Fr::from(x as u64))} ;
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
     }
 }
 

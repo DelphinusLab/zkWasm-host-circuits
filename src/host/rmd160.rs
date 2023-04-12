@@ -113,6 +113,7 @@ pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
             let idx = idxs[limb_index];
             rol_modifier(round, &mut rol1, values[idx], offset, shift[limb_index]);
             rol1.rotate_right(1);
+            println!("{:?}", rol1);
         }
         round += 1;
     }
@@ -122,6 +123,7 @@ pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
             let idx = idxs[limb_index];
             rol_modifier(round-1, &mut rol2, values[idx], offset, shift[limb_index]);
             rol2.rotate_right(1);
+            println!("{:?}, shift {} x {} offset {}", rol2, shift[limb_index], values[idx], offset);
         }
         round -= 1;
     }

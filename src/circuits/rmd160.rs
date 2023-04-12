@@ -85,9 +85,9 @@ struct RoundWitness<F: FieldExt> {
 }
 
 
-fn get_witnesses<F: FieldExt>(round: usize, rol: &[u32; 5], x: u32, shift: u32, offset:u32) -> RoundWitness<F> {
-    let r = u32::atomic(round, rol[1], rol[2], rol[3]);
-    println!("r is {}", r);
+fn get_witnesses<F: FieldExt>(round: usize, rol: &[u32; 5], x: u32, shift: u32, offset:u32, pround: bool) -> RoundWitness<F> {
+    let f = if pround {5 - round - 1} else { round };
+    let r = u32::atomic(f, rol[1], rol[2], rol[3]);
     let w0 = r.wrapping_add(rol[0]).wrapping_add(x).wrapping_add(offset);
     let wb = F::from(r as u64) + F::from(rol[0] as u64) + F::from(x as u64) + F::from(offset as u64);
     let wc = (field_to_u64(&wb) - (w0 as u64)) >> 32;
@@ -100,6 +100,8 @@ fn get_witnesses<F: FieldExt>(round: usize, rol: &[u32; 5], x: u32, shift: u32, 
     let w4_h = rol[2] >> 22;
     let w4_l = rol[2] % (2u32.pow(22));
     let c_next = rol[2].rotate_left(10);
+
+    println!("round {}, shift {}, offset {} x {}", r, shift ,offset, x);
 
     RoundWitness {
         r, w0, wb, wc, w1, w1_h, w1_l, a_next, w2b, w2c, w4_h, w4_l, c_next
@@ -248,7 +250,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         let f = value.value().map_or(F::zero(), |x| *x);
         let cell = self.assign_cell(region, start_offset,cell, f)?;
         region.constrain_equal(cell.cell(), value.cell())?;
-        //println!("Cell binded");
+        //println!("Cell binded {}", start_offset);
         Ok(cell)
     }
 
@@ -275,6 +277,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         index: usize,
         shift: &[[u32; 16]; 5],
         offset: &[u32; 5],
+        pround: bool,
     ) -> Result<[AssignedCell<F, F>; 5], Error> {
         println!("rol: {:?}", previous.clone().map(|x| cell_to_u32(&x)));
         self.bind_cell(region, start_offset, GateCell::a(), &previous[0])?;
@@ -282,7 +285,9 @@ impl<F: FieldExt> RMD160Chip<F> {
         self.bind_cell(region, start_offset, GateCell::c(), &previous[2])?;
         let d = self.bind_cell(region, start_offset, GateCell::d(), &previous[3])?;
         self.bind_cell(region, start_offset, GateCell::e(), &previous[4])?;
-        let e = self.bind_cell(region, start_offset, GateCell::x(), &input)?;
+        let e = self.bind_cell(region, start_offset, GateCell::e(), &previous[4])?;
+
+        self.bind_cell(region, start_offset, GateCell::x(), &input)?;
 
         self.assign_cell(region, start_offset, GateCell::w1_r(), F::from(1u64 << shift[round][index]))?;
         self.assign_cell(region, start_offset, GateCell::w4_r(), F::from(1u64 << 10))?;
@@ -302,6 +307,8 @@ impl<F: FieldExt> RMD160Chip<F> {
             self.assign_cell(region, start_offset, GateCell::dlimb(i), dlimbs[i])?;
         }
 
+        //println!("Previous is {:?}", previous);
+
         let rol = previous.into_iter()
             .map(|c| {
                 cell_to_u32(c)
@@ -310,7 +317,7 @@ impl<F: FieldExt> RMD160Chip<F> {
             .try_into()
             .unwrap();
 
-        let witness = get_witnesses(round, &rol, cell_to_u32(&input), shift[round][index], offset[round]);
+        let witness = get_witnesses(round, &rol, cell_to_u32(&input), shift[round][index], offset[round], pround);
         //self.assign_cell(region, start_offset, GateCell::r(), F::from(witness.r as u64));
         self.assign_cell(region, start_offset, GateCell::w0(), F::from(witness.w0 as u64))?;
         self.assign_cell(region, start_offset, GateCell::wb(), witness.wb)?;
@@ -324,7 +331,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         self.assign_cell(region, start_offset, GateCell::w2c(),F::from(witness.w2c as u64))?;
         let a = self.assign_cell(region, start_offset, GateCell::a_next(), F::from(witness.a_next as u64))?;
         let c = self.assign_cell(region, start_offset, GateCell::c_next(), F::from(witness.c_next as u64))?;
-        Ok([b,c,d,e,a])
+        Ok([e, a, b, c, d])
     }
 
     fn rotate_inputs(
@@ -341,13 +348,13 @@ impl<F: FieldExt> RMD160Chip<F> {
         start_buf: &[AssignedCell<F, F>; 5],
         inputs: &[AssignedCell<F, F>; 16],
     ) -> Result<(), Error> {
-        let mut r1 = start_buf.clone();
-        let mut start_offset = 0;
-        for round in 0..5 {
-            for index in 0..16 {
-                layouter.assign_region(
-                    || "leaf layer",
-                    |mut region| {
+        layouter.assign_region(
+            || "leaf layer",
+            |mut region| {
+                let mut r1 = start_buf.clone();
+                let mut start_offset = 0;
+                for round in 0..5 {
+                    for index in 0..16 {
                         r1 = self.assign_next(
                             &mut region,
                             start_offset,
@@ -356,21 +363,19 @@ impl<F: FieldExt> RMD160Chip<F> {
                             round,
                             index,
                             &R,
-                            &ROUNDS_OFFSET
+                            &ROUNDS_OFFSET,
+                            false,
                         )?;
-                        Ok(())
+                        start_offset += 5;
                     }
-                )?;
-                start_offset += 5;
-            }
-        }
-        println!("continue assign");
-        let mut r2 = start_buf.clone();
-        for round in 0..5 {
-            for index in 0..16 {
-                layouter.assign_region(
-                    || "leaf layer",
-                    |mut region| {
+                }
+                println!("final r1 {:?}", r1);
+                println!("continue assign");
+                println!("continue assign");
+                println!("continue assign");
+                let mut r2 = start_buf.clone();
+                for round in 0..5 {
+                    for index in 0..16 {
                         r2 = self.assign_next(
                             &mut region,
                             start_offset,
@@ -379,14 +384,15 @@ impl<F: FieldExt> RMD160Chip<F> {
                             round,
                             index,
                             &PR,
-                            &ROUNDS_OFFSET
+                            &PROUNDS_OFFSET,
+                            true
                         )?;
-                        Ok(())
+                        start_offset += 5;
                     }
-                )?;
-                start_offset += 5;
+                }
+                Ok(())
             }
-        }
+        )?;
         Ok(())
     }
 }

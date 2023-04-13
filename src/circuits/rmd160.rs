@@ -4,7 +4,8 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Layouter, Region, AssignedCell},
     plonk::{
-        Fixed, Advice, Column, ConstraintSystem, Error, Expression, Selector,
+        Fixed, Advice, Column, ConstraintSystem,
+        Error, Expression, Selector, VirtualCells
     },
     poly::Rotation,
 };
@@ -17,6 +18,7 @@ use crate::host::rmd160::{
     R, O, PR, PO,
     RMD160Atomic,
 };
+use crate::constant;
 
 pub struct RMD160Chip<F: FieldExt> {
     config: RMD160Config,
@@ -101,7 +103,8 @@ fn get_witnesses<F: FieldExt>(round: usize, rol: &[u32; 5], x: u32, shift: u32, 
     let w4_l = rol[2] % (2u32.pow(22));
     let c_next = rol[2].rotate_left(10);
 
-    println!("round {}, shift {}, offset {} x {}", r, shift ,offset, x);
+    //println!("round {}, shift {}, offset {} x {}", r, shift ,offset, x);
+    println!("w2c {}", w2c);
 
     RoundWitness {
         r, w0, wb, wc, w1, w1_h, w1_l, a_next, w2b, w2c, w4_h, w4_l, c_next
@@ -122,18 +125,18 @@ impl GateCell {
     }
     fn fix(col: usize, row: usize, dbg: &str) -> Self {
         GateCell {
-            cell: [0, col, row],
+            cell: [1, col, row],
             name: String::from(dbg),
         }
     }
     fn sel(col: usize, row: usize, dbg: &str) -> Self {
         GateCell {
-            cell: [0, col, row],
+            cell: [2, col, row],
             name: String::from(dbg),
         }
     }
 
-    fn hsel(i: usize) -> Self { Self::sel(0,i, format!("hsel{}", i).as_str()) }
+    fn hsel(i: usize) -> Self { Self::sel(0,0, format!("hsel{}", i).as_str()) }
     fn rsel(i: usize) -> Self { Self::sel(1,i, format!("hsel{}", i).as_str()) }
     fn offset() -> Self { Self::fix(0,0, "offset") }
     fn w1_r() -> Self { Self::fix(0, 1, "w1r") }
@@ -171,6 +174,20 @@ pub struct RMD160Config {
     fixed: [Column<Fixed>; 1],
 }
 
+impl RMD160Config {
+    fn get_expr<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell) -> Expression<F> {
+        let cell = gate_cell.cell;
+        //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+        if cell[0] == 0 { // advice
+            meta.query_advice(self.witness[cell[1]], Rotation(cell[2] as i32))
+        } else if cell[0] == 1 { // fix
+            meta.query_fixed(self.fixed[cell[1]], Rotation(cell[2] as i32))
+        } else { // selector
+            meta.query_selector(self.selector[cell[1]])
+        }
+    }
+}
+
 impl<F: FieldExt> Chip<F> for RMD160Chip<F> {
     type Config = RMD160Config;
     type Loaded = ();
@@ -192,6 +209,8 @@ impl<F: FieldExt> RMD160Chip<F> {
         }
     }
 
+
+
     pub fn configure(cs: &mut ConstraintSystem<F>) -> RMD160Config {
         let witness= [0; 7]
                 .map(|_|cs.advice_column());
@@ -201,7 +220,38 @@ impl<F: FieldExt> RMD160Chip<F> {
                 .map(|_|cs.selector());
         witness.map(|x| cs.enable_equality(x));
 
-        RMD160Config { fixed, selector, witness }
+        let config = RMD160Config { fixed, selector, witness };
+
+        /*
+        cs.create_gate("sum with bound", |meta| {
+            let mut sum_r = config.get_expr(meta, GateCell::rlimb(0));
+            for i in 1..4 {
+                let limb = config.get_expr(meta, GateCell::rlimb(1));
+                sum_r = sum_r + limb * F::from(1u64 << (8*i));
+            }
+            let w0 = config.get_expr(meta, GateCell::w0());
+            let a = config.get_expr(meta, GateCell::a());
+            let x = config.get_expr(meta, GateCell::x());
+            let offset = config.get_expr(meta, GateCell::offset());
+            vec![w0 - sum_r - a - x - offset]
+        });
+        */
+
+        cs.create_gate("sum with w1 rol4", |meta| {
+            let a_next = config.get_expr(meta, GateCell::a_next());
+            let hsel = config.get_expr(meta, GateCell::hsel(0));
+            let w1 = config.get_expr(meta, GateCell::w1());
+            let w2b = config.get_expr(meta, GateCell::w2b());
+            let w2c = config.get_expr(meta, GateCell::w2c());
+            let e = config.get_expr(meta, GateCell::e());
+            vec![
+                (w2b.clone() - w1 - e) * hsel.clone(),
+                (w2c.clone()*(w2c.clone() - constant!(F::one()))) * hsel.clone(),
+                (a_next + w2c * F::from(1u64 << 32) - w2b) * hsel,
+            ]
+        });
+        config
+
     }
 
     fn assign_cell(
@@ -228,17 +278,21 @@ impl<F: FieldExt> RMD160Chip<F> {
                 || Ok(value)
             )
         } else { // selector
-            todo!()
-            /* Set selector
-            region.assign_fixed(
-                || format!("assign cell"),
-                self.config.selector[cell[1]],
-                start_offset + cell[2],
-                || Ok(value)
-            )
-            */
+            unreachable!()
         }
     }
+
+    fn enable_selector(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        gate_cell: GateCell,
+        value: F,
+    ) -> Result<(), Error> {
+        assert!(gate_cell.cell[0] == 2);
+        self.config.selector[gate_cell.cell[1]].enable(region, start_offset + gate_cell.cell[2])
+    }
+
 
     fn bind_cell(
         &self,
@@ -253,19 +307,6 @@ impl<F: FieldExt> RMD160Chip<F> {
         //println!("Cell binded {}", start_offset);
         Ok(cell)
     }
-
-    fn bind_cell2(
-        &self,
-        region: &mut Region<F>,
-        start_offset: usize,
-        cell: GateCell, 
-        value: &AssignedCell<F, F>,
-    ) -> Result<AssignedCell<F, F>, Error> {
-        let f = value.value().map_or(F::zero(), |x| *x);
-        let cell = self.assign_cell(region, start_offset,cell, f)?;
-        Ok(cell)
-    }
-
 
     fn assign_next(
         &self,
@@ -319,6 +360,11 @@ impl<F: FieldExt> RMD160Chip<F> {
 
         let witness = get_witnesses(round, &rol, cell_to_u32(&input), shift[round][index], offset[round], pround);
         //self.assign_cell(region, start_offset, GateCell::r(), F::from(witness.r as u64));
+        let rlimbs = u32_to_limbs(witness.r);
+        assert!(witness.w2b == F::from(witness.w1 as u64) + F::from(cell_to_u32(&previous[4]) as u64));
+        for i in 0..4 {
+            self.assign_cell(region, start_offset, GateCell::rlimb(i), rlimbs[i])?;
+        }
         self.assign_cell(region, start_offset, GateCell::w0(), F::from(witness.w0 as u64))?;
         self.assign_cell(region, start_offset, GateCell::wb(), witness.wb)?;
         self.assign_cell(region, start_offset, GateCell::wc(), F::from(witness.wc as u64))?;
@@ -329,6 +375,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         self.assign_cell(region, start_offset, GateCell::w4_l(),F::from(witness.w4_l as u64))?;
         self.assign_cell(region, start_offset, GateCell::w2b(),witness.w2b)?;
         self.assign_cell(region, start_offset, GateCell::w2c(),F::from(witness.w2c as u64))?;
+        self.enable_selector(region, start_offset, GateCell::hsel(0), F::one())?;
         let a = self.assign_cell(region, start_offset, GateCell::a_next(), F::from(witness.a_next as u64))?;
         let c = self.assign_cell(region, start_offset, GateCell::c_next(), F::from(witness.c_next as u64))?;
         Ok([e, a, b, c, d])
@@ -369,10 +416,8 @@ impl<F: FieldExt> RMD160Chip<F> {
                         start_offset += 5;
                     }
                 }
-                println!("final r1 {:?}", r1);
-                println!("continue assign");
-                println!("continue assign");
-                println!("continue assign");
+
+                /*
                 let mut r2 = start_buf.clone();
                 for round in 0..5 {
                     for index in 0..16 {
@@ -390,6 +435,7 @@ impl<F: FieldExt> RMD160Chip<F> {
                         start_offset += 5;
                     }
                 }
+                */
                 Ok(())
             }
         )?;

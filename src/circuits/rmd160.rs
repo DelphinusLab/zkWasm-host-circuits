@@ -20,47 +20,22 @@ use crate::host::rmd160::{
 };
 use crate::constant;
 
+use crate::utils::{
+    field_to_u32,
+    field_to_u64,
+    u32_to_limbs,
+    cell_to_u32,
+    cell_to_limbs,
+};
+
 pub struct RMD160Chip<F: FieldExt> {
     config: RMD160Config,
     _marker: PhantomData<F>,
 }
 
-fn field_to_u32<F: FieldExt>(f: &F) -> u32 {
-    let mut bytes: Vec<u8> = Vec::new();
-    f.write(&mut bytes).unwrap();
-    u32::from_le_bytes(bytes[0..4].try_into().unwrap())
-}
-
-fn field_to_u64<F: FieldExt>(f: &F) -> u64 {
-    let mut bytes: Vec<u8> = Vec::new();
-    f.write(&mut bytes).unwrap();
-    u64::from_le_bytes(bytes[0..8].try_into().unwrap())
-}
-
-
-
-fn u32_to_limbs<F: FieldExt>(v: u32) -> [F; 4] {
-    let mut rem = v;
-    let mut r = vec![];
-    for _ in 0..4 {
-        r.append(&mut vec![F::from((rem % 256) as u64)]);
-        rem = rem/256;
-    }
-    r.try_into().unwrap()
-}
-
-fn cell_to_u32<F: FieldExt>(cell: &AssignedCell<F, F>) -> u32 {
-    cell.value().map_or(0, |x| field_to_u32(x))
-}
-
-fn cell_to_limbs<F: FieldExt>(cell: &AssignedCell<F, F>) -> [F; 4] {
-    let a = cell_to_u32(cell);
-    u32_to_limbs(a)
-}
-
 
 /*
- * | h_sel | r_sel | col0| col1  | col2 | col3 | col4 | col5  | col6   |  fix0     |
+ * | sel0  | sel1  | col0| col1  | col2 | col3 | col4 | col5  | col6   |  fix0     |
  * | h_sel | r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset   |
  * |       |       | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r     |
  * |       |       | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r     |

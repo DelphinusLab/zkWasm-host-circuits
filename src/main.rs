@@ -294,7 +294,7 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    let clap_app = App::new("playground").arg(input_file()).arg(opname());
+    let clap_app = App::new("hostcircuit").arg(input_file()).arg(opname());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);

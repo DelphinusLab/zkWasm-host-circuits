@@ -77,7 +77,7 @@ impl MongoMerkle {
         filter.insert("index", index);
         collection.find_one(filter, None).await
     }
-    
+
     pub async fn update_record(
         &self,
         record: MerkleRecord
@@ -87,7 +87,7 @@ impl MongoMerkle {
         let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
         collection
             .update_one(
-                doc! { "index" : record.index }, 
+                doc! { "index" : record.index },
                 doc! { "$set": {
                         "data": bytes_to_bson(record.data),
                         "hash": bytes_to_bson(record.hash),
@@ -133,7 +133,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
     }
 
     fn hash(&self, a:[u8;32], b:[u8;32]) -> [u8; 32] {
-        todo!() 
+        todo!()
     }
 
     fn get_hash(&self, index: u32) -> Result<[u8; 32], MerkleError> {
@@ -152,7 +152,6 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
                 index,
                 data:[0; 32],
                 hash:*hash
-                
             }, |x| {
                 MerkleRecord {
                     index,

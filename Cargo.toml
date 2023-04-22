@@ -20,6 +20,7 @@ strum_macros = "0.24.1"
 halo2_proofs = { git = "https://github.com/junyu0312/halo2", branch = "gpu", default-features = true }
 halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", branch = "main" }
 num-bigint = { version = "0.4", features = ["rand"] }
+poseidon = { git = "https://github.com/lanbones/poseidon" }
 rand = "0.8"
 ark-std = { version = "0.3.0", features = ["print-trace"] }
 serde = { version = "1.0.152", features = ["serde_derive"] }

@@ -2532,6 +2532,7 @@ dependencies = [
  "futures",
  "halo2_proofs",
  "halo2ecc-s",
+ "hex",
  "lazy_static",
  "mongodb",
  "num-bigint",

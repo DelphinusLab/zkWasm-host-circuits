@@ -15,3 +15,5 @@ pub struct ExternalHostCallEntry {
     pub value: u64,
     pub is_ret: bool,
 }
+
+pub const MONGODB_URI:&str = "mongodb://localhost:27017";

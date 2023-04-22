@@ -1,4 +1,6 @@
+use halo2_proofs::pairing::bn256::Fq;
 use futures::executor;
+use poseidon::Poseidon;
 use crate::host::merkle:: {
     MerkleError,
     MerkleTree,
@@ -14,6 +16,18 @@ use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+
+/* Poseidon hash settings */
+const T: usize = 9;
+const RATE: usize = 8;
+const R_F: usize = 8;
+const R_P: usize = 63;
+
+fn gen_hasher() -> Poseidon<Fq, T, RATE> {
+   Poseidon::<Fq, T, RATE>::new(R_F, R_P)
+}
+
+
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
@@ -115,6 +129,19 @@ pub struct MerkleRecord {
 impl MerkleLeaf<[u8;32]> for MerkleRecord {
     fn index(&self) -> u32 { self.index }
     fn hash(&self) -> [u8;32] { self.hash }
+    fn set(&mut self, data: &Vec<u8>) {
+        let mut hasher = gen_hasher();
+        self.data = data.clone().try_into().unwrap();
+        let batchdata = data.chunks(16).into_iter().map(|x| {
+            let mut v = x.clone().to_vec();
+            v.extend_from_slice(&[0u8;16]);
+            let f = v.try_into().unwrap();
+            Fq::from_bytes(&f).unwrap()
+        }).collect::<Vec<Fq>>();
+        let values:[Fq; 2] = batchdata.try_into().unwrap();
+        hasher.update(&values);
+        self.hash = hasher.squeeze().to_bytes();
+    }
 }
 
 fn default_hash(depth: u32) -> [u8; 32] {
@@ -132,8 +159,12 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
         }
     }
 
-    fn hash(&self, a:[u8;32], b:[u8;32]) -> [u8; 32] {
-        todo!()
+    fn hash(&self, a:&[u8;32], b:&[u8;32]) -> [u8; 32] {
+        let mut hasher = gen_hasher();
+        let a = Fq::from_bytes(a).unwrap();
+        let b = Fq::from_bytes(b).unwrap();
+        hasher.update(&[a,b]);
+        hasher.squeeze().to_bytes()
     }
 
     fn get_hash(&self, index: u32) -> Result<[u8; 32], MerkleError> {
@@ -162,6 +193,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
         executor::block_on(self.update_record(record)).expect("Unexpected DB Error");
         Ok(())
     }
+
     fn get_leaf(&self, index: u32) -> Result<Self::Leaf, MerkleError> {
         self.leaf_check(index)?;
         let v = executor::block_on(self.get_record(index)).expect("Unexpected DB Error");
@@ -180,6 +212,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
             });
         Ok(leaf)
     }
+
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
         self.boundary_check(leaf.index())?;
         executor::block_on(self.update_record(leaf.clone())).expect("Unexpected DB Error");

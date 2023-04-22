@@ -7,7 +7,6 @@ const LEAF_SIG: u8 = 0u8;
 const INTERNAL_SIG: u8 = 1u8;
 */
 
-
 #[derive(Debug)]
 pub struct MerkleError {
     source: String,
@@ -32,6 +31,7 @@ impl Error for MerkleError {
 pub trait MerkleLeaf<H: Debug+Clone> {
     fn hash(&self) -> H;
     fn index(&self) -> u32;
+    fn set(&mut self, data: &Vec<u8>);
 }
 
 #[derive(Debug)]
@@ -47,7 +47,7 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
     type Leaf: MerkleLeaf<H>;
     type Id;
     fn construct(id: Self::Id) -> Self;
-    fn hash(&self, a:H, b:H) -> H;
+    fn hash(&self, a:&H, b:&H) -> H;
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
         if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
             Err(MerkleError::new("path out of boundary".to_string(), index))
@@ -107,9 +107,9 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         self.set_leaf(leaf)?;
         for i in 0..D {
             hash = if p % 2 == 1 {
-                self.hash(hash.clone(), proof.assist[i].clone())
+                self.hash(&hash, &proof.assist[i])
             } else {
-                self.hash(proof.assist[i].clone(), hash)
+                self.hash(&proof.assist[i], &hash)
             };
             p = (p-1)/2;
             self.set_hash(p, &hash)?;
@@ -134,6 +134,10 @@ mod tests {
     impl MerkleLeaf<u64> for MerkleU64Leaf {
         fn index(&self) -> u32 { self.index }
         fn hash(&self) -> u64 { self.value }
+        fn set(&mut self, value: &Vec<u8>) {
+            let v:[u8; 8] = value.clone().try_into().unwrap();
+            self.value = u64::from_le_bytes(v);
+        }
     }
 
     impl MerkleTree<u64, 6> for MerkleAsArray {
@@ -145,7 +149,7 @@ mod tests {
                 data: [0 as u64; 127]
             }
         }
-        fn hash(&self, a:u64, b:u64) -> u64 {
+        fn hash(&self, a:&u64, b:&u64) -> u64 {
             a + b 
         }
         fn get_hash(&self, index: u32) -> Result<u64, MerkleError> {

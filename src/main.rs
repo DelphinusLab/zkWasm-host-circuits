@@ -23,6 +23,7 @@ use crate::circuits::{
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
     range_chip::{RangeChip, RangeChipConfig},
+    select_chip::{SelectChip, SelectChipConfig},
 };
 
 use halo2_proofs::dev::MockProver;
@@ -60,6 +61,7 @@ struct HostOpConfig<S: Clone + std::fmt::Debug> {
     indicator: Column<Fixed>,
     base_chip_config: BaseChipConfig,
     range_chip_config: RangeChipConfig,
+    point_select_chip_config: SelectChipConfig,
     selector_chip_config: S,
 }
 
@@ -122,6 +124,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
 
         let base_chip_config = BaseChip::configure(meta);
         let range_chip_config = RangeChip::<Fr>::configure(meta);
+        let point_select_chip_config = SelectChip::<Fr>::configure(meta);
         let selector_chip_config = S::configure(meta, &base_chip_config, &range_chip_config);
 
         HostOpConfig {
@@ -135,6 +138,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             indicator,
             base_chip_config,
             range_chip_config,
+            point_select_chip_config,
             selector_chip_config,
         }
     }
@@ -260,9 +264,10 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         let base_chip = BaseChip::new(config.base_chip_config);
         let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
         range_chip.init_table(&mut layouter)?;
+        let pointer_select_chip = SelectChip::<Fr>::new(config.point_select_chip_config);
         println!("arg cell num is: {:?}", all_arg_cells.len());
         let selector_chip = S::construct(config.selector_chip_config);
-        selector_chip.synthesize(&all_arg_cells, &base_chip, &range_chip, &mut layouter)?;
+        selector_chip.synthesize(&all_arg_cells, &base_chip, &range_chip, &pointer_select_chip, &mut layouter)?;
         Ok(())
     }
 }

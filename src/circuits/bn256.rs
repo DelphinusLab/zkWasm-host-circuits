@@ -30,6 +30,7 @@ use halo2ecc_s::{
     circuit::{
         base_chip::{BaseChip, BaseChipConfig},
         range_chip::{RangeChip, RangeChipConfig},
+        select_chip::{SelectChip, SelectChipConfig},
     },
     context::{Context, IntegerContext, NativeScalarEccContext},
 };
@@ -287,6 +288,7 @@ impl Bn256PairChip<Fr> {
         ab: &Vec<AssignedCell<Fr, Fr>>, // Fq_12 (3 * 12)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
+        point_select_chip: &SelectChip<Fr>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
@@ -308,7 +310,7 @@ impl Bn256PairChip<Fr> {
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
-                let cells = records.assign_all(&mut region, &base_chip, &range_chip)?;
+                let cells = records.assign_all(&mut region, &base_chip, &range_chip, &point_select_chip)?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
                 enable_g2affine_permute(&mut region, &cells, &b_g2, b)?;
                 enable_fq12_permute(&mut region, &cells, &ab_fq12, ab)?;
@@ -423,12 +425,13 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
         arg_cells: &Vec<AssignedCell<Fr, Fr>>,
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
+        point_select_chip: &SelectChip<Fr>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let a = arg_cells[0..7].to_vec();
         let b = arg_cells[7..20].to_vec();
         let ab = arg_cells[20..56].to_vec();
-        self.load_bn256_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, layouter)?;
+        self.load_bn256_pair_circuit(&a, &b, &ab, &base_chip, &range_chip, &point_select_chip, layouter)?;
         Ok(())
     }
 }
@@ -474,6 +477,7 @@ impl Bn256SumChip<Fr> {
         sum: &Vec<AssignedCell<Fr, Fr>>, // G1 (3 * 2 + 1)
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
+        point_select_chip: &SelectChip<Fr>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
@@ -500,7 +504,7 @@ impl Bn256SumChip<Fr> {
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
-                let cells = records.assign_all(&mut region, &base_chip, &range_chip)?;
+                let cells = records.assign_all(&mut region, &base_chip, &range_chip, &point_select_chip)?;
                 let ls = ls
                     .chunks(7)
                     .into_iter()
@@ -616,12 +620,13 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
         arg_cells: &Vec<AssignedCell<Fr, Fr>>,
         base_chip: &BaseChip<Fr>,
         range_chip: &RangeChip<Fr>,
+        point_select_chip: &SelectChip<Fr>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let len = arg_cells.len();
         let args = arg_cells[0..len - 7].to_vec();
         let ret = arg_cells[len - 7..len].to_vec();
-        self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, layouter)?;
+        self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, &point_select_chip, layouter)?;
         Ok(())
     }
 }

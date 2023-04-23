@@ -8,10 +8,11 @@ use crate::host::merkle:: {
 };
 use mongodb::{
     Client,
-    bson::doc,
-    results::{InsertOneResult, UpdateResult},
+    bson::doc
 };
-use mongodb::bson::{oid::ObjectId, spec::BinarySubtype, Bson};
+use mongodb::bson::{
+    spec::BinarySubtype, Bson
+};
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -58,7 +59,7 @@ fn bytes_to_bson(x: [u8;32]) -> Bson {
     })
 }
 
-struct MongoMerkle {
+pub struct MongoMerkle {
     contract_address: [u8;32]
 }
 

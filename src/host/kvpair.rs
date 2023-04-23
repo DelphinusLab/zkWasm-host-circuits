@@ -155,6 +155,15 @@ impl MerkleRecord {
     fn new(index: u32) -> Self {
         MerkleRecord { index, hash: [0; 32], data: [0; 32] }
     }
+
+    pub fn data_as_u64(&self) -> [u64; 4]  {
+        [
+            u64::from_le_bytes(self.data[0..8].try_into().unwrap()),
+            u64::from_le_bytes(self.data[8..16].try_into().unwrap()),
+            u64::from_le_bytes(self.data[16..24].try_into().unwrap()),
+            u64::from_le_bytes(self.data[24..32].try_into().unwrap()),
+        ]
+    }
 }
 
 impl MongoMerkle {

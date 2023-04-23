@@ -117,6 +117,12 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         proof.root = hash;
         Ok(proof)
     }
+
+    fn update_leaf_data_with_proof(&mut self, index: u32, data: &Vec<u8>) -> Result<MerkleProof<H, D>, MerkleError> {
+        let mut leaf = self.get_leaf(index)?;
+        leaf.set(data);
+        self.set_leaf_with_proof(&leaf)
+    }
 }
 
 #[cfg(test)]
@@ -150,7 +156,7 @@ mod tests {
             }
         }
         fn hash(&self, a:&u64, b:&u64) -> u64 {
-            a + b 
+            a + b
         }
         fn get_hash(&self, index: u32) -> Result<u64, MerkleError> {
             self.boundary_check(index)?;

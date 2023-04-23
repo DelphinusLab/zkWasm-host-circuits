@@ -7,11 +7,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "mylib"
+name = "zkwasm_host_circuits"
 path = "src/lib.rs"
 
 [[bin]]
-name = "mybin"
+name = "zkwasm-host-circuits-prover"
 path = "src/main.rs"
 
 [dependencies]

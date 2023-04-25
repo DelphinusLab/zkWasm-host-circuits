@@ -1,3 +1,5 @@
+pub mod test;
+
 use halo2_proofs::arithmetic::BaseExt;
 use halo2_proofs::arithmetic::FieldExt;
 use num_bigint::BigUint;
@@ -124,5 +126,78 @@ macro_rules! constant_from_bn {
 macro_rules! constant {
     ($x: expr) => {
         halo2_proofs::plonk::Expression::Constant($x)
+    };
+}
+
+
+#[macro_export]
+macro_rules! item_count {
+    () => {0usize};
+    ($cut:tt nil $($tail:tt)*) => {1usize + item_count!($($tail)*)};
+    ($cut:tt $name:tt $($tail:tt)*) => {1usize + item_count!($($tail)*)};
+}
+
+#[macro_export]
+macro_rules! table_item {
+    ($row:expr, $col:expr, ) => {};
+    ($row:expr, $col:expr, $cut:tt nil $($tail:tt)*) => {
+        table_item!($row, $col, $($tail)*);
+    };
+    ($row:expr, $col:expr, $cut:tt $name:tt $($tail:tt)*) => {
+        fn $name() -> Self {
+            let index = $row * $col - 1usize - (item_count!($($tail)*));
+            GateCell {
+                cell: [Self::typ(index), Self::col(index), Self::row(index)],
+                name: String::from(stringify!($name)),
+            }
+        }
+        table_item!($row, $col, $($tail)*);
+    };
+}
+
+#[macro_export]
+macro_rules! customized_curcuits {
+    ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
+        struct GateCell {
+            cell: [usize;3],
+            name: String,
+        }
+
+        impl GateCell {
+            fn typ(index: usize) -> usize {
+                let x = index % $col;
+                if x < $adv {
+                    0
+                } else if x < $adv + $fix {
+                    1
+                } else {
+                    2
+                }
+            }
+
+            fn col(index: usize) -> usize {
+                let x = index % $col;
+                if x < $adv {
+                    x
+                } else if x < $adv + $fix {
+                    x - $adv
+                } else {
+                    x - $adv - $fix
+                }
+            }
+
+            fn row(index: usize) -> usize {
+                index / $col
+            }
+
+            table_item!($row, $col, $($item)*);
+        }
+
+        // #[derive(Clone, Debug)]
+        // pub struct $name {
+        //     witness: [Column<Advice>; $adv],
+        //     selector: [Selector; $sel],
+        //     fixed: [Column<Fixed>; $fix],
+        // }
     };
 }

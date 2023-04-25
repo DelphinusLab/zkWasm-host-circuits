@@ -41,7 +41,7 @@ pub struct RMD160Chip<F: FieldExt> {
  * |       |       | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r     |
  * |       |       | wc  | b2    | c2   |  d2  | r2   | a_next| w2b    |           |
  * |       |       | w1  | b3    | c3   |  d3  | r3   |       | w2c    |           |
- * 
+ *
  */
 
 /* All witness we need to fill the gate */
@@ -54,7 +54,7 @@ struct RoundWitness<F: FieldExt> {
     w1_h: u32,  //w1 >> w1_r
     w1_l: u32,  //w1 % w1_r
     a_next: u32, // w1 + e
-    w2b: F, // w1+e u64 
+    w2b: F, // w1+e u64
     w2c: u64, // w2b - a_next
     w4_h: u32, // c >> w4_r
     w4_l: u32, // c % w4_r
@@ -233,7 +233,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         &self,
         region: &mut Region<F>,
         start_offset: usize,
-        gate_cell: GateCell, 
+        gate_cell: GateCell,
         value: F,
     ) -> Result<AssignedCell<F, F>, Error> {
         let cell = gate_cell.cell;
@@ -273,7 +273,7 @@ impl<F: FieldExt> RMD160Chip<F> {
         &self,
         region: &mut Region<F>,
         start_offset: usize,
-        cell: GateCell, 
+        cell: GateCell,
         value: &AssignedCell<F, F>,
     ) -> Result<AssignedCell<F, F>, Error> {
         let f = value.value().map_or(F::zero(), |x| *x);

@@ -140,7 +140,26 @@ macro_rules! item_count {
 #[macro_export]
 macro_rules! table_item {
     ($row:expr, $col:expr, ) => {};
-    ($row:expr, $col:expr, $cut:tt nil $($tail:tt)*) => {
+    ($row:expr, $col:expr, | nil $($tail:tt)*) => {
+        table_item!($row, $col, $($tail)*);
+    };
+    ($row:expr, $col:expr, | $name:tt $($tail:tt)*) => {
+        fn $name() -> Self {
+            let index = $row * $col - 1usize - (item_count!($($tail)*));
+            GateCell {
+                cell: [Self::typ(index), Self::col(index), Self::row(index)],
+                name: String::from(stringify!($name)),
+            }
+        }
+        table_item!($row, $col, $($tail)*);
+    };
+}
+
+/*
+#[macro_export]
+macro_rules! table_cell {
+    ($r:expr, $c:expr, ) => {};
+    ($r:expr, $c:expr, | nil $($tail:tt)*) => {
         table_item!($row, $col, $($tail)*);
     };
     ($row:expr, $col:expr, $cut:tt $name:tt $($tail:tt)*) => {
@@ -154,6 +173,8 @@ macro_rules! table_item {
         table_item!($row, $col, $($tail)*);
     };
 }
+*/
+
 
 #[macro_export]
 macro_rules! customized_curcuits {
@@ -200,4 +221,25 @@ macro_rules! customized_curcuits {
         //     fixed: [Column<Fixed>; $fix],
         // }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::circuits::rmd160::RMD160Config;
+    use crate::customized_curcuits;
+    use crate::table_item;
+    use crate::item_count;
+
+    customized_curcuits!(RMD160Config, 5, 10, 7, 1, 2,
+        | h_sel |  r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset
+        | nil   |  nil   | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r
+        | nil   |  nil   | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r
+        | nil   |  nil   | wc  | b2    | c2   |  d2  | r2   | a_next| w2b    |   nil
+        | nil   |  nil   | w1  | b3    | c3   |  d3  | r3   |  nil  | w2c    |   nil
+    );
+    #[test]
+    fn test_gate_macro() {
+//        let config = RMD160Config {};
+//        assert_eq!(r.to_vec(), r1);
+    }
 }

@@ -4,7 +4,7 @@ use poseidon::Poseidon;
 use crate::host::merkle:: {
     MerkleError,
     MerkleTree,
-    MerkleLeaf
+    MerkleNode
 };
 use mongodb::{
     Client,
@@ -52,15 +52,16 @@ where
     binary.serialize(serializer)
 }
 
-fn bytes_to_bson(x: [u8;32]) -> Bson {
+fn bytes_to_bson(x: &[u8;32]) -> Bson {
     Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
-        bytes: x.into(),
+        bytes: (*x).into(),
     })
 }
 
 pub struct MongoMerkle {
-    contract_address: [u8;32]
+    contract_address: [u8;32],
+    root_hash: [u8; 32]
 }
 
 pub async fn get_collection<T>(
@@ -82,16 +83,19 @@ impl MongoMerkle {
 
     pub async fn get_record (
         &self,
-        index: u32
+        index: u32,
+        hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
         let mut filter = doc! {};
         filter.insert("index", index);
+        filter.insert("hash", bytes_to_bson(hash));
         collection.find_one(filter, None).await
     }
 
+    /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub async fn update_record(
         &self,
         record: MerkleRecord
@@ -99,24 +103,9 @@ impl MongoMerkle {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
-        let exist = collection.find_one(doc! { "index": record.index }, None).await?.map_or(false, |_| true);
-        if exist {
-            collection
-                .update_one(
-                    doc! { "index" : record.index },
-                    doc! { "$set": {
-                            "data": bytes_to_bson(record.data),
-                            "hash": bytes_to_bson(record.hash),
-                        }
-                    },
-                    None
-                )
-                .await?;
-        } else {
-            collection
-                .insert_one(record, None)
-                .await?;
-        }
+        collection
+            .insert_one(record, None)
+            .await?;
         Ok(())
     }
 }
@@ -129,11 +118,17 @@ pub struct MerkleRecord {
     hash: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
+    left: [u8; 32],
+    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
+    #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
+    right: [u8; 32],
+    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
+    #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     data: [u8; 32],
 }
 
 
-impl MerkleLeaf<[u8;32]> for MerkleRecord {
+impl MerkleNode<[u8;32]> for MerkleRecord {
     fn index(&self) -> u32 { self.index }
     fn hash(&self) -> [u8;32] { self.hash }
     fn set(&mut self, data: &Vec<u8>) {
@@ -153,7 +148,7 @@ impl MerkleLeaf<[u8;32]> for MerkleRecord {
 
 impl MerkleRecord {
     fn new(index: u32) -> Self {
-        MerkleRecord { index, hash: [0; 32], data: [0; 32] }
+        MerkleRecord { index, hash: [0; 32], data: [0; 32], left:[0;32], right: [0;32] }
     }
 
     pub fn data_as_u64(&self) -> [u64; 4]  {
@@ -175,27 +170,31 @@ impl MongoMerkle {
         leaf.set(&[0; 32].to_vec());
         leaf
     }
-    fn default_hash(&self, depth: usize) -> [u8; 32] {
+    fn default_hash(depth: usize) -> [u8; 32] {
         let mut leaf_hash = Self::empty_leaf(0).hash;
         for _ in 0..(Self::height() - depth) {
-            leaf_hash = self.hash(&leaf_hash, &leaf_hash);
+            leaf_hash = Self::hash(&leaf_hash, &leaf_hash);
         }
         leaf_hash
+    }
+    fn default_root_hash() -> [u8; 32] {
+        Self::default_hash(20)
     }
 }
 
 impl MerkleTree<[u8;32], 20> for MongoMerkle {
 
     type Id = [u8; 32];
-    type Leaf = MerkleRecord;
+    type Node = MerkleRecord;
 
-    fn construct(id: Self::Id) -> Self {
+    fn construct(id: Self::Id, hash: [u8; 32]) -> Self {
         MongoMerkle {
-           contract_address: id
+           contract_address: id,
+           root_hash: hash
         }
     }
 
-    fn hash(&self, a:&[u8;32], b:&[u8;32]) -> [u8; 32] {
+    fn hash(a:&[u8;32], b:&[u8;32]) -> [u8; 32] {
         let mut hasher = gen_hasher();
         let a = Fq::from_bytes(a).unwrap();
         let b = Fq::from_bytes(b).unwrap();
@@ -203,50 +202,51 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
         hasher.squeeze().to_bytes()
     }
 
-    fn get_hash(&self, index: u32) -> Result<[u8; 32], MerkleError> {
+    fn set_parent_hash(&mut self, index: u32, hash: &[u8; 32], left: &[u8;32], right: &[u8; 32]) -> Result<(), MerkleError> {
         self.boundary_check(index)?;
-        let height = (index+1).ilog2();
-        let v = executor::block_on(self.get_record(index)).expect("Unexpected DB Error");
-        let hash = v.map_or(self.default_hash(height as usize), |x| x.hash);
-        Ok(hash)
-    }
-
-    fn set_hash(&mut self, index: u32, hash: &[u8; 32]) -> Result<(), MerkleError> {
-        self.boundary_check(index)?;
-        let v = executor::block_on(self.get_record(index)).expect("Unexpected DB Error");
-        let record = v.map_or(
-            MerkleRecord {
+        let record = MerkleRecord {
                 index,
                 data:[0; 32],
-                hash:*hash
-            }, |x| {
-                MerkleRecord {
-                    index,
-                    data: x.data,
-                    hash:*hash,
-                }
-            });
+                left: *left,
+                right: *right,
+                hash: *hash
+            };
         executor::block_on(self.update_record(record)).expect("Unexpected DB Error");
         Ok(())
     }
 
-    fn get_leaf(&self, index: u32) -> Result<Self::Leaf, MerkleError> {
-        self.leaf_check(index)?;
-        let v = executor::block_on(self.get_record(index)).expect("Unexpected DB Error");
+    fn get_node(&self, index: u32) -> Result<Self::Node, MerkleError> {
+        let mut paths = self.get_proof_path(index)?.to_vec();
+        paths.reverse();
+        let mut parent = paths.pop().unwrap();
+        let mut v = executor::block_on(self.get_record(parent, &self.root_hash))
+            .expect("Unexpected DB Error");
+        while v.is_some() && paths.len() !=0 {
+            let child = paths.pop().unwrap();
+            let node = v.unwrap();
+            if (parent+1) * 2 == child { // right child
+                parent = child;
+                v = executor::block_on(self.get_record(parent, &node.right))
+                    .expect("Unexpected DB Error");
+            } else {
+                assert!((parent+1)*2 == child-1);
+                v = executor::block_on(self.get_record(parent, &node.left))
+                    .expect("Unexpected DB Error");
+            }
+        }
         let height = (index+1).ilog2();
-        let leaf = v.map_or(
+        let node = v.map_or(
             MerkleRecord {
                 index,
-                hash: self.default_hash(height as usize),
+                hash: Self::default_hash(height as usize),
                 data:[0; 32],
+                left:[0; 32],
+                right:[0; 32],
             }, |x| {
-                MerkleRecord {
-                    index,
-                    data: x.data,
-                    hash:x.hash,
-                }
+                assert!(x.index == index);
+                x
             });
-        Ok(leaf)
+        Ok(node)
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
@@ -258,15 +258,15 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::merkle::{MerkleLeaf, MerkleTree};
+    use crate::host::merkle::{MerkleNode, MerkleTree};
     use super::MongoMerkle;
     #[test]
     fn test_mongo_merkle_dummy() {
-       let mut mt = MongoMerkle::construct([0;32]);
-       let mut leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
-       leaf.set(&[1u8;32].to_vec());
-       mt.set_leaf(&leaf).unwrap();
-       let leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
-       println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
+        let mut mt = MongoMerkle::construct([0;32], MongoMerkle::default_root_hash());
+        let mut leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
+        leaf.set(&[1u8;32].to_vec());
+        mt.set_leaf(&leaf).unwrap();
+        let leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
+        println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
     }
 }

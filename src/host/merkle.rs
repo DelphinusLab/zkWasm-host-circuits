@@ -28,7 +28,7 @@ impl fmt::Display for MerkleError {
 impl Error for MerkleError {
 }
 
-pub trait MerkleLeaf<H: Debug+Clone> {
+pub trait MerkleNode <H: Debug+Clone> {
     fn hash(&self) -> H;
     fn index(&self) -> u32;
     fn set(&mut self, data: &Vec<u8>);
@@ -44,10 +44,10 @@ pub struct MerkleProof<H: Debug+Clone, const D: usize> {
 
 
 pub trait MerkleTree<H:Debug+Clone, const D: usize> {
-    type Leaf: MerkleLeaf<H>;
+    type Node: MerkleNode<H>;
     type Id;
-    fn construct(id: Self::Id) -> Self;
-    fn hash(&self, a:&H, b:&H) -> H;
+    fn construct(id: Self::Id, root: H) -> Self;
+    fn hash(a:&H, b:&H) -> H;
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
         if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
             Err(MerkleError::new("path out of boundary".to_string(), index))
@@ -63,10 +63,13 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         }
     }
 
-    fn get_hash(&self, index: u32) -> Result<H, MerkleError>;
-    fn set_hash(&mut self, index: u32, hash: &H) -> Result<(), MerkleError>;
-    fn set_leaf(&mut self, leaf: &Self::Leaf) -> Result<(), MerkleError>;
-    fn get_leaf(&self, index: u32) -> Result<Self::Leaf, MerkleError>;
+    fn get_node(&self, index: u32) -> Result<Self::Node, MerkleError>;
+    fn set_parent_hash(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
+    fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;
+    fn get_leaf(&self, index: u32) -> Result<Self::Node, MerkleError> {
+        self.leaf_check(index)?;
+        self.get_node(index)
+    }
     fn get_sibling_index(&self, index: u32) -> u32 {
         if index % 2 == 1 {
             index+1
@@ -74,6 +77,8 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
             index-1
         }
     }
+
+    /* index from root to the leaf */
     fn get_proof_path(&self, index: u32) -> Result<[u32; D], MerkleError> {
         self.leaf_check(index)?;
         let mut p = index;
@@ -85,20 +90,25 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         };
         Ok(path.try_into().unwrap())
     }
-    fn get_leaf_with_proof(&self, index: u32) -> Result<(Self::Leaf, MerkleProof<H, D>), MerkleError> {
+
+    fn get_leaf_with_proof(&self, index: u32) -> Result<(Self::Node, MerkleProof<H, D>), MerkleError> {
         let path = self.get_proof_path(index)?;
         let leaf = self.get_leaf(index)?;
         let assist:Vec<H> = path.into_iter()
-                .map(|i| self.get_hash(i))
-                .collect::<Result<Vec<H>, MerkleError>>()?;
+                .map(|i| {
+                    let node = self.get_node(i)?;
+                    Ok(node.hash())
+                })
+                .collect::<Result<Vec<H>, _>>()?;
         Ok((leaf, MerkleProof {
-            source: self.get_hash(index)?,
-            root: self.get_hash(0)?,
+            source: self.get_node(index)?.hash(),
+            root: self.get_node(0)?.hash(),
             assist: assist.try_into().unwrap(),
             index
         }))
     }
-    fn set_leaf_with_proof(&mut self, leaf: &Self::Leaf) -> Result<MerkleProof<H, D>, MerkleError> {
+
+    fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H, D>, MerkleError> {
         let index = leaf.index();
         let mut hash = leaf.hash();
         let (_, mut proof) = self.get_leaf_with_proof(index)?;
@@ -106,13 +116,15 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         let mut p = index;
         self.set_leaf(leaf)?;
         for i in 0..D {
-            hash = if p % 2 == 1 {
-                self.hash(&hash, &proof.assist[i])
+            let old_hash = hash;
+            let (left, right) = if p % 2 == 1 {
+                (&old_hash, &proof.assist[i])
             } else {
-                self.hash(&proof.assist[i], &hash)
+                (&proof.assist[i], &old_hash)
             };
+            hash = Self::hash(left, right);
             p = (p-1)/2;
-            self.set_hash(p, &hash)?;
+            self.set_parent_hash(p, &hash, left, right)?;
         };
         proof.root = hash;
         Ok(proof)
@@ -127,17 +139,17 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::merkle::{MerkleLeaf, MerkleTree, MerkleError};
+    use crate::host::merkle::{MerkleNode, MerkleTree, MerkleError};
     struct MerkleAsArray {
-        id: String,
         data: [u64; 127] // 2^7-1 and depth = 6
     }
-    struct MerkleU64Leaf {
+
+    struct MerkleU64Node {
         pub value: u64,
         pub index: u32,
     }
 
-    impl MerkleLeaf<u64> for MerkleU64Leaf {
+    impl MerkleNode<u64> for MerkleU64Node{
         fn index(&self) -> u32 { self.index }
         fn hash(&self) -> u64 { self.value }
         fn set(&mut self, value: &Vec<u8>) {
@@ -148,33 +160,32 @@ mod tests {
 
     impl MerkleTree<u64, 6> for MerkleAsArray {
         type Id = String;
-        type Leaf = MerkleU64Leaf;
-        fn construct(id: Self::Id) -> Self {
+        type Node = MerkleU64Node;
+        fn construct(_id: Self::Id, _hash: u64) -> Self {
             MerkleAsArray {
-                id,
                 data: [0 as u64; 127]
             }
         }
-        fn hash(&self, a:&u64, b:&u64) -> u64 {
+        fn hash(a:&u64, b:&u64) -> u64 {
             a + b
         }
-        fn get_hash(&self, index: u32) -> Result<u64, MerkleError> {
+        fn get_node(&self, index: u32) -> Result<Self::Node, MerkleError> {
             self.boundary_check(index)?;
-            Ok(self.data[index as usize])
+            Ok(MerkleU64Node {value: self.data[index as usize], index})
         }
-        fn set_hash(&mut self, index: u32, hash: &u64) -> Result<(), MerkleError> {
+        fn set_parent_hash(&mut self, index: u32, hash: &u64, _left: &u64, _right: &u64) -> Result<(), MerkleError> {
             self.boundary_check(index)?;
             self.data[index as usize] = *hash;
             Ok(())
         }
-        fn set_leaf(&mut self, leaf: &Self::Leaf) -> Result<(), MerkleError> {
+        fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError> {
             self.leaf_check(leaf.index())?;
             self.data[leaf.index() as usize] = leaf.value;
             Ok(())
         }
-        fn get_leaf(&self, index: u32) -> Result<Self::Leaf, MerkleError> {
+        fn get_leaf(&self, index: u32) -> Result<Self::Node, MerkleError> {
             self.leaf_check(index)?;
-            Ok(MerkleU64Leaf {
+            Ok(MerkleU64Node{
                 value: self.data[index as usize],
                 index
             })
@@ -191,29 +202,28 @@ mod tests {
 
     #[test]
     fn test_merkle_path() {
-       let mut mt = MerkleAsArray::construct("test".to_string());
+       let mut mt = MerkleAsArray::construct("test".to_string(), 0);
        let mut leaf = mt.get_leaf(2_u32.pow(6) - 1).unwrap();
        leaf.value = 1;
-       let proof = mt.set_leaf_with_proof(&leaf).unwrap();
+       let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
 
        /* one update of 1 is 1 */
-       let root = mt.get_hash(0).unwrap();
-       assert_eq!(root, 1 as u64);
+       let root = mt.get_node(0).unwrap();
+       assert_eq!(root.hash(), 1 as u64);
 
        let mut leaf = mt.get_leaf(2_u32.pow(6) + 2).unwrap();
        leaf.value = 2;
        let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
 
        /* two leaves hash needs to be 3 */
-       let root = mt.get_hash(0).unwrap();
-       assert_eq!(root, 3 as u64);
+       let root = mt.get_node(0).unwrap();
+       assert_eq!(root.hash(), 3 as u64);
 
        let mut leaf = mt.get_leaf(2_u32.pow(6) + 4).unwrap();
        leaf.value = 3;
        let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
        /* two leaves hash needs to be 3 */
-       let root = mt.get_hash(0).unwrap();
-       assert_eq!(root, 6 as u64);
-
+       let root = mt.get_node(0).unwrap();
+       assert_eq!(root.hash(), 6 as u64);
     }
 }

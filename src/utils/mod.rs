@@ -1,5 +1,3 @@
-pub mod test;
-
 use halo2_proofs::arithmetic::BaseExt;
 use halo2_proofs::arithmetic::FieldExt;
 use num_bigint::BigUint;
@@ -175,15 +173,14 @@ macro_rules! table_cell {
 }
 */
 
+pub struct GateCell {
+    cell: [usize;3],
+    name: String,
+}
 
 #[macro_export]
 macro_rules! customized_curcuits {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
-        struct GateCell {
-            cell: [usize;3],
-            name: String,
-        }
-
         impl GateCell {
             fn typ(index: usize) -> usize {
                 let x = index % $col;
@@ -225,10 +222,10 @@ macro_rules! customized_curcuits {
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::rmd160::RMD160Config;
     use crate::customized_curcuits;
     use crate::table_item;
     use crate::item_count;
+    use super::GateCell;
 
     customized_curcuits!(RMD160Config, 5, 10, 7, 1, 2,
         | h_sel |  r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset

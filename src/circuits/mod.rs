@@ -11,7 +11,7 @@ use halo2_proofs::{
 use halo2ecc_s::circuit::{
     base_chip::{BaseChip, BaseChipConfig},
     range_chip::{RangeChip, RangeChipConfig},
-    select_chip::{SelectChip, SelectChipConfig},
+    select_chip::SelectChip,
 };
 
 pub trait HostOpSelector {

@@ -177,7 +177,7 @@ impl MongoMerkle {
         }
         leaf_hash
     }
-    fn default_root_hash() -> [u8; 32] {
+    pub fn default_root_hash() -> [u8; 32] {
         Self::default_hash(20)
     }
 }

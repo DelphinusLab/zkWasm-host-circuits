@@ -61,7 +61,8 @@ fn bytes_to_bson(x: &[u8;32]) -> Bson {
 
 pub struct MongoMerkle {
     contract_address: [u8;32],
-    root_hash: [u8; 32]
+    root_hash: [u8; 32],
+    default_hash: Vec<[u8; 32]>
 }
 
 pub async fn get_collection<T>(
@@ -144,6 +145,8 @@ impl MerkleNode<[u8;32]> for MerkleRecord {
         hasher.update(&values);
         self.hash = hasher.squeeze().to_bytes();
     }
+    fn right(&self) -> Option<[u8; 32]> { Some(self.right) }
+    fn left(&self) -> Option<[u8; 32]> { Some(self.left) }
 }
 
 impl MerkleRecord {
@@ -170,15 +173,12 @@ impl MongoMerkle {
         leaf.set(&[0; 32].to_vec());
         leaf
     }
-    fn default_hash(depth: usize) -> [u8; 32] {
-        let mut leaf_hash = Self::empty_leaf(0).hash;
-        for _ in 0..(Self::height() - depth) {
-            leaf_hash = Self::hash(&leaf_hash, &leaf_hash);
+    fn get_default_hash(&self, depth: usize) -> [u8; 32] {
+        if depth <= Self::height() {
+            self.default_hash[depth]
+        } else {
+            [0; 32]
         }
-        leaf_hash
-    }
-    pub fn default_root_hash() -> [u8; 32] {
-        Self::default_hash(20)
     }
 }
 
@@ -187,11 +187,28 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
     type Id = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(id: Self::Id, hash: [u8; 32]) -> Self {
+    fn construct(id: Self::Id, hash: Option<[u8; 32]>) -> Self {
+        let mut leaf_hash = Self::empty_leaf(0).hash;
+        let mut default_hash = vec![leaf_hash];
+        for _ in 0..(Self::height()) {
+            leaf_hash = Self::hash(&leaf_hash, &leaf_hash);
+            default_hash.push(leaf_hash);
+        }
+
         MongoMerkle {
            contract_address: id,
-           root_hash: hash
+           root_hash: hash.map_or(default_hash[Self::height()], |x| x),
+           default_hash
         }
+    }
+
+
+    fn get_root_hash(&self) -> [u8; 32] {
+        self.root_hash
+    }
+
+    fn update_root_hash(&mut self, hash: &[u8; 32]) {
+        self.root_hash = hash.clone();
     }
 
     fn hash(a:&[u8;32], b:&[u8;32]) -> [u8; 32] {
@@ -211,37 +228,23 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
                 right: *right,
                 hash: *hash
             };
+        //println!("set_node_with_hash {} {:?}", index, hash);
         executor::block_on(self.update_record(record)).expect("Unexpected DB Error");
         Ok(())
     }
 
-    fn get_node(&self, index: u32) -> Result<Self::Node, MerkleError> {
-        let mut paths = self.get_proof_path(index)?.to_vec();
-        paths.reverse();
-        let mut parent = paths.pop().unwrap();
-        let mut v = executor::block_on(self.get_record(parent, &self.root_hash))
+    fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
+        let v = executor::block_on(self.get_record(index, hash))
             .expect("Unexpected DB Error");
-        while v.is_some() && paths.len() !=0 {
-            let child = paths.pop().unwrap();
-            let node = v.unwrap();
-            if (parent+1) * 2 == child { // right child
-                parent = child;
-                v = executor::block_on(self.get_record(parent, &node.right))
-                    .expect("Unexpected DB Error");
-            } else {
-                assert!((parent+1)*2 == child-1);
-                v = executor::block_on(self.get_record(parent, &node.left))
-                    .expect("Unexpected DB Error");
-            }
-        }
+        //println!("get_node_with_hash {} {:?} {:?}", index, hash, v);
         let height = (index+1).ilog2();
         let node = v.map_or(
             MerkleRecord {
                 index,
-                hash: Self::default_hash(height as usize),
+                hash: self.get_default_hash(height as usize),
                 data:[0; 32],
-                left:[0; 32],
-                right:[0; 32],
+                left: self.get_default_hash((height+1) as usize),
+                right: self.get_default_hash((height+1) as usize),
             }, |x| {
                 assert!(x.index == index);
                 x
@@ -262,11 +265,11 @@ mod tests {
     use super::MongoMerkle;
     #[test]
     fn test_mongo_merkle_dummy() {
-        let mut mt = MongoMerkle::construct([0;32], MongoMerkle::default_root_hash());
-        let mut leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
+        let mut mt = MongoMerkle::construct([0;32], None);
+        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         leaf.set(&[1u8;32].to_vec());
-        mt.set_leaf(&leaf).unwrap();
-        let leaf = mt.get_leaf(2_u32.pow(20) - 1).unwrap();
+        mt.set_leaf_with_proof(&leaf).unwrap();
+        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
     }
 }

@@ -18,6 +18,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use super::MONGODB_URI;
+use lazy_static;
 
 /* Poseidon hash settings */
 const T: usize = 9;
@@ -182,23 +183,28 @@ impl MongoMerkle {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref DEFAULT_HASH_VEC: Vec<[u8; 32]> = {
+        let mut leaf_hash = MongoMerkle::empty_leaf(0).hash;
+        let mut default_hash = vec![leaf_hash];
+        for _ in 0..(MongoMerkle::height()) {
+            leaf_hash = MongoMerkle::hash(&leaf_hash, &leaf_hash);
+            default_hash.push(leaf_hash);
+        }
+        default_hash
+    };
+}
+
 impl MerkleTree<[u8;32], 20> for MongoMerkle {
 
     type Id = [u8; 32];
     type Node = MerkleRecord;
 
     fn construct(id: Self::Id, hash: Option<[u8; 32]>) -> Self {
-        let mut leaf_hash = Self::empty_leaf(0).hash;
-        let mut default_hash = vec![leaf_hash];
-        for _ in 0..(Self::height()) {
-            leaf_hash = Self::hash(&leaf_hash, &leaf_hash);
-            default_hash.push(leaf_hash);
-        }
-
         MongoMerkle {
            contract_address: id,
-           root_hash: hash.map_or(default_hash[Self::height()], |x| x),
-           default_hash
+           root_hash: hash.map_or(DEFAULT_HASH_VEC[Self::height()], |x| x),
+           default_hash: (*DEFAULT_HASH_VEC).clone()
         }
     }
 

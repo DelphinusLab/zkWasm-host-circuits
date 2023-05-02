@@ -28,7 +28,7 @@ impl fmt::Display for MerkleError {
 impl Error for MerkleError {
 }
 
-pub trait MerkleNode <H: Debug+Clone> {
+pub trait MerkleNode <H: Debug+Clone+PartialEq> {
     fn hash(&self) -> H;
     fn index(&self) -> u32;
     fn set(&mut self, data: &Vec<u8>);
@@ -37,7 +37,7 @@ pub trait MerkleNode <H: Debug+Clone> {
 }
 
 #[derive(Debug)]
-pub struct MerkleProof<H: Debug+Clone, const D: usize> {
+pub struct MerkleProof<H: Debug+Clone+PartialEq, const D: usize> {
     pub source:H,
     pub root:H, // last is root
     pub assist:[H; D],
@@ -51,7 +51,7 @@ fn get_offset(index: u32) -> u32 {
 }
 
 
-pub trait MerkleTree<H:Debug+Clone, const D: usize> {
+pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     type Node: MerkleNode<H>;
     type Id;
     fn construct(id: Self::Id, root: Option<H>) -> Self;
@@ -168,6 +168,23 @@ pub trait MerkleTree<H:Debug+Clone, const D: usize> {
         leaf.set(data);
         self.set_leaf_with_proof(&leaf)
     }
+
+    fn verify_proof(&mut self, proof: MerkleProof<H, D>) -> Result <bool, MerkleError> {
+        let init = proof.source;
+        let mut p = get_offset(proof.index);
+        let hash = proof.assist.to_vec().iter().fold(init, |acc, x| {
+            let (left, right) = if p % 2 == 1 {
+                (x, &acc)
+            } else {
+                (&acc, x)
+            };
+            p = p/2;
+            Self::hash(left, right)
+        });
+        Ok(proof.root == hash)
+    }
+
+
 }
 
 #[cfg(test)]

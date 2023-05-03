@@ -32,8 +32,8 @@ pub trait MerkleNode <H: Debug+Clone+PartialEq> {
     fn hash(&self) -> H;
     fn index(&self) -> u32;
     fn set(&mut self, data: &Vec<u8>);
-    fn left(&self) -> Option<H>;
-    fn right(&self) -> Option<H>;
+    fn left(&self) -> Option<H>;  // hash of left child
+    fn right(&self) -> Option<H>;  // hash of right child
 }
 
 #[derive(Debug)]
@@ -54,8 +54,18 @@ fn get_offset(index: u32) -> u32 {
 pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     type Node: MerkleNode<H>;
     type Id;
+
+    /// Create a new merkletree and connect it with a given merkle root.
+    /// If the root is None then the default root with all leafs are empty is used.
     fn construct(id: Self::Id, root: Option<H>) -> Self;
+
     fn hash(a:&H, b:&H) -> H;
+    fn set_parent_hash(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
+    fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;
+    fn get_root_hash(&self) -> H;
+    fn update_root_hash(&mut self, hash: &H);
+    fn get_node_with_hash(&self, index: u32, hash: &H) -> Result<Self::Node, MerkleError>;
+
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
         if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
             Err(MerkleError::new("path out of boundary".to_string(), index))
@@ -63,19 +73,26 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
             Ok(())
         }
     }
+
+    /*
+     * Check that an index is a leaf.
+     * Example: Given D=2 and a merkle tree as follows:
+     * 0
+     * 1 2
+     * 3 4 5 6
+     * then leaf index >= 3 which is (2^D - 1)
+     *
+     * Moreover, nodes at depth k start at
+     * first = 2^k-1, last = 2^{k+1}-2
+     */
     fn leaf_check(&self, index: u32) -> Result<(), MerkleError> {
-        if index as u32 >= (2_u32.pow(D as u32 -1) - 1) {
-            Ok(())
+        if (index as u32) >= (2_u32.pow(D as u32) - 1)
+            && (index as u32) < (2_u32.pow((D as u32) + 1) - 1){
+           Ok(())
         } else {
-            Err(MerkleError::new("leaf path out of boundary".to_string(), index))
+            Err(MerkleError::new("Invalid leaf index".to_string(), index))
         }
     }
-
-    fn set_parent_hash(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
-    fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;
-    fn get_root_hash(&self) -> H;
-    fn update_root_hash(&mut self, hash: &H);
-    fn get_node_with_hash(&self, index: u32, hash: &H) -> Result<Self::Node, MerkleError>;
 
     fn get_sibling_index(&self, index: u32) -> u32 {
         if index % 2 == 1 {
@@ -85,7 +102,15 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
         }
     }
 
-    /* index from root to the leaf */
+    /// get the index from leaf to the root
+    /// root index is not included in the result as root index is always 0
+    /// Example: Given D=3 and a merkle tree as follows:
+    /// 0
+    /// 1 2
+    /// 3 4 5 6
+    /// 7 8 9 10 11 12 13 14
+    /// get_path(7) = [3, 1]
+    /// get_path(15) = [6, 2]
     fn get_path(&self, index: u32) -> Result<[u32; D], MerkleError> {
         self.leaf_check(index)?;
         let mut height = (index+1).ilog2();
@@ -258,14 +283,6 @@ mod tests {
             Ok(())
         }
     }
-
-    /* a
-     * b c
-     * - e f
-     * - - g h
-     *
-     * sibling of g = h, e, b
-     */
 
     #[test]
     fn test_merkle_path() {

@@ -135,6 +135,11 @@ macro_rules! item_count {
     ($cut:tt $name:tt $($tail:tt)*) => {1usize + item_count!($($tail)*)};
 }
 
+pub struct GateCell {
+    pub cell: [usize;3],
+    pub name: String,
+}
+
 #[macro_export]
 macro_rules! table_item {
     ($row:expr, $col:expr, ) => {};
@@ -142,7 +147,7 @@ macro_rules! table_item {
         table_item!($row, $col, $($tail)*);
     };
     ($row:expr, $col:expr, | $name:tt $($tail:tt)*) => {
-        fn $name() -> Self {
+        fn $name() -> GateCell {
             let index = $row * $col - 1usize - (item_count!($($tail)*));
             GateCell {
                 cell: [Self::typ(index), Self::col(index), Self::row(index)],
@@ -151,37 +156,19 @@ macro_rules! table_item {
         }
         table_item!($row, $col, $($tail)*);
     };
-}
-
-/*
-#[macro_export]
-macro_rules! table_cell {
-    ($r:expr, $c:expr, ) => {};
-    ($r:expr, $c:expr, | nil $($tail:tt)*) => {
-        table_item!($row, $col, $($tail)*);
-    };
-    ($row:expr, $col:expr, $cut:tt $name:tt $($tail:tt)*) => {
-        fn $name() -> Self {
-            let index = $row * $col - 1usize - (item_count!($($tail)*));
-            GateCell {
-                cell: [Self::typ(index), Self::col(index), Self::row(index)],
-                name: String::from(stringify!($name)),
-            }
-        }
-        table_item!($row, $col, $($tail)*);
-    };
-}
-*/
-
-pub struct GateCell {
-    cell: [usize;3],
-    name: String,
 }
 
 #[macro_export]
 macro_rules! customized_curcuits {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
-        impl GateCell {
+        #[derive(Clone, Debug)]
+        pub struct $name {
+             witness: [Column<Advice>; $adv],
+             selector: [Selector; $sel],
+             fixed: [Column<Fixed>; $fix],
+        }
+
+        impl $name {
             fn typ(index: usize) -> usize {
                 let x = index % $col;
                 if x < $adv {
@@ -211,12 +198,7 @@ macro_rules! customized_curcuits {
             table_item!($row, $col, $($item)*);
         }
 
-        // #[derive(Clone, Debug)]
-        // pub struct $name {
-        //     witness: [Column<Advice>; $adv],
-        //     selector: [Selector; $sel],
-        //     fixed: [Column<Fixed>; $fix],
-        // }
+
     };
 }
 

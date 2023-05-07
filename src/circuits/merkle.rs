@@ -1,5 +1,8 @@
-use crate::customized_curcuits;
-use crate::table_item;
+use crate::{
+    customized_circuits,
+    table_item,
+    customized_circuits_expand,
+};
 use crate::item_count;
 use crate::utils::GateCell;
 use std::marker::PhantomData;
@@ -26,7 +29,7 @@ use halo2ecc_s::{
 use crate::constant_from;
 use crate::host::merkle::{MerkleTree, MerkleProof};
 
-customized_curcuits!(MerkleConfig, 2, 9, 7, 1, 2,
+customized_circuits!(MerkleConfig, 2, 7, 1, 2,
    | carry   | left | right | index   | k   | odd   | pos   | is_set | sel
    | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil
 );

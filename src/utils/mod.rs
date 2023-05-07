@@ -158,8 +158,9 @@ macro_rules! table_item {
     };
 }
 
+
 #[macro_export]
-macro_rules! customized_curcuits {
+macro_rules! customized_circuits_expand {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
         #[derive(Clone, Debug)]
         pub struct $name {
@@ -243,9 +244,22 @@ macro_rules! customized_curcuits {
     };
 }
 
+
+#[macro_export]
+/// Define customize circuits with (nb_row, nb_adv, nb_fix, nb_expr)
+/// | adv    | fix    | sel    |
+/// | a      | b      | c      |
+/// | a_next | b_next | c_next |
+macro_rules! customized_circuits {
+    ($name:ident, $row:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
+        customized_circuits_expand!($name, $row, ($fix + $sel + $adv), $adv, $fix, $sel, $($item)*);
+    };
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::customized_curcuits;
+    use crate::customized_circuits;
+    use crate::customized_circuits_expand;
     use crate::table_item;
     use crate::item_count;
     use super::GateCell;
@@ -258,16 +272,13 @@ mod tests {
     use halo2_proofs::poly::Rotation;
     use halo2_proofs::circuit::{Region, AssignedCell};
 
-    customized_curcuits!(TestConfig, 5, 10, 7, 1, 2,
-        | h_sel |  r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset
-        | nil   |  nil   | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r
-        | nil   |  nil   | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r
-        | nil   |  nil   | wc  | b2    | c2   |  d2  | r2   | a_next| w2b    |   nil
-        | nil   |  nil   | w1  | b3    | c3   |  d3  | r3   |  nil  | w2c    |   nil
+    customized_circuits!(TestConfig, 2, 2, 1, 1,
+        | wc  | b2 | c2 |  d2
+        | w1  | b3 | c3 |  d3
     );
     #[test]
     fn test_gate_macro() {
-//        let config = RMD160Config {};
-//        assert_eq!(r.to_vec(), r1);
+          //let config = TestConfig {};
+          //assert_eq!(r.to_vec(), r1);
     }
 }

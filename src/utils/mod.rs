@@ -180,6 +180,35 @@ macro_rules! customized_curcuits {
                     meta.query_selector(self.selector[cell[1]])
                 }
             }
+
+            fn assign_cell<F:FieldExt>(
+                &self,
+                region: &mut Region<F>,
+                start_offset: usize,
+                gate_cell: GateCell,
+                value: F,
+            ) -> Result<AssignedCell<F, F>, Error> {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 0 { // advice
+                    region.assign_advice(
+                        || format!("assign cell"),
+                        self.witness[cell[1]],
+                        start_offset + cell[2],
+                        || Ok(value)
+                    )
+                } else if cell[0] == 1 { // fix
+                    region.assign_fixed(
+                        || format!("assign cell"),
+                        self.fixed[cell[1]],
+                        start_offset + cell[2],
+                        || Ok(value)
+                    )
+                } else { // selector
+                    unreachable!()
+                }
+            }
+
         }
 
         impl $name {
@@ -211,8 +240,6 @@ macro_rules! customized_curcuits {
 
             table_item!($row, $col, $($item)*);
         }
-
-
     };
 }
 
@@ -222,8 +249,16 @@ mod tests {
     use crate::table_item;
     use crate::item_count;
     use super::GateCell;
+    use halo2_proofs::arithmetic::FieldExt;
+    use halo2_proofs::plonk::{
+        Fixed, Column, Advice,
+        Selector, Expression, VirtualCells,
+        Error,
+    };
+    use halo2_proofs::poly::Rotation;
+    use halo2_proofs::circuit::{Region, AssignedCell};
 
-    customized_curcuits!(RMD160Config, 5, 10, 7, 1, 2,
+    customized_curcuits!(TestConfig, 5, 10, 7, 1, 2,
         | h_sel |  r_sel | a   | b     | c    |  d   | x    | e     | c_next |  offset
         | nil   |  nil   | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r
         | nil   |  nil   | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w4_r

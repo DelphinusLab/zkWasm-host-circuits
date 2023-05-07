@@ -12,13 +12,23 @@ use halo2_proofs::plonk::{
 };
 use halo2_proofs::poly::Rotation;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::circuit::{Chip, Region, AssignedCell};
+use halo2_proofs::circuit::{Chip, Region, AssignedCell, Layouter};
+use halo2_proofs::pairing::bn256::Fr;
+
+use halo2ecc_s::{
+    circuit::{
+        base_chip::{BaseChip, BaseChipConfig},
+        range_chip::{RangeChip, RangeChipConfig},
+        select_chip::SelectChip,
+    },
+};
+
 use crate::constant_from;
 use crate::host::merkle::{MerkleTree, MerkleProof};
 
-customized_curcuits!(MerkleConfig, 2, 8, 6, 1, 1,
-    | carry   | left | right | index   | k   | odd   | pos   | sel
-    | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil
+customized_curcuits!(MerkleConfig, 2, 9, 7, 1, 2,
+   | carry   | left | right | index   | k   | odd   | pos   | is_set | sel
+   | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil
 );
 
 
@@ -50,10 +60,10 @@ impl<F: FieldExt> MerkleChip<F> {
     }
 
     pub fn configure(cs: &mut ConstraintSystem<F>) -> MerkleConfig {
-        let witness= [0; 6]
+        let witness= [0; 7]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let selector =[cs.selector()];
+        let selector =[cs.selector(), cs.selector()];
         let fixed = [cs.fixed_column()];
 
         let config = MerkleConfig { fixed, selector, witness };
@@ -93,8 +103,8 @@ impl<F: FieldExt> MerkleChip<F> {
         &self,
         region: &mut Region<F>,
         start_offset: usize,
-        _merkle: M,
-        proof: MerkleProof<F, D>,
+        _merkle: &M,
+        proof: &MerkleProof<F, D>,
     ) -> Result<(), Error> {
         let mut offset = proof.index - (1u32 << D) - 1;
         let mut carry = proof.source;
@@ -117,6 +127,134 @@ impl<F: FieldExt> MerkleChip<F> {
         }
         Ok(())
     }
+
+    pub fn assign_get<const D: usize, M: MerkleTree<F, D>>(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        merkle: &M,
+        proof: &MerkleProof<F, D>,
+    ) -> Result<(), Error> {
+        self.assign_proof(region, start_offset, merkle, proof)
+    }
+
+    pub fn assign_set<const D: usize, M: MerkleTree<F, D>>(
+        &self,
+        region: &mut Region<F>,
+        start_offset: usize,
+        merkle: &M,
+        proof_get: &MerkleProof<F, D>,
+        proof_set: &MerkleProof<F, D>,
+    ) -> Result<(), Error> {
+        self.assign_proof(region, start_offset, merkle, proof_get)?;
+        self.assign_proof(region, start_offset, merkle, proof_set)
+    }
 }
 
+impl super::HostOpSelector for MerkleChip<Fr> {
+    type Config = MerkleConfig;
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        base_config: &BaseChipConfig,
+        range_config: &RangeChipConfig,
+    ) -> Self::Config {
+        MerkleChip::<Fr>::configure(meta)
+    }
 
+    fn construct(c: Self::Config) -> Self {
+        MerkleChip::new(c)
+    }
+
+    fn assign(
+        region: &mut Region<Fr>,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
+        filtered_operands: Column<Advice>,
+        filtered_opcodes: Column<Advice>,
+        filtered_index: Column<Advice>,
+        merged_operands: Column<Advice>,
+        indicator: Column<Fixed>,
+    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        let opcodes: Vec<Fr> = vec![
+            //Fr::from(BN256OP::BN256ADD as u64),
+            //Fr::from(BN256OP::BN256SUM as u64),
+        ];
+        let mut arg_cells = vec![];
+        /* The 0,2,5,7's u54 of every G1(11 * u54) return true, others false  */
+        let merge_next = |i: usize| {
+            todo!();
+        };
+        let mut offset = 0;
+        let mut picked_offset = 0;
+        let mut toggle: i32 = -1;
+        for opcode in shared_opcodes {
+            if opcodes.contains(opcode) {
+                region.assign_advice(
+                    || "picked operands",
+                    filtered_operands,
+                    picked_offset,
+                    || Ok(shared_operands[offset]),
+                )?;
+
+                region.assign_advice(
+                    || "picked opcodes",
+                    filtered_opcodes,
+                    picked_offset,
+                    || Ok(opcode.clone()),
+                )?;
+
+                region.assign_advice(
+                    || "picked index",
+                    filtered_index,
+                    picked_offset,
+                    || Ok(shared_index[offset]),
+                )?;
+
+                let value = if toggle >= 0 {
+                    shared_operands[offset]
+                        .clone()
+                        .mul(&Fr::from(1u64 << 32).square())
+                        .add(&shared_operands[toggle as usize])
+                } else {
+                    shared_operands[offset].clone()
+                };
+                let opcell = region.assign_advice(
+                    || "picked merged operands",
+                    merged_operands,
+                    picked_offset,
+                    || Ok(value),
+                )?;
+
+                let value = if merge_next(picked_offset) {
+                    toggle = offset as i32;
+                    Fr::from(1u64 << 54)
+                } else {
+                    arg_cells.append(&mut vec![opcell]);
+                    toggle = -1;
+                    Fr::zero()
+                };
+                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
+                picked_offset += 1;
+            };
+            offset += 1;
+        }
+        Ok(arg_cells)
+    }
+
+    fn synthesize(
+        &self,
+        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        base_chip: &BaseChip<Fr>,
+        range_chip: &RangeChip<Fr>,
+        point_select_chip: &SelectChip<Fr>,
+        layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        todo!();
+        let len = arg_cells.len();
+        //let args = arg_cells[0..len - 7].to_vec();
+        //let ret = arg_cells[len - 7..len].to_vec();
+        //self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, &point_select_chip, layouter)?;
+        Ok(())
+    }
+}

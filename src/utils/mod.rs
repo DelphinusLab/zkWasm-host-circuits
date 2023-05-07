@@ -169,6 +169,20 @@ macro_rules! customized_curcuits {
         }
 
         impl $name {
+            fn get_expr<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell) -> Expression<F> {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 0 { // advice
+                    meta.query_advice(self.witness[cell[1]], Rotation(cell[2] as i32))
+                } else if cell[0] == 1 { // fix
+                    meta.query_fixed(self.fixed[cell[1]], Rotation(cell[2] as i32))
+                } else { // selector
+                    meta.query_selector(self.selector[cell[1]])
+                }
+            }
+        }
+
+        impl $name {
             fn typ(index: usize) -> usize {
                 let x = index % $col;
                 if x < $adv {

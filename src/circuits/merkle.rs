@@ -30,12 +30,14 @@ use crate::constant_from;
 use crate::host::merkle::{MerkleTree, MerkleProof};
 
 
-/// Given a merkel tree eg1:
-/// 0
-/// 1 2
-/// 3 4 5 6
-/// 7 8 9 10 11 12 13 14
-/// A proof of 7 = {source: 7.hash, root: 0.hash, assist: [8.hash,4.hash,2.hash], index: 7}
+/* Given a merkel tree eg1:
+ * 0
+ * 1 2
+ * 3 4 5 6
+ * 7 8 9 10 11 12 13 14
+ * A proof of 7 = {source: 7.hash, root: 0.hash, assist: [8.hash,4.hash,2.hash], index: 7}
+ */
+
 customized_circuits!(MerkleConfig, 2, 7, 1, 2,
    | carry   | left | right | index   | k   | odd   | pos   | is_set | sel
    | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil
@@ -184,8 +186,8 @@ impl super::HostOpSelector for MerkleChip<Fr> {
     type Config = MerkleConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
-        base_config: &BaseChipConfig,
-        range_config: &RangeChipConfig,
+        _base_config: &BaseChipConfig,
+        _range_config: &RangeChipConfig,
     ) -> Self::Config {
         MerkleChip::<Fr>::configure(meta)
     }

@@ -162,6 +162,7 @@ macro_rules! table_item {
 #[macro_export]
 macro_rules! customized_circuits_expand {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
+        #[allow(dead_code)]
         #[derive(Clone, Debug)]
         pub struct $name {
              witness: [Column<Advice>; $adv],
@@ -210,6 +211,15 @@ macro_rules! customized_circuits_expand {
                 }
             }
 
+            fn enable_selector<F:FieldExt>(
+                &self,
+                region: &mut Region<F>,
+                start_offset: usize,
+                gate_cell: GateCell,
+            ) -> Result<(), Error> {
+                assert!(gate_cell.cell[0] == 2);
+                self.selector[gate_cell.cell[1]].enable(region, start_offset + gate_cell.cell[2])
+            }
         }
 
         impl $name {

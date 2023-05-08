@@ -29,10 +29,36 @@ use halo2ecc_s::{
 use crate::constant_from;
 use crate::host::merkle::{MerkleTree, MerkleProof};
 
+
+/// Given a merkel tree eg1:
+/// 0
+/// 1 2
+/// 3 4 5 6
+/// 7 8 9 10 11 12 13 14
+/// A proof of 7 = {source: 7.hash, root: 0.hash, assist: [8.hash,4.hash,2.hash], index: 7}
 customized_circuits!(MerkleConfig, 2, 7, 1, 2,
    | carry   | left | right | index   | k   | odd   | pos   | is_set | sel
    | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil
 );
+
+
+/*
+ * Circuit of eg1 of proof of node 7:
+ *
+ * 7.hash, left: 7.hash, right: assist[0], index:7, k:0, odd:0, pos:2^{3}-1, is_set, true
+ * hash_0, left: hash_0, right: assist[1], index:3, k:0, odd:0, pos:2^{2}-1, is_set, true
+ * hash_1, left: hash_1, right: assist[2], index:1, k:0, odd:0, pos:2^{1}-1, is_set, true
+ * hash_2                                                                            false
+ *
+ * index = 2*k + odd + pos
+ * k_n * 2 + odd_n = k
+ * odd * (carry - right) + (1-odd) * (carry - left) * sel
+ * odd * (1-odd) = 0
+ *
+ * let assigned_cell = hash(left, right) ------> external_circuit return AssignedCell
+ * copy_constarint(assigned_cell, carry_n)
+ *
+ */
 
 
 pub struct MerkleChip<F:FieldExt> {

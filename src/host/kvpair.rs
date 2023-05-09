@@ -202,10 +202,10 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
     type Id = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(id: Self::Id, hash: Option<[u8; 32]>) -> Self {
+    fn construct(id: Self::Id) -> Self {
         MongoMerkle {
            contract_address: id,
-           root_hash: hash.map_or(DEFAULT_HASH_VEC[Self::height()], |x| x),
+           root_hash: id,
            default_hash: (*DEFAULT_HASH_VEC).clone()
         }
     }
@@ -282,14 +282,12 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
 #[cfg(test)]
 mod tests {
     use crate::host::merkle::{MerkleNode, MerkleTree};
-    use super::MongoMerkle;
+    use super::{MongoMerkle, DEFAULT_HASH_VEC};
     #[test]
     fn test_mongo_merkle_dummy() {
-        let mut mt = MongoMerkle::construct([0;32], None);
+        let mut mt = MongoMerkle::construct(DEFAULT_HASH_VEC[MongoMerkle::height()]);
         let root = mt.get_root_hash();
         println!("root hash is {:?}", root);
-        let err = mt.get_leaf_with_proof(2_u32.pow(20) - 1);
-        println!("err is {:?}", err);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         leaf.set(&[1u8;32].to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();
@@ -299,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_generate_kv_input() {
-        let mut mt = MongoMerkle::construct([0;32], None);
+        let mut mt = MongoMerkle::construct(DEFAULT_HASH_VEC[MongoMerkle::height()]);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         leaf.set(&[1u8;32].to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();

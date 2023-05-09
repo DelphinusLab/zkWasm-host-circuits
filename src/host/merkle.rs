@@ -66,7 +66,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
-    fn construct(id: Self::Id, root: Option<H>) -> Self;
+    fn construct(id: Self::Id) -> Self;
 
     fn hash(a:&H, b:&H) -> H;
     fn set_parent_hash(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
@@ -265,7 +265,7 @@ mod tests {
     impl MerkleTree<u64, 6> for MerkleAsArray {
         type Id = String;
         type Node = MerkleU64Node;
-        fn construct(_id: Self::Id, _hash: Option<u64>) -> Self {
+        fn construct(_id: Self::Id) -> Self {
             MerkleAsArray {
                 data: [0 as u64; 127]
             }
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_merkle_path() {
-       let mut mt = MerkleAsArray::construct("test".to_string(), None);
+       let mut mt = MerkleAsArray::construct("test".to_string());
        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(6) - 1).unwrap();
        leaf.value = 1;
        let _proof = mt.set_leaf_with_proof(&leaf).unwrap();

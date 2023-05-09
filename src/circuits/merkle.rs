@@ -1,9 +1,9 @@
 use crate::{
     customized_circuits,
     table_item,
+    item_count,
     customized_circuits_expand,
 };
-use crate::item_count;
 use crate::utils::GateCell;
 use std::marker::PhantomData;
 use std::fmt::Debug;

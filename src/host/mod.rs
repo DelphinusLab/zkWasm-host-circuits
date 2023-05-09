@@ -76,16 +76,32 @@ pub struct Reduce<F: FieldExt> {
     pub rules: Vec<ReduceRule<F>>
 }
 
+impl<F: FieldExt> Reduce<F> {
+    pub fn new(rules: Vec<ReduceRule<F>>) -> Self {
+        Reduce {
+            cursor:0,
+            rules,
+        }
+    }
+}
+
 impl<F:FieldExt> Reduce<F> {
     pub fn reduce(&mut self, v: u64) {
         let mut cursor = self.cursor;
+        let mut total = 0;
         for index in 0..self.rules.len() {
-           if cursor >= self.rules[index].nb_inputs() {
-               cursor = cursor - self.rules[index].nb_inputs();
-           } else {
-               self.rules[index].reduce(v, cursor)
-           }
+            total += self.rules[index].nb_inputs(); 
+            if cursor >= self.rules[index].nb_inputs() {
+                cursor = cursor - self.rules[index].nb_inputs();
+            } else {
+                self.rules[index].reduce(v, cursor);
+                break
+            }
         }
         self.cursor += 1;
+        // Reset to 0 if cursor points to the end of the reducer
+        if self.cursor == total {
+            self.cursor = 0;
+        }
     }
 }

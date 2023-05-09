@@ -69,6 +69,28 @@ impl<F: FieldExt> ReduceRule<F> {
             }, // 1 * u64
         }
     }
+
+    pub fn field_value(&self) -> Option<F> {
+        match self {
+            ReduceRule::Bytes(_, _) => None,
+            ReduceRule::Field(f, _) => Some(*f), // 4 * u64
+            ReduceRule::U64(_) => None, // 4 * u64
+        }
+    }
+    pub fn bytes_value(&self) -> Option<Vec<u8>> {
+        match self {
+            ReduceRule::Bytes(b, _) => Some(b.clone()),
+            ReduceRule::Field(_, _) => None, // 4 * u64
+            ReduceRule::U64(_) => None, // 4 * u64
+        }
+    }
+    pub fn u64_value(&self) -> Option<u64> {
+        match self {
+            ReduceRule::Bytes(_, _) => None,
+            ReduceRule::Field(_, _) => None, // 4 * u64
+            ReduceRule::U64(v) => Some(*v), // 4 * u64
+        }
+    }
 }
 
 pub struct Reduce<F: FieldExt> {

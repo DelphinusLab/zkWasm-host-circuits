@@ -296,4 +296,25 @@ mod tests {
         let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
     }
+
+    #[test]
+    fn test_generate_kv_input() {
+        let mut mt = MongoMerkle::construct([0;32], None);
+        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
+        leaf.set(&[1u8;32].to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+        let root = mt.get_root_hash();
+
+        // get {
+        //     current_root: 4*64 --> bn254    // fr 2^256-C
+        //     index: 1*64
+        //     ret: 4:64     ---> 2 * bn254
+        // }
+        // set {
+        //     current_root: 4*64
+        //     index: 1*64
+        //     data: 4:64
+        // }
+        todo!()
+    }
 }

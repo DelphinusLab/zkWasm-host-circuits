@@ -282,7 +282,6 @@ impl super::HostOpSelector for MerkleChip<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         todo!();
-        let len = arg_cells.len();
         //let args = arg_cells[0..len - 7].to_vec();
         //let ret = arg_cells[len - 7..len].to_vec();
         //self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, &point_select_chip, layouter)?;

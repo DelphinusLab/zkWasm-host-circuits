@@ -122,7 +122,6 @@ impl<F:FieldExt> Reduce<F> {
             }
         }
         self.cursor += 1;
-        // Reset to 0 if cursor points to the end of the reducer
         if self.cursor == total {
             self.cursor = 0;
         }

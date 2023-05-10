@@ -31,6 +31,7 @@ pub enum ForeignInst {
     Bn254PairG3,
     KVPairSetRoot,
     KVPairGetRoot,
+    KVPairAddress,
     KVPairSet,
     KVPairGet,
 }

@@ -3,6 +3,7 @@ pub mod bn256;
 pub mod merkle;
 pub mod rmd160;
 pub mod modexp;
+pub mod poseidon;
 
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{

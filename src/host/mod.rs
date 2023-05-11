@@ -3,6 +3,7 @@ pub mod bn256;
 pub mod merkle;
 pub mod rmd160;
 pub mod kvpair;
+pub mod poseidon;
 
 use serde::{Deserialize, Serialize};
 use halo2_proofs::arithmetic::FieldExt;
@@ -127,3 +128,17 @@ impl<F:FieldExt> Reduce<F> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Reduce;
+    use super::ReduceRule;
+    #[test]
+    fn test_reduce_bytes() {
+        let reducerule = ReduceRule::Bytes(vec![], 4);
+        let mut reduce = Reduce { cursor:0, rules: vec![reducerule] };
+        reduce.reduce(1);
+    }
+}
+
+

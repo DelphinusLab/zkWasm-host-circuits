@@ -1,12 +1,12 @@
 use halo2_proofs::pairing::bn256::Fq;
 use futures::executor;
-use poseidon::Poseidon;
 use crate::host::merkle:: {
     MerkleError,
     MerkleTree,
     MerkleNode,
     MerkleErrorCode,
 };
+use crate::host::poseidon::gen_hasher;
 use mongodb::{
     Client,
     bson::doc
@@ -20,17 +20,6 @@ use serde::{
 };
 use super::MONGODB_URI;
 use lazy_static;
-
-/* Poseidon hash settings */
-const T: usize = 9;
-const RATE: usize = 8;
-const R_F: usize = 8;
-const R_P: usize = 63;
-
-fn gen_hasher() -> Poseidon<Fq, T, RATE> {
-   Poseidon::<Fq, T, RATE>::new(R_F, R_P)
-}
-
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where

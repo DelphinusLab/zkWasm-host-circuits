@@ -80,17 +80,14 @@ impl<F: FieldExt> Number<F> {
 
         }
     }
+    fn to_bn(&self) -> BigUint {
+        let limb0 = field_to_bn(&self.limbs[0].value);
+        let limb1 = field_to_bn(&self.limbs[1].value);
+        let limb2 = field_to_bn(&self.limbs[2].value);
+        (limb2 * BigUint::from(1u128<<108) + limb1) * BigUint::from(1u128<<108) + limb0
+    }
 
 }
-
-fn limbs_to_bn<F: FieldExt>(limbs: &Vec<Limb<F>>) -> BigUint {
-    todo!()
-}
-
-fn bn_to_limbs<F: FieldExt>(bn: &BigUint) -> Number<F> {
-    todo!()
-}
-
 
 impl<F: FieldExt> Chip<F> for ModExpChip<F> {
     type Config = ModExpConfig;
@@ -157,11 +154,11 @@ impl<F: FieldExt> ModExpChip<F> {
 
     pub fn assign_number (
         &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
+        _region: &mut Region<F>,
+        _offset: &mut usize,
         number: Number<F>,
     ) -> Result<Number<F>, Error> {
-        todo!()
+        Ok(number)
     }
 
     fn assign_line (
@@ -244,9 +241,9 @@ impl<F: FieldExt> ModExpChip<F> {
                 Some(Limb::new(None, value)),
                 None
             ],
-            [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None],
+            [Some(F::one()), Some(F::one()), Some(F::one()), None, Some(F::one()), None, None, None],
         )?;
-        Ok(l[5].clone())
+        Ok(l[3].clone())
     }
 
     pub fn mod_power216 (
@@ -340,7 +337,8 @@ impl<F: FieldExt> ModExpChip<F> {
        limbs: Vec<Limb<F>>,
        signs: Vec<F>,
     ) -> Result<(), Error> {
-        todo!()
+        //todo!()
+        Ok(())
     }
 
     pub fn mod_power216_zero(
@@ -350,9 +348,9 @@ impl<F: FieldExt> ModExpChip<F> {
        limbs: Vec<Limb<F>>,
        signs: Vec<F>,
     ) -> Result<(), Error> {
-        todo!()
+        //todo!()
+        Ok(())
     }
-
 
     pub fn assign_mod_mult(
        &self,
@@ -362,15 +360,15 @@ impl<F: FieldExt> ModExpChip<F> {
        rhs: &Number<F>,
        modulus: &Number<F>,
     ) -> Result<Number<F>, Error> {
-        let bn_lhs = limbs_to_bn(&lhs.limbs.to_vec());
-        let bn_rhs = limbs_to_bn(&rhs.limbs.to_vec());
+        let bn_lhs = lhs.to_bn();
+        let bn_rhs = rhs.to_bn();
         let bn_mult = bn_lhs.mul(bn_rhs);
-        let bn_modulus = limbs_to_bn(&modulus.limbs.to_vec());
+        let bn_modulus = modulus.to_bn();
         let bn_quotient = bn_mult.clone().div(bn_modulus.clone());
         let bn_rem = bn_mult.min(bn_quotient.clone() * bn_modulus.clone());
-        let modulus = self.assign_number(region, offset, bn_to_limbs(&bn_modulus))?;
-        let rem = self.assign_number(region, offset, bn_to_limbs(&bn_rem))?;
-        let quotient = self.assign_number(region, offset, bn_to_limbs(&bn_quotient))?;
+        let modulus = self.assign_number(region, offset, Number::from_bn(&bn_modulus))?;
+        let rem = self.assign_number(region, offset, Number::from_bn(&bn_rem))?;
+        let quotient = self.assign_number(region, offset, Number::from_bn(&bn_quotient))?;
         let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?;
         let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &quotient, &modulus)?;
         let mod_108m1_rem = self.mod_power108m1(region, offset, &rem)?;

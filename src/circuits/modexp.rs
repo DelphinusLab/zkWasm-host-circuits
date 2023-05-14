@@ -265,7 +265,7 @@ impl<F: FieldExt> ModExpChip<F> {
             ],
             [Some(F::one()), Some(F::from_u128(1u128 << 108)), None, None, Some(F::one()), None, None, None],
         )?;
-        Ok(l[5].clone())
+        Ok(l[3].clone())
     }
 
 
@@ -287,7 +287,7 @@ impl<F: FieldExt> ModExpChip<F> {
             region,
             offset,
             [Some(q), Some(ml), Some(mr), Some(r), None, None],
-            [Some(F::from_u128(1u128<<108)), None, None, Some(F::one()), None, None, None, Some(F::one())],
+            [Some(F::from_u128(1u128<<108)), None, None, Some(F::one()), None, None, None, Some(-F::one())],
         )?;
         Ok(l[3].clone())
     }
@@ -299,32 +299,57 @@ impl<F: FieldExt> ModExpChip<F> {
        lhs: &Number<F>,
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
+        let x0 = lhs.limbs[0].value;
+        let x1 = lhs.limbs[1].value;
+        let y0 = rhs.limbs[0].value;
+        let y1 = rhs.limbs[1].value;
+
+        let mut v =  x0 * y1 + x1 * y0;
         let l = self.assign_line(
             region,
             offset,
             [
-                Some(lhs.limbs[0].clone()),
-                Some(lhs.limbs[1].clone()),
-                Some(rhs.limbs[0].clone()),
-                Some(rhs.limbs[1].clone()),
-                None,
+                Some(lhs.limbs[0].clone()),   //x0
+                Some(lhs.limbs[1].clone()),   //x1
+                Some(rhs.limbs[0].clone()),   //y0
+                Some(rhs.limbs[1].clone()),   //y1
+                Some(Limb::new(None, v)),
                 None
             ],
-            [None, None, None, Some(F::one()), None, None, Some(F::one()), Some(F::one())],
+            [None, None, None, None, Some(F::one()), None, Some(F::one()), Some(F::one())],
         )?;
-        let acc = l[4].clone();
+        let vcell = l[4].clone();
+
+        //  compute v mod 2^108
+        let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
+        let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
+        let q = Limb::new(None, bn_to_field(&bn_q));
+        let r = Limb::new(None, bn_to_field(&bn_r));
+
+        self.config.enable_selector(region, *offset, ModExpConfig::sel());
+        let l = self.assign_line(
+            region,
+            offset,
+            [Some(q), Some(vcell), None, Some(r), None, None],
+            [Some(F::from_u128(1u128<<108)), Some(-F::one()), None, Some(F::one()), None, None, None, None],
+        )?;
+
+        let rcell = l[2].clone();
+
+        v = rcell.value * F::from_u128(1u128<<108) + x0 + y0;
+
         let l = self.assign_line(
             region,
             offset,
             [
                 Some(lhs.limbs[0].clone()),
-                None,
+                Some(rcell),
                 None,
                 Some(rhs.limbs[0].clone()),
-                None,
+                Some(Limb::new(None, v)),
                 None
             ],
-            [None, None, None, Some(F::one()), None, None, Some(F::one()), None],
+            [None, Some(F::one()), None, None, Some(-F::one()), None, Some(F::one()), None],
         )?;
 
         Ok(l[3].clone())

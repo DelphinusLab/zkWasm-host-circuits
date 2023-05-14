@@ -28,9 +28,9 @@ use num_bigint::BigUint;
 /*
  * Customized gates for modexp
  */
-customized_circuits!(ModExpConfig, 2, 5, 8, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | c   | c03  | c12  | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil  | nil  | nil
+customized_circuits!(ModExpConfig, 2, 5, 9, 1,
+   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | sel
+   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil
 );
 pub struct ModExpChip<F:FieldExt> {
     config: ModExpConfig,
@@ -114,12 +114,12 @@ impl<F: FieldExt> ModExpChip<F> {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 8].map(|_| cs.fixed_column());
+        let fixed = [0; 9].map(|_| cs.fixed_column());
         let selector =[cs.selector()];
 
         let config = ModExpConfig { fixed, selector, witness };
 
-        cs.create_gate("select left right", |meta| {
+        cs.create_gate("one line constraint", |meta| {
             let l0 = config.get_expr(meta, ModExpConfig::l0());
             let l1 = config.get_expr(meta, ModExpConfig::l1());
             let l2 = config.get_expr(meta, ModExpConfig::l2());
@@ -131,6 +131,8 @@ impl<F: FieldExt> ModExpChip<F> {
             let c2 = config.get_expr(meta, ModExpConfig::c2());
             let c3 = config.get_expr(meta, ModExpConfig::c3());
             let c  = config.get_expr(meta, ModExpConfig::c());
+            let cd  = config.get_expr(meta, ModExpConfig::cd());
+            let cdn  = config.get_expr(meta, ModExpConfig::cdn());
             let c03 = config.get_expr(meta, ModExpConfig::c03());
             let c12  = config.get_expr(meta, ModExpConfig::c12());
             let sel = config.get_expr(meta, ModExpConfig::sel());
@@ -142,10 +144,11 @@ impl<F: FieldExt> ModExpChip<F> {
                 +   l1.clone() * c1
                 +   l2.clone() * c2
                 +   l3.clone() * c3
-                +   d  * c
+                +   d  * cd
+                +   dnext * cdn
                 +   l0 * l3 * c03
                 +   l1 * l2 * c12
-                +   dnext)
+                +   c)
             ]
 
         });
@@ -166,8 +169,24 @@ impl<F: FieldExt> ModExpChip<F> {
        region: &mut Region<F>,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 6],
-       coeffs: [Option<F>; 8],
+       coeffs: [Option<F>; 9],
     ) -> Result<Vec<Limb<F>>, Error> {
+        let ws = value.clone().to_vec().iter()
+            .map(|x|x.clone().map_or(F::zero(), |x| x.value))
+            .collect::<Vec<F>>();
+        let cs = coeffs.clone().to_vec().iter().map(|x| x.map_or(F::zero(), |x| x)).collect::<Vec<F>>();
+        assert!(
+            ws[0] * cs[0]
+            + ws[1] * cs[1]
+            + ws[2] * cs[2]
+            + ws[3] * cs[3]
+            + ws[4] * cs[4]
+            + ws[5] * cs[5]
+            + ws[0] * ws[3] * cs[6]
+            + ws[1] * ws[2] * cs[7]
+            + cs[8] == F::zero()
+        );
+
         let witnesses = [
             ModExpConfig::l0(),
             ModExpConfig::l1(),
@@ -182,25 +201,29 @@ impl<F: FieldExt> ModExpChip<F> {
             ModExpConfig::c2(),
             ModExpConfig::c3(),
             ModExpConfig::cd(),
-            ModExpConfig::c(),
+            ModExpConfig::cdn(),
             ModExpConfig::c03(),
             ModExpConfig::c12(),
+            ModExpConfig::c(),
         ];
+
+
         let mut limbs = vec![];
         for i in 0..6 {
+            let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
+            let cell = self.config.assign_cell(region, *offset, &witnesses[i], v).unwrap();
             value[i].clone().map(|x| {
-                let cell = self.config.assign_cell(region, *offset, &witnesses[i], x.value).unwrap();
                 limbs.push(Limb::new(Some(cell.clone()), x.value));
                 x.cell.map(|c| {
                     region.constrain_equal(cell.cell(), c.cell()).unwrap();
                 });
             });
         }
-        for i in 0..8 {
-            coeffs[i].clone().map(|x| {
-                let cell = self.config.assign_cell(region, *offset, &cs[i], x).unwrap();
-            });
+        for i in 0..9 {
+            let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
+            self.config.assign_cell(region, *offset, &cs[i], v).unwrap();
         }
+        self.config.enable_selector(region, *offset, ModExpConfig::sel())?;
         *offset = *offset+1;
         Ok(limbs)
     }
@@ -218,7 +241,7 @@ impl<F: FieldExt> ModExpChip<F> {
             let l = self.assign_line(
                 region, offset,
                 [Some(lhs.limbs[i].clone()), Some(rhs.limbs[i].clone()), None, None, Some(l), None],
-                [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None],
+                [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None, None],
             ).unwrap();
             l[5].clone() // the fifth is the sum result d
         }).collect::<Vec<_>>();
@@ -241,7 +264,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 Some(Limb::new(None, value)),
                 None
             ],
-            [Some(F::one()), Some(F::one()), Some(F::one()), None, Some(F::one()), None, None, None],
+            [Some(F::one()), Some(F::one()), Some(F::one()), None, Some(-F::one()), None, None, None, None],
         )?;
         Ok(l[3].clone())
     }
@@ -258,14 +281,14 @@ impl<F: FieldExt> ModExpChip<F> {
             [
                 Some(number.limbs[0].clone()),
                 Some(number.limbs[1].clone()),
-                Some(number.limbs[2].clone()),
+                None,
                 None,
                 Some(Limb::new(None, value)),
                 None
             ],
-            [Some(F::one()), Some(F::from_u128(1u128 << 108)), None, None, Some(F::one()), None, None, None],
+            [Some(F::one()), Some(F::from_u128(1u128 << 108)), None, None, Some(-F::one()), None, None, None, None],
         )?;
-        Ok(l[3].clone())
+        Ok(l[2].clone())
     }
 
 
@@ -276,8 +299,8 @@ impl<F: FieldExt> ModExpChip<F> {
        lhs: &Number<F>,
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        let ml = self.mod_power108m1(region, offset, lhs)?; 
-        let mr = self.mod_power108m1(region, offset, rhs)?; 
+        let ml = self.mod_power108m1(region, offset, lhs)?;
+        let mr = self.mod_power108m1(region, offset, rhs)?;
         let v = ml.value * mr.value;
         let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
         let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
@@ -287,7 +310,7 @@ impl<F: FieldExt> ModExpChip<F> {
             region,
             offset,
             [Some(q), Some(ml), Some(mr), Some(r), None, None],
-            [Some(F::from_u128(1u128<<108)), None, None, Some(F::one()), None, None, None, Some(-F::one())],
+            [Some(F::from_u128(1u128<<108)), None, None, Some(F::one()), None, None, None, Some(-F::one()), None],
         )?;
         Ok(l[3].clone())
     }
@@ -304,7 +327,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let y0 = rhs.limbs[0].value;
         let y1 = rhs.limbs[1].value;
 
-        let mut v =  x0 * y1 + x1 * y0;
+        let mut v =  x0 * y1 + x1 * y0; //0-2^216
         let l = self.assign_line(
             region,
             offset,
@@ -316,7 +339,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 Some(Limb::new(None, v)),
                 None
             ],
-            [None, None, None, None, Some(F::one()), None, Some(F::one()), Some(F::one())],
+            [None, None, None, None, Some(-F::one()), None, Some(F::one()), Some(F::one()), None],
         )?;
         let vcell = l[4].clone();
 
@@ -326,12 +349,11 @@ impl<F: FieldExt> ModExpChip<F> {
         let q = Limb::new(None, bn_to_field(&bn_q));
         let r = Limb::new(None, bn_to_field(&bn_r));
 
-        self.config.enable_selector(region, *offset, ModExpConfig::sel());
         let l = self.assign_line(
             region,
             offset,
             [Some(q), Some(vcell), None, Some(r), None, None],
-            [Some(F::from_u128(1u128<<108)), Some(-F::one()), None, Some(F::one()), None, None, None, None],
+            [Some(F::from_u128(1u128<<108)), Some(-F::one()), None, Some(F::one()), None, None, None, None, None],
         )?;
 
         let rcell = l[2].clone();
@@ -349,7 +371,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 Some(Limb::new(None, v)),
                 None
             ],
-            [None, Some(F::one()), None, None, Some(-F::one()), None, Some(F::one()), None],
+            [Some(F::one()), Some(F::from_u128(1u128<<108)), None, Some(F::one()), Some(-F::one()), None, None, None, None],
         )?;
 
         Ok(l[3].clone())
@@ -385,12 +407,21 @@ impl<F: FieldExt> ModExpChip<F> {
        rhs: &Number<F>,
        modulus: &Number<F>,
     ) -> Result<Number<F>, Error> {
+        /*
+         * x0,x1,x2 * y0,y1,y2 = q0,q1,q2 * m0,m1,m2 + r0,r1,r2
+         * mod 2^{108}-1:
+         *     (x2+x1+x0) * (y0+y1+y2) = (q0+q1+q2) * (m0+m1+m2) + (r0+r1+r2)
+         * mod 2^{216}:
+         *     (x1*y0 + x0*y1) * 2^216 + x0*y0 = (q0*m1+q1*m0) * 2^{216} + q0*m0 + r1+r0
+         * native:
+         *    x*y = q*m + r
+         */
         let bn_lhs = lhs.to_bn();
         let bn_rhs = rhs.to_bn();
         let bn_mult = bn_lhs.mul(bn_rhs);
         let bn_modulus = modulus.to_bn();
-        let bn_quotient = bn_mult.clone().div(bn_modulus.clone());
-        let bn_rem = bn_mult.min(bn_quotient.clone() * bn_modulus.clone());
+        let bn_quotient = bn_mult.clone().div(bn_modulus.clone()); //div_rem
+        let bn_rem = bn_mult - (bn_quotient.clone() * bn_modulus.clone());
         let modulus = self.assign_number(region, offset, Number::from_bn(&bn_modulus))?;
         let rem = self.assign_number(region, offset, Number::from_bn(&bn_rem))?;
         let quotient = self.assign_number(region, offset, Number::from_bn(&bn_quotient))?;
@@ -548,7 +579,7 @@ mod tests {
             let modulus = helperchip.assign_modulus(&mut layouter, &mut offset, &self.modulus)?;
 
             let rem = layouter.assign_region(
-                || "leaf layer",
+                || "assign mod mult",
                 |mut region| {
                     let rem = modexpchip.assign_mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
                     println!("result is {:?}", rem);

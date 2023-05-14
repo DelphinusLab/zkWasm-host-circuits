@@ -146,13 +146,13 @@ impl<F: FieldExt> MerkleChip<F> {
             let k = offset/2;
             let odd = offset - (k*2);
             let (left, right) = if odd == 1 { (&proof.assist[i], &carry) } else { (&carry, &proof.assist[i]) };
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::pos(), F::from(pos as u64))?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::k(), F::from(k as u64))?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::odd(), F::from(odd as u64))?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::carry(), carry)?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::index(), F::from(index as u64))?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::left(), *left)?;
-            self.config.assign_cell(region, start_offset+i, MerkleConfig::right(), *right)?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::pos(), F::from(pos as u64))?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::k(), F::from(k as u64))?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::odd(), F::from(odd as u64))?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::carry(), carry)?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::index(), F::from(index as u64))?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::left(), *left)?;
+            self.config.assign_cell(region, start_offset+i, &MerkleConfig::right(), *right)?;
             offset = offset/2;
             carry = M::hash(left, right);
         }

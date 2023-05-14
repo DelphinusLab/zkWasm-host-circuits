@@ -1,4 +1,8 @@
-use crate::utils::GateCell;
+use crate::utils::{
+    GateCell,
+    field_to_bn,
+    bn_to_field,
+};
 use crate::{
     customized_circuits,
     table_item,
@@ -24,9 +28,9 @@ use num_bigint::BigUint;
 /*
  * Customized gates for modexp
  */
-customized_circuits!(ModExpConfig, 2, 5, 7, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | c   | c03  | c12  | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil  | nil  | nil
+customized_circuits!(ModExpConfig, 2, 5, 8, 1,
+   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | c   | c03  | c12  | sel
+   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil  | nil  | nil
 );
 pub struct ModExpChip<F:FieldExt> {
     config: ModExpConfig,
@@ -40,14 +44,43 @@ pub struct Limb<F: FieldExt> {
 }
 
 impl<F: FieldExt> Limb<F> {
-    fn new(cell: Option<AssignedCell>, value: F) -> Self {
+    fn new(cell: Option<AssignedCell<F, F>>, value: F) -> Self {
         Limb { cell, value }
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Number<F: FieldExt> {
     limbs: [Limb<F>; 4],
-    native: F,
+}
+
+impl<F: FieldExt> Number<F> {
+    fn add(&self, n: &Self) -> Self {
+        Number {
+            limbs: [
+                Limb::new(None, self.limbs[0].value + n.limbs[0].value),
+                Limb::new(None, self.limbs[1].value + n.limbs[1].value),
+                Limb::new(None, self.limbs[2].value + n.limbs[2].value),
+                Limb::new(None, self.limbs[3].value + n.limbs[3].value),
+            ]
+        }
+    }
+    fn from_bn(bn: &BigUint) -> Self {
+        let limb0 = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
+        let limb1 = (bn - limb0.clone()).div(BigUint::from(1u128<<108)).modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
+        let limb2 = bn.div(BigUint::from(1u128<<108)).div(BigUint::from(1u128<<108));
+        let native = bn.div(field_to_bn(&(-F::one()))) + BigUint::from(1u128);
+        Number {
+            limbs: [
+                Limb::new(None, bn_to_field(&limb0)),
+                Limb::new(None, bn_to_field(&limb1)),
+                Limb::new(None, bn_to_field(&limb2)),
+                Limb::new(None, bn_to_field(&native)),
+            ]
+
+        }
+    }
+
 }
 
 fn limbs_to_bn<F: FieldExt>(limbs: &Vec<Limb<F>>) -> BigUint {
@@ -84,7 +117,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 7].map(|_| cs.fixed_column());
+        let fixed = [0; 8].map(|_| cs.fixed_column());
         let selector =[cs.selector()];
 
         let config = ModExpConfig { fixed, selector, witness };
@@ -136,7 +169,7 @@ impl<F: FieldExt> ModExpChip<F> {
        region: &mut Region<F>,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 6],
-       coeffs: [Option<F>; 7],
+       coeffs: [Option<F>; 8],
     ) -> Result<Vec<Limb<F>>, Error> {
         let witnesses = [
             ModExpConfig::l0(),
@@ -146,11 +179,12 @@ impl<F: FieldExt> ModExpChip<F> {
             ModExpConfig::d(),
             ModExpConfig::d_n(),
         ];
-        let coeffs = [
+        let cs = [
             ModExpConfig::c0(),
             ModExpConfig::c1(),
             ModExpConfig::c2(),
             ModExpConfig::c3(),
+            ModExpConfig::cd(),
             ModExpConfig::c(),
             ModExpConfig::c03(),
             ModExpConfig::c12(),
@@ -158,19 +192,19 @@ impl<F: FieldExt> ModExpChip<F> {
         let mut limbs = vec![];
         for i in 0..6 {
             value[i].clone().map(|x| {
-                let cell = self.config.assign_cell(region, *offset, witnesses[i], x.value).unwrap();
-                limbs.push(Limb::new(Some(cell), value[i]));
+                let cell = self.config.assign_cell(region, *offset, &witnesses[i], x.value).unwrap();
+                limbs.push(Limb::new(Some(cell.clone()), x.value));
                 x.cell.map(|c| {
                     region.constrain_equal(cell.cell(), c.cell()).unwrap();
                 });
             });
         }
-        for i in 0..7 {
+        for i in 0..8 {
             coeffs[i].clone().map(|x| {
-                let cell = self.config.assign_cell(region, *offset, coeffs[i], x.value).unwrap();
+                let cell = self.config.assign_cell(region, *offset, &cs[i], x).unwrap();
             });
         }
-        offset = offset+1;
+        *offset = *offset+1;
         Ok(limbs)
     }
 
@@ -182,42 +216,37 @@ impl<F: FieldExt> ModExpChip<F> {
         lhs: &Number<F>,
         rhs: &Number<F>,
     ) -> Result<Number<F>, Error> {
-        /*
-        for i in 0..5 {
-            let v = lhs.lim
-            let l = self.assign_line(region, offset, vec![lhs.limbs[0], rhs.limbs[0], None, None, None, 
-        }
-        */
-       /* assign all x0..x3 and y0..y3 */
-       //self.config.assign_cell(region, *offset, ModExpConfig::x0(), *lhs.limbs[0].cell.value().unwrap())?;
-       /* assign all sum0 - sum3 */
-       /*
-       let sum_0 = *lhs.limbs[0].cell.value().unwrap() + *rhs.limbs[0].cell.value().unwrap();
-       let sum_limbs_0 = self.config.assign_cell(region, *offset+1, ModExpConfig::x0_n(), sum_0)?;
-       let sum_limbs_1 = self.config.assign_cell(region, *offset+1, ModExpConfig::x0_n(), sum_0)?;
-       let sum_limbs_2 = self.config.assign_cell(region, *offset+1, ModExpConfig::x0_n(), sum_0)?;
-       let sum_limbs_3 = self.config.assign_cell(region, *offset+1, ModExpConfig::x0_n(), sum_0)?;
-       self.config.enable_selector(region, *offset, ModExpConfig::sel())?;
-       Ok(Number {
-           limbs: [
-               Limb {cell: sum_limbs_0},
-               Limb {cell: sum_limbs_1},
-               Limb {cell: sum_limbs_2},
-               Limb {cell: sum_limbs_3},
-           ],
-           native: F::one() //fake
-       })
-       */
-       todo!()
+        let ret = lhs.add(rhs);
+        let limbs = ret.limbs.to_vec().into_iter().enumerate().map(|(i, l)| {
+            let l = self.assign_line(
+                region, offset,
+                [Some(lhs.limbs[i].clone()), Some(rhs.limbs[i].clone()), None, None, Some(l), None],
+                [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None],
+            ).unwrap();
+            l[5].clone() // the fifth is the sum result d
+        }).collect::<Vec<_>>();
+        Ok(Number {limbs: limbs.try_into().unwrap()})
     }
 
     pub fn mod_power108m1 (
-       &self,
-       region: &mut Region<F>,
-       offset: &mut usize,
-       number: &Number<F>,
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        number: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        todo!();
+        let value = number.limbs[0].value + number.limbs[1].value + number.limbs[2].value;
+        let l = self.assign_line(
+            region, offset, [
+                Some(number.limbs[0].clone()),
+                Some(number.limbs[1].clone()),
+                Some(number.limbs[2].clone()),
+                None,
+                Some(Limb::new(None, value)),
+                None
+            ],
+            [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None],
+        )?;
+        Ok(l[5].clone())
     }
 
     pub fn mod_power216 (
@@ -226,7 +255,20 @@ impl<F: FieldExt> ModExpChip<F> {
        offset: &mut usize,
        number: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        todo!()
+        let value = number.limbs[0].value + number.limbs[1].value * (F::from_u128(1u128 << 108));
+        let l = self.assign_line(
+            region, offset,
+            [
+                Some(number.limbs[0].clone()),
+                Some(number.limbs[1].clone()),
+                Some(number.limbs[2].clone()),
+                None,
+                Some(Limb::new(None, value)),
+                None
+            ],
+            [Some(F::one()), Some(F::from_u128(1u128 << 108)), None, None, Some(F::one()), None, None, None],
+        )?;
+        Ok(l[5].clone())
     }
 
 
@@ -237,7 +279,20 @@ impl<F: FieldExt> ModExpChip<F> {
        lhs: &Number<F>,
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        todo!();
+        let ml = self.mod_power108m1(region, offset, lhs)?; 
+        let mr = self.mod_power108m1(region, offset, rhs)?; 
+        let v = ml.value * mr.value;
+        let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
+        let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
+        let q = Limb::new(None, bn_to_field(&bn_q));
+        let r = Limb::new(None, bn_to_field(&bn_r));
+        let l = self.assign_line(
+            region,
+            offset,
+            [Some(q), Some(ml), Some(mr), Some(r), None, None],
+            [Some(F::from_u128(1u128<<108)), None, None, Some(F::one()), None, None, None, Some(F::one())],
+        )?;
+        Ok(l[3].clone())
     }
 
     pub fn mod_power216_mul (
@@ -247,7 +302,35 @@ impl<F: FieldExt> ModExpChip<F> {
        lhs: &Number<F>,
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        todo!()
+        let l = self.assign_line(
+            region,
+            offset,
+            [
+                Some(lhs.limbs[0].clone()),
+                Some(lhs.limbs[1].clone()),
+                Some(rhs.limbs[0].clone()),
+                Some(rhs.limbs[1].clone()),
+                None,
+                None
+            ],
+            [None, None, None, Some(F::one()), None, None, Some(F::one()), Some(F::one())],
+        )?;
+        let acc = l[4].clone();
+        let l = self.assign_line(
+            region,
+            offset,
+            [
+                Some(lhs.limbs[0].clone()),
+                None,
+                None,
+                Some(rhs.limbs[0].clone()),
+                None,
+                None
+            ],
+            [None, None, None, Some(F::one()), None, None, Some(F::one()), None],
+        )?;
+
+        Ok(l[3].clone())
     }
 
     pub fn mod_power108m1_zero(
@@ -324,3 +407,146 @@ impl<F: FieldExt> ModExpChip<F> {
         todo!();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::dev::MockProver;
+    use num_bigint::BigUint;
+
+    use halo2_proofs::{
+        circuit::{Cell, Chip, Layouter, Region, AssignedCell, SimpleFloorPlanner},
+        plonk::{
+            Fixed, Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
+            Selector,
+        },
+    };
+
+    use super::{
+        ModExpChip,
+        ModExpConfig,
+        Number,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChipConfig {
+        limb: Column<Advice>
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChip {
+        config: HelperChipConfig
+    }
+
+    impl Chip<Fr> for HelperChip {
+        type Config = HelperChipConfig;
+        type Loaded = ();
+
+        fn config(&self) -> &Self::Config {
+            &self.config
+        }
+
+        fn loaded(&self) -> &Self::Loaded {
+            &()
+        }
+    }
+
+    impl HelperChip {
+        fn new(config: HelperChipConfig) -> Self {
+            HelperChip{
+                config,
+            }
+        }
+
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
+            let limb= cs.advice_column();
+            cs.enable_equality(limb);
+            HelperChipConfig {
+                limb,
+            }
+        }
+
+        fn assign_base(
+            &self,
+            layouter: &mut impl Layouter<Fr>,
+            offset: &mut usize,
+            base: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(base))
+        }
+
+        fn assign_modulus(
+            &self,
+            layouter: &mut impl Layouter<Fr>,
+            offset: &mut usize,
+            modulus: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(modulus))
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestCircuit {
+        base: BigUint,
+        exp: BigUint,
+        modulus: BigUint,
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        modexpconfig: ModExpConfig,
+        helperconfig: HelperChipConfig,
+    }
+
+    impl Circuit<Fr> for TestCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta),
+               helperconfig: HelperChip::configure(meta)
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut offset = 0;
+            let base = helperchip.assign_base(&mut layouter, &mut offset, &self.base)?;
+            let modulus = helperchip.assign_modulus(&mut layouter, &mut offset, &self.modulus)?;
+
+            let rem = layouter.assign_region(
+                || "leaf layer",
+                |mut region| {
+                    let rem = modexpchip.assign_mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
+                    println!("result is {:?}", rem);
+                    Ok(rem)
+                }
+            )?;
+
+            Ok(())
+        }
+    }
+
+
+    #[test]
+    fn test_modexp_circuit() {
+        let base = BigUint::from(1u128 << 100);
+        let exp = BigUint::from(2u128 << 100);
+        let modulus = BigUint::from(7u128);
+        let test_circuit = TestCircuit {base, exp, modulus} ;
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
+}
+
+

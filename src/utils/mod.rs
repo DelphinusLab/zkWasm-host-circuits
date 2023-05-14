@@ -187,7 +187,7 @@ macro_rules! customized_circuits_expand {
                 &self,
                 region: &mut Region<F>,
                 start_offset: usize,
-                gate_cell: GateCell,
+                gate_cell: &GateCell,
                 value: F,
             ) -> Result<AssignedCell<F, F>, Error> {
                 let cell = gate_cell.cell;

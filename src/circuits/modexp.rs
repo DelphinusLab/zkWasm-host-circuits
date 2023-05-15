@@ -248,12 +248,35 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(Number {limbs: limbs.try_into().unwrap()})
     }
 
+    pub fn mod_native_mul(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        rem: &Number<F>,
+        lhs: &Number<F>,
+        rhs: &Number<F>,
+    ) -> Result<Limb<F>, Error> {
+        let l = self.assign_line(
+            region, offset, [
+                None,
+                Some(lhs.limbs[3].clone()),
+                Some(rhs.limbs[3].clone()),
+                Some(rem.limbs[3].clone()),
+                None,
+                None,
+            ],
+            [None, None, None, Some(-F::one()), None, None, None, None, Some(F::one())],
+        )?;
+        Ok(l[2].clone())
+    }
+
+
     pub fn mod_power108m1 (
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         number: &Number<F>,
-    ) -> Result<Limb<F>, Error> {
+    ) -> Result<[Limb<F>; 4], Error> {
         let value = number.limbs[0].value + number.limbs[1].value + number.limbs[2].value;
         let l = self.assign_line(
             region, offset, [
@@ -266,7 +289,7 @@ impl<F: FieldExt> ModExpChip<F> {
             ],
             [Some(F::one()), Some(F::one()), Some(F::one()), None, Some(-F::one()), None, None, None, None],
         )?;
-        Ok(l[3].clone())
+        Ok(l.try_into().unwrap())
     }
 
     pub fn mod_power216 (
@@ -299,8 +322,8 @@ impl<F: FieldExt> ModExpChip<F> {
        lhs: &Number<F>,
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        let ml = self.mod_power108m1(region, offset, lhs)?;
-        let mr = self.mod_power108m1(region, offset, rhs)?;
+        let [_, _, _, ml] = self.mod_power108m1(region, offset, lhs)?;
+        let [_, _, _, mr] = self.mod_power108m1(region, offset, rhs)?;
         let v = ml.value * mr.value;
         let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
         let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
@@ -427,7 +450,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let quotient = self.assign_number(region, offset, Number::from_bn(&bn_quotient))?;
         let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?;
         let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &quotient, &modulus)?;
-        let mod_108m1_rem = self.mod_power108m1(region, offset, &rem)?;
+        let [r0, r1, r2, mod_108m1_rem] = self.mod_power108m1(region, offset, &rem)?;
         self.mod_power108m1_zero(
             region,
             offset,
@@ -440,10 +463,19 @@ impl<F: FieldExt> ModExpChip<F> {
         self.mod_power216_zero(
             region,
             offset,
-            vec![mod_108m1_lhs, mod_108m1_rhs, mod_108m1_rem],
+            vec![mod_216_lhs, mod_216_rhs, mod_216_rem],
             vec![F::one(), -F::one(), -F::one()]
         )?;
-        Ok(rem)
+        let mod_native = self.mod_native_mul(
+            region,
+            offset,
+            &rem,
+            &lhs,
+            &rhs,
+        )?;
+        Ok(Number {
+            limbs: [r0, r1, r2, mod_native]
+        })
     }
 
 
@@ -480,6 +512,7 @@ mod tests {
         ModExpChip,
         ModExpConfig,
         Number,
+        Limb,
     };
 
     #[derive(Clone, Debug)]
@@ -522,8 +555,8 @@ mod tests {
 
         fn assign_base(
             &self,
-            layouter: &mut impl Layouter<Fr>,
-            offset: &mut usize,
+            _layouter: &mut impl Layouter<Fr>,
+            _offset: &mut usize,
             base: &BigUint,
         ) -> Result<Number<Fr>, Error> {
             Ok(Number::from_bn(base))
@@ -531,12 +564,48 @@ mod tests {
 
         fn assign_modulus(
             &self,
-            layouter: &mut impl Layouter<Fr>,
-            offset: &mut usize,
+            _layouter: &mut impl Layouter<Fr>,
+            _offset: &mut usize,
             modulus: &BigUint,
         ) -> Result<Number<Fr>, Error> {
             Ok(Number::from_bn(modulus))
         }
+
+        fn assign_results(
+            &self,
+            layouter: &mut impl Layouter<Fr>,
+            offset: &mut usize,
+            result: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            let n = Number::from_bn(result);
+            let mut cells = vec![];
+            layouter.assign_region(
+                || "input cells",
+                |mut region| {
+                    for i in 0..4 {
+                        let c = region.assign_advice(
+                            || format!("assign input"),
+                            self.config.limb,
+                            *offset + i,
+                            || Ok(n.limbs[i].value)
+                        )?;
+                        cells.push(Some(c));
+                        *offset = *offset + 1;
+                    }
+                    Ok(())
+                }
+            )?;
+            let n = Number {
+                limbs: [
+                    Limb::new(cells[0].clone(), n.limbs[0].value),
+                    Limb::new(cells[1].clone(), n.limbs[1].value),
+                    Limb::new(cells[2].clone(), n.limbs[2].value),
+                    Limb::new(cells[3].clone(), n.limbs[3].value),
+                ]
+            };
+            Ok(n)
+        }
+
     }
 
     #[derive(Clone, Debug, Default)]
@@ -577,16 +646,26 @@ mod tests {
             let mut offset = 0;
             let base = helperchip.assign_base(&mut layouter, &mut offset, &self.base)?;
             let modulus = helperchip.assign_modulus(&mut layouter, &mut offset, &self.modulus)?;
+            let bn_rem = self.base.clone() * self.base.clone() % self.modulus.clone();
+            let result = helperchip.assign_results(&mut layouter, &mut offset, &bn_rem)?;
 
-            let rem = layouter.assign_region(
+            layouter.assign_region(
                 || "assign mod mult",
                 |mut region| {
                     let rem = modexpchip.assign_mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
-                    println!("result is {:?}", rem);
-                    Ok(rem)
+                    for i in 0..4 {
+                        println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                        println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+                        /*
+                        region.constrain_equal(
+                            rem.limbs[i].clone().cell.unwrap().cell(),
+                            result.limbs[i].clone().cell.unwrap().cell()
+                        )?;
+                        */
+                    }
+                    Ok(())
                 }
             )?;
-
             Ok(())
         }
     }

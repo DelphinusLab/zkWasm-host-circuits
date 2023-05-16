@@ -478,18 +478,65 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
+    /* decompose a limb into binary cells */
+    pub fn decompose_limb(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        limb: &Limb<F>,
+        limbs: &mut Vec<Limb<F>>
+    ) -> Result <(), Error> {
+        let bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
+        let mut v = F::zero();
+        for i in 0..27 {
+            let l0 = F::from_u128(bool_limbs[i] as u128);
+            let l1 = F::from_u128(bool_limbs[i+1] as u128);
+            let l2 = F::from_u128(bool_limbs[i+2] as u128);
+            let l3 = F::from_u128(bool_limbs[i+3] as u128);
+            let v_next = v * F::from_u128(16u128)
+                + l0 * F::from_u128(8u128)
+                + l1 * F::from_u128(4u128)
+                + l2 * F::from_u128(2u128)
+                + l3 * F::from_u128(1u128);
+            let l = self.assign_line(
+                region,
+                offset,
+                [
+                    Some(Limb::new(None, l0)),
+                    Some(Limb::new(None, l1)),
+                    Some(Limb::new(None, l2)),
+                    Some(Limb::new(None, l3)),
+                    Some(Limb::new(None, v)),
+                    Some(Limb::new(None, v_next)),
+                ],
+                [
+                    Some(F::from_u128(8u128)),
+                    Some(F::from_u128(4u128)),
+                    Some(F::from_u128(2u128)),
+                    Some(F::from_u128(1u128)),
+                    Some(F::from_u128(16u128)),
+                    Some(-F::one()),
+                    None, None, None
+                ],
+            )?;
+            limbs.append(&mut l.to_vec()[0..3].to_vec());
+            v = v_next;
+        }
+        Ok(())
+    }
 
-    pub fn square_mod(
-       &self,
-       region: &mut Region<F>,
-       offset: &mut usize,
-       square: &Number<F>,
-       divisor: &Number<F>
+    pub fn mod_exp(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        base: &Number<F>,
+        exp: &Number<F>
     ) -> Result <Number<F>, Error> {
-        // result = ???
-        // square * square = k * divisor + result
-        //let mod_128;
-        //Ok(result)
+        let mut limbs = vec![];
+        let limbs0 = self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs);
+        let limbs1 = self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs);
+        let limbs2 = self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs);
+        // TODO apply the wnaf algorithm here
         todo!();
     }
 }

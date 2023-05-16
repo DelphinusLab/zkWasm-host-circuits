@@ -555,7 +555,7 @@ mod tests {
 
         fn assign_base(
             &self,
-            _layouter: &mut impl Layouter<Fr>,
+            _region: &mut Region<Fr>,
             _offset: &mut usize,
             base: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -564,7 +564,7 @@ mod tests {
 
         fn assign_modulus(
             &self,
-            _layouter: &mut impl Layouter<Fr>,
+            _region: &mut Region<Fr>,
             _offset: &mut usize,
             modulus: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -573,28 +573,22 @@ mod tests {
 
         fn assign_results(
             &self,
-            layouter: &mut impl Layouter<Fr>,
+            region: &mut Region<Fr>,
             offset: &mut usize,
             result: &BigUint,
         ) -> Result<Number<Fr>, Error> {
             let n = Number::from_bn(result);
             let mut cells = vec![];
-            layouter.assign_region(
-                || "input cells",
-                |mut region| {
-                    for i in 0..4 {
-                        let c = region.assign_advice(
-                            || format!("assign input"),
-                            self.config.limb,
-                            *offset + i,
-                            || Ok(n.limbs[i].value)
-                        )?;
-                        cells.push(Some(c));
-                        *offset = *offset + 1;
-                    }
-                    Ok(())
-                }
-            )?;
+            for i in 0..4 {
+                let c = region.assign_advice(
+                    || format!("assign input"),
+                    self.config.limb,
+                    *offset + i,
+                    || Ok(n.limbs[i].value)
+                )?;
+                cells.push(Some(c));
+                *offset = *offset + 1;
+            }
             let n = Number {
                 limbs: [
                     Limb::new(cells[0].clone(), n.limbs[0].value),
@@ -643,15 +637,14 @@ mod tests {
         ) -> Result<(), Error> {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut offset = 0;
-            let base = helperchip.assign_base(&mut layouter, &mut offset, &self.base)?;
-            let modulus = helperchip.assign_modulus(&mut layouter, &mut offset, &self.modulus)?;
-            let bn_rem = self.base.clone() * self.base.clone() % self.modulus.clone();
-            let result = helperchip.assign_results(&mut layouter, &mut offset, &bn_rem)?;
-
             layouter.assign_region(
                 || "assign mod mult",
                 |mut region| {
+                    let mut offset = 0;
+                    let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
+                    let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+                    let bn_rem = self.base.clone() * self.base.clone() % self.modulus.clone();
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
                     let rem = modexpchip.assign_mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
                     for i in 0..4 {
                         println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);

@@ -155,6 +155,16 @@ impl<F: FieldExt> ModExpChip<F> {
         config
     }
 
+    pub fn assign_constant (
+        &self,
+        _region: &mut Region<F>,
+        _offset: &mut usize,
+        number: Number<F>,
+    ) -> Result<Number<F>, Error> {
+        todo!()
+    }
+
+
     pub fn assign_number (
         &self,
         _region: &mut Region<F>,
@@ -229,7 +239,7 @@ impl<F: FieldExt> ModExpChip<F> {
     }
 
 
-    pub fn assign_add (
+    pub fn mod_add (
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
@@ -422,7 +432,7 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(())
     }
 
-    pub fn assign_mod_mult(
+    pub fn mod_mult(
        &self,
        region: &mut Region<F>,
        offset: &mut usize,
@@ -486,7 +496,8 @@ impl<F: FieldExt> ModExpChip<F> {
         limb: &Limb<F>,
         limbs: &mut Vec<Limb<F>>
     ) -> Result <(), Error> {
-        let bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
+        let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
+        bool_limbs.reverse();
         let mut v = F::zero();
         for i in 0..27 {
             let l0 = F::from_u128(bool_limbs[i] as u128);
@@ -522,7 +533,38 @@ impl<F: FieldExt> ModExpChip<F> {
             limbs.append(&mut l.to_vec()[0..3].to_vec());
             v = v_next;
         }
+        /* todo
+         * constraint all the limbs to be either 1 or 0
+         */
         Ok(())
+    }
+
+    pub fn select(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        cond: &Limb<F>,
+        zero: &Number<F>,
+        base: &Number<F>,
+    ) -> Result <Number<F>, Error> {
+        //c * a + (1-c) * zero
+        let result = if cond.value == F::one() {zero.clone()} else {base.clone()};
+        let mut limbs = vec![];
+        for i in 0..4 {
+            let l = self.assign_line(region, offset,
+                [
+                    Some(base.limbs[0].clone()),
+                    Some(zero.limbs[0].clone()),
+                    Some(cond.clone()),
+                    Some(cond.clone()),
+                    Some(result.limbs[0].clone()),
+                    None,
+                ],
+                [None, Some(F::one()), None, None, Some(-F::one()), None, None, Some(F::one()), Some(-F::one())]
+            )?;
+            limbs.push(l[4].clone());
+        }
+        Ok(Number { limbs: limbs.try_into().unwrap() })
     }
 
     pub fn mod_exp(
@@ -530,14 +572,21 @@ impl<F: FieldExt> ModExpChip<F> {
         region: &mut Region<F>,
         offset: &mut usize,
         base: &Number<F>,
-        exp: &Number<F>
+        exp: &Number<F>,
+        modulus: &Number<F>,
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
-        let limbs0 = self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs);
-        let limbs1 = self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs);
-        let limbs2 = self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs);
-        // TODO apply the wnaf algorithm here
-        todo!();
+        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs)?;
+        self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs)?;
+        self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs)?;
+        let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
+        let zero = acc.clone();
+        for limb in limbs {
+            let v = self.select(region, offset, &limb, &zero, base)?;
+            acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
+            acc = self.mod_add(region, offset, &acc, &v)?;
+        }
+        Ok(acc)
     }
 }
 

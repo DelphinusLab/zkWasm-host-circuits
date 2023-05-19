@@ -19,8 +19,6 @@ use halo2ecc_s::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::circuit::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps};
 
-use crate::host::bls::BLSOP;
-
 pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
@@ -36,6 +34,8 @@ use halo2ecc_s::{
 
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
+
+use crate::host::ForeignInst;
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {}
@@ -345,9 +345,9 @@ impl super::HostOpSelector for Bls381PairChip<Fr> {
         indicator: Column<Fixed>,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
-            Fr::from(BLSOP::BLSPAIRG1 as u64),
-            Fr::from(BLSOP::BLSPAIRG2 as u64),
-            Fr::from(BLSOP::BLSPAIRGT as u64),
+            Fr::from(ForeignInst::BlspairG1 as u64),
+            Fr::from(ForeignInst::BlspairG2 as u64),
+            Fr::from(ForeignInst::BlspairG3 as u64),
         ];
         let mut arg_cells = vec![];
         /* The 0,2,4,6's u54 of every Fq(8 * u54) return true, others false  */
@@ -545,8 +545,8 @@ impl super::HostOpSelector for Bls381SumChip<Fr> {
         indicator: Column<Fixed>,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
-            Fr::from(BLSOP::BLSADD as u64),
-            Fr::from(BLSOP::BLSSUM as u64),
+            Fr::from(ForeignInst::BlsSumG1 as u64),
+            Fr::from(ForeignInst::BlsSumResult as u64),
         ];
         let mut arg_cells = vec![];
         /* The 0,2,4,6,8,10,12,14's u54 of every G1(17 * u54) return true, others false  */

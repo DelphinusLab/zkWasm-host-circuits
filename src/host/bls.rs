@@ -1,16 +1,15 @@
 #[derive(Copy, Clone)]
-pub enum BLSOP {
-    BLSPAIRG1 = 1,
-    BLSPAIRG2,
-    BLSPAIRGT,
-    BLSADD,
-    BLSSUM,
+pub enum ForeignInst {
+    BlspairG1 = 1,
+    BlspairG2,
+    BlspairG3,
+    BlsSumG1,
+    BlsSumResult,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::host::bls::BLSOP;
-    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
+    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
     use crate::utils::field_to_bn;
     use halo2_proofs::pairing::bls12_381::pairing;
     use halo2_proofs::pairing::bls12_381::{Fq as Bls381Fq, G1Affine, G2Affine, G1, G2, Gt as Bls381Gt};
@@ -20,7 +19,7 @@ mod tests {
     use std::fs::File;
     use std::ops::Add;
 
-    fn bls381_fr_to_args(f: Bls381Fq, op: BLSOP) -> Vec<ExternalHostCallEntry> {
+    fn bls381_fr_to_args(f: Bls381Fq, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
         let mut bn = field_to_bn(&f);
         let mut ret = vec![];
         for _ in 0..8 {
@@ -44,18 +43,18 @@ mod tests {
     }
 
     fn bls381_gt_to_pair_args(f: Bls381Gt) -> Vec<ExternalHostCallEntry> {
-        let c000 = bls381_fr_to_args(f.0.c0.c0.c0, BLSOP::BLSPAIRGT);
-        let c001 = bls381_fr_to_args(f.0.c0.c0.c1, BLSOP::BLSPAIRGT);
-        let c010 = bls381_fr_to_args(f.0.c0.c1.c0, BLSOP::BLSPAIRGT);
-        let c011 = bls381_fr_to_args(f.0.c0.c1.c1, BLSOP::BLSPAIRGT);
-        let c020 = bls381_fr_to_args(f.0.c0.c2.c0, BLSOP::BLSPAIRGT);
-        let c021 = bls381_fr_to_args(f.0.c0.c2.c1, BLSOP::BLSPAIRGT);
-        let c100 = bls381_fr_to_args(f.0.c1.c0.c0, BLSOP::BLSPAIRGT);
-        let c101 = bls381_fr_to_args(f.0.c1.c0.c1, BLSOP::BLSPAIRGT);
-        let c110 = bls381_fr_to_args(f.0.c1.c1.c0, BLSOP::BLSPAIRGT);
-        let c111 = bls381_fr_to_args(f.0.c1.c1.c1, BLSOP::BLSPAIRGT);
-        let c120 = bls381_fr_to_args(f.0.c1.c2.c0, BLSOP::BLSPAIRGT);
-        let c121 = bls381_fr_to_args(f.0.c1.c2.c1, BLSOP::BLSPAIRGT);
+        let c000 = bls381_fr_to_args(f.0.c0.c0.c0, ForeignInst::BlspairG3);
+        let c001 = bls381_fr_to_args(f.0.c0.c0.c1, ForeignInst::BlspairG3);
+        let c010 = bls381_fr_to_args(f.0.c0.c1.c0, ForeignInst::BlspairG3);
+        let c011 = bls381_fr_to_args(f.0.c0.c1.c1, ForeignInst::BlspairG3);
+        let c020 = bls381_fr_to_args(f.0.c0.c2.c0, ForeignInst::BlspairG3);
+        let c021 = bls381_fr_to_args(f.0.c0.c2.c1, ForeignInst::BlspairG3);
+        let c100 = bls381_fr_to_args(f.0.c1.c0.c0, ForeignInst::BlspairG3);
+        let c101 = bls381_fr_to_args(f.0.c1.c0.c1, ForeignInst::BlspairG3);
+        let c110 = bls381_fr_to_args(f.0.c1.c1.c0, ForeignInst::BlspairG3);
+        let c111 = bls381_fr_to_args(f.0.c1.c1.c1, ForeignInst::BlspairG3);
+        let c120 = bls381_fr_to_args(f.0.c1.c2.c0, ForeignInst::BlspairG3);
+        let c121 = bls381_fr_to_args(f.0.c1.c2.c1, ForeignInst::BlspairG3);
         vec![
             c000, c001, c010, c011, c020, c021, c100, c101, c110, c111, c120, c121,
         ]
@@ -64,7 +63,7 @@ mod tests {
         .collect()
     }
 
-    fn bls381_g1_to_args(g: G1Affine, op: BLSOP) -> Vec<ExternalHostCallEntry> {
+    fn bls381_g1_to_args(g: G1Affine, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
         let mut a = bls381_fr_to_args(g.x, op);
         let mut b = bls381_fr_to_args(g.y, op);
         let z: u64 = g.is_identity().unwrap_u8() as u64;
@@ -78,13 +77,13 @@ mod tests {
     }
 
     fn bls381_g2_to_pair_args(g: G2Affine) -> Vec<ExternalHostCallEntry> {
-        let x0 = bls381_fr_to_args(g.x.c0, BLSOP::BLSPAIRG2);
-        let x1 = bls381_fr_to_args(g.x.c1, BLSOP::BLSPAIRG2);
-        let y0 = bls381_fr_to_args(g.y.c0, BLSOP::BLSPAIRG2);
-        let y1 = bls381_fr_to_args(g.y.c1, BLSOP::BLSPAIRG2);
+        let x0 = bls381_fr_to_args(g.x.c0, ForeignInst::BlspairG2);
+        let x1 = bls381_fr_to_args(g.x.c1, ForeignInst::BlspairG2);
+        let y0 = bls381_fr_to_args(g.y.c0, ForeignInst::BlspairG2);
+        let y1 = bls381_fr_to_args(g.y.c1, ForeignInst::BlspairG2);
         let z: u64 = g.is_identity().unwrap_u8() as u64;
         let zentry = ExternalHostCallEntry {
-            op: BLSOP::BLSPAIRG2 as usize,
+            op: ForeignInst::BlspairG2 as usize,
             value: z,
             is_ret: false,
         };
@@ -96,7 +95,7 @@ mod tests {
 
     pub fn create_bls_pair_shared_table(a: G1Affine, b: G2Affine) -> ExternalHostCallEntryTable {
         let ab: Bls381Gt = pairing(&a, &b);
-        let g1_args = bls381_g1_to_args(a, BLSOP::BLSPAIRG1);
+        let g1_args = bls381_g1_to_args(a, ForeignInst::BlspairG1);
         let g2_args = bls381_g2_to_pair_args(b);
         let ab_args = bls381_gt_to_pair_args(ab);
         let table = ExternalHostCallEntryTable(
@@ -114,10 +113,10 @@ mod tests {
     ) -> ExternalHostCallEntryTable {
         let mut r = ls
             .iter()
-            .map(|x| bls381_g1_to_args(x.clone(), BLSOP::BLSADD))
+            .map(|x| bls381_g1_to_args(x.clone(), ForeignInst::BlsSumG1))
             .flatten()
             .collect::<Vec<ExternalHostCallEntry>>();
-        r.append(&mut bls381_g1_to_args(sum.clone(), BLSOP::BLSSUM));
+        r.append(&mut bls381_g1_to_args(sum.clone(), ForeignInst::BlsSumResult));
         ExternalHostCallEntryTable(r)
     }
     #[test]

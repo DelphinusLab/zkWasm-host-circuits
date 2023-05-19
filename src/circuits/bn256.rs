@@ -20,8 +20,6 @@ use halo2ecc_s::circuit::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps
 
 use halo2ecc_s::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
 
-use crate::host::bn256::BN256OP;
-
 pub const BN256FQ_SIZE: usize = 5;
 pub const BN256G1_SIZE: usize = 11;
 pub const BN256G2_SIZE: usize = 21;
@@ -37,6 +35,8 @@ use halo2ecc_s::{
 
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
+
+use crate::host::ForeignInst;
 
 #[derive(Clone, Debug)]
 pub struct Bn256ChipConfig {}
@@ -347,9 +347,9 @@ impl super::HostOpSelector for Bn256PairChip<Fr> {
         indicator: Column<Fixed>,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
-            Fr::from(BN256OP::BN256PAIRG1 as u64),
-            Fr::from(BN256OP::BN256PAIRG2 as u64),
-            Fr::from(BN256OP::BN256PAIRGT as u64),
+            Fr::from(ForeignInst::Bn254PairG1 as u64),
+            Fr::from(ForeignInst::Bn254PairG2 as u64),
+            Fr::from(ForeignInst::Bn254PairG3 as u64),
         ];
         let mut arg_cells = vec![];
         /* The 0,2's u54 of every Fq(5 * u54) return true, others false  */
@@ -548,8 +548,8 @@ impl super::HostOpSelector for Bn256SumChip<Fr> {
         indicator: Column<Fixed>,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
-            Fr::from(BN256OP::BN256ADD as u64),
-            Fr::from(BN256OP::BN256SUM as u64),
+            Fr::from(ForeignInst::Bn254SumG1 as u64),
+            Fr::from(ForeignInst::Bn254SumResult as u64),
         ];
         let mut arg_cells = vec![];
         /* The 0,2,5,7's u54 of every G1(11 * u54) return true, others false  */

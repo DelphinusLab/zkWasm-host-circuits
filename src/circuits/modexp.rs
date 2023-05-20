@@ -13,7 +13,7 @@ use std::ops::{Mul, Div};
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Layouter, Region, AssignedCell},
+    circuit::{Chip, Region, AssignedCell},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells
@@ -21,8 +21,6 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use std::marker::PhantomData;
-use std::ops::{Shr, Shl};
-use crate::constant;
 use num_bigint::BigUint;
 
 /*
@@ -157,11 +155,26 @@ impl<F: FieldExt> ModExpChip<F> {
 
     pub fn assign_constant (
         &self,
-        _region: &mut Region<F>,
-        _offset: &mut usize,
+        region: &mut Region<F>,
+        offset: &mut usize,
         number: Number<F>,
     ) -> Result<Number<F>, Error> {
-        todo!()
+        let mut limbs = vec![];
+        for i in 0..4 {
+            let l = self.assign_line(region, offset,
+                [
+                    Some(number.limbs[i].clone()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
+                [None, None, None, None, None, None, Some(F::from(number.limbs[i].value)), None, None],
+            )?;
+            limbs.push(l[0].clone())
+        }
+        Ok(Number {limbs: limbs.try_into().unwrap()})
     }
 
 
@@ -488,15 +501,17 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
-    /* decompose a limb into binary cells */
+    /* decompose a limb into binary cells, in big endian*/
     pub fn decompose_limb(
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         limb: &Limb<F>,
-        limbs: &mut Vec<Limb<F>>
+        limbs: &mut Vec<Limb<F>>,
+        limbsize: usize
     ) -> Result <(), Error> {
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
+        bool_limbs.truncate(limbsize);
         bool_limbs.reverse();
         let mut v = F::zero();
         for i in 0..27 {
@@ -553,11 +568,11 @@ impl<F: FieldExt> ModExpChip<F> {
         for i in 0..4 {
             let l = self.assign_line(region, offset,
                 [
-                    Some(base.limbs[0].clone()),
-                    Some(zero.limbs[0].clone()),
+                    Some(base.limbs[i].clone()),
+                    Some(zero.limbs[i].clone()),
                     Some(cond.clone()),
                     Some(cond.clone()),
-                    Some(result.limbs[0].clone()),
+                    Some(result.limbs[i].clone()),
                     None,
                 ],
                 [None, Some(F::one()), None, None, Some(-F::one()), None, None, Some(F::one()), Some(-F::one())]
@@ -576,9 +591,9 @@ impl<F: FieldExt> ModExpChip<F> {
         modulus: &Number<F>,
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
-        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs)?;
-        self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs)?;
-        self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs)?;
+        self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 108)?;
+        self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
+        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
         let zero = acc.clone();
         for limb in limbs {
@@ -597,10 +612,9 @@ mod tests {
     use num_bigint::BigUint;
 
     use halo2_proofs::{
-        circuit::{Cell, Chip, Layouter, Region, AssignedCell, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
         plonk::{
-            Fixed, Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
-            Selector,
+            Advice, Circuit, Column, ConstraintSystem, Error
         },
     };
 
@@ -741,16 +755,14 @@ mod tests {
                     let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
                     let bn_rem = self.base.clone() * self.base.clone() % self.modulus.clone();
                     let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
-                    let rem = modexpchip.assign_mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
+                    let rem = modexpchip.mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
                     for i in 0..4 {
                         println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
                         println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
-                        /*
                         region.constrain_equal(
                             rem.limbs[i].clone().cell.unwrap().cell(),
                             result.limbs[i].clone().cell.unwrap().cell()
                         )?;
-                        */
                     }
                     Ok(())
                 }

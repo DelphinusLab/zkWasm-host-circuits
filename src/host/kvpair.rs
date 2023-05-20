@@ -4,7 +4,8 @@ use poseidon::Poseidon;
 use crate::host::merkle:: {
     MerkleError,
     MerkleTree,
-    MerkleNode
+    MerkleNode,
+    MerkleErrorCode,
 };
 use mongodb::{
     Client,
@@ -174,11 +175,12 @@ impl MongoMerkle {
         leaf.set(&[0; 32].to_vec());
         leaf
     }
-    fn get_default_hash(&self, depth: usize) -> [u8; 32] {
+    /// depth start from 0 upto Self::height()
+    fn get_default_hash(&self, depth: usize) -> Result<[u8; 32], MerkleError> {
         if depth <= Self::height() {
-            self.default_hash[depth]
+            Ok(self.default_hash[Self::height() - depth])
         } else {
-            [0; 32]
+            Err(MerkleError::new([0;32], depth as u32, MerkleErrorCode::InvalidDepth))
         }
     }
 }
@@ -244,18 +246,30 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
             .expect("Unexpected DB Error");
         //println!("get_node_with_hash {} {:?} {:?}", index, hash, v);
         let height = (index+1).ilog2();
-        let node = v.map_or(
-            MerkleRecord {
-                index,
-                hash: self.get_default_hash(height as usize),
-                data:[0; 32],
-                left: self.get_default_hash((height+1) as usize),
-                right: self.get_default_hash((height+1) as usize),
+        v.map_or(
+            {
+                let default = self.get_default_hash(height as usize)?;
+                let child_hash = if height == Self::height() as u32 {
+                    [0; 32]
+                } else {
+                    self.get_default_hash((height+1) as usize)?
+                };
+                if default == *hash {
+                    Ok(MerkleRecord {
+                        index,
+                        hash: self.get_default_hash(height as usize)?,
+                        data:[0; 32],
+                        left: child_hash,
+                        right: child_hash,
+                    })
+                } else {
+                    Err (MerkleError::new(*hash, index, MerkleErrorCode::InvalidHash))
+                }
             }, |x| {
                 assert!(x.index == index);
-                x
-            });
-        Ok(node)
+                Ok(x)
+            }
+        )
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
@@ -272,6 +286,10 @@ mod tests {
     #[test]
     fn test_mongo_merkle_dummy() {
         let mut mt = MongoMerkle::construct([0;32], None);
+        let root = mt.get_root_hash();
+        println!("root hash is {:?}", root);
+        let err = mt.get_leaf_with_proof(2_u32.pow(20) - 1);
+        println!("err is {:?}", err);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         leaf.set(&[1u8;32].to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();

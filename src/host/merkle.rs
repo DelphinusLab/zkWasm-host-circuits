@@ -8,20 +8,29 @@ const INTERNAL_SIG: u8 = 1u8;
 */
 
 #[derive(Debug)]
+pub enum MerkleErrorCode {
+    InvalidLeafIndex,
+    InvalidHash,
+    InvalidDepth,
+    InvalidIndex,
+}
+
+#[derive(Debug)]
 pub struct MerkleError {
-    source: String,
+    source: [u8; 32],
     index: u32,
+    code: MerkleErrorCode,
 }
 
 impl MerkleError {
-    fn new(source: String, index: u32) -> Self {
-        MerkleError {source, index}
+    pub fn new(source: [u8; 32], index: u32, code: MerkleErrorCode) -> Self {
+        MerkleError {source, index, code}
     }
 }
 
 impl fmt::Display for MerkleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MerkleError {:?} {:?}", self.source, self.index)
+        write!(f, "MerkleError {:?} {:?} {:?}", self.source, self.index, self.code)
     }
 }
 
@@ -68,7 +77,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
 
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
         if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
-            Err(MerkleError::new("path out of boundary".to_string(), index))
+            Err(MerkleError::new([0;32], index, MerkleErrorCode::InvalidIndex))
         } else {
             Ok(())
         }
@@ -90,7 +99,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
             && (index as u32) < (2_u32.pow((D as u32) + 1) - 1){
            Ok(())
         } else {
-            Err(MerkleError::new("Invalid leaf index".to_string(), index))
+            Err(MerkleError::new([0; 32], index, MerkleErrorCode::InvalidLeafIndex))
         }
     }
 

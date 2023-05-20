@@ -114,7 +114,7 @@ impl<F:FieldExt> Reduce<F> {
         let mut cursor = self.cursor;
         let mut total = 0;
         for index in 0..self.rules.len() {
-            total += self.rules[index].nb_inputs(); 
+            total += self.rules[index].nb_inputs();
             if cursor >= self.rules[index].nb_inputs() {
                 cursor = cursor - self.rules[index].nb_inputs();
             } else {
@@ -133,9 +133,10 @@ impl<F:FieldExt> Reduce<F> {
 mod tests {
     use super::Reduce;
     use super::ReduceRule;
+    use halo2_proofs::pairing::bn256::Fr;
     #[test]
     fn test_reduce_bytes() {
-        let reducerule = ReduceRule::Bytes(vec![], 4);
+        let reducerule = ReduceRule::<Fr>::Bytes(vec![], 4);
         let mut reduce = Reduce { cursor:0, rules: vec![reducerule] };
         reduce.reduce(1);
     }

@@ -216,7 +216,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
         hasher.squeeze().to_bytes()
     }
 
-    fn set_parent_hash(&mut self, index: u32, hash: &[u8; 32], left: &[u8;32], right: &[u8; 32]) -> Result<(), MerkleError> {
+    fn set_parent(&mut self, index: u32, hash: &[u8; 32], left: &[u8;32], right: &[u8; 32]) -> Result<(), MerkleError> {
         self.boundary_check(index)?;
         let record = MerkleRecord {
                 index,

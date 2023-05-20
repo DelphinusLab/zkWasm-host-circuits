@@ -69,11 +69,12 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     fn construct(id: Self::Id) -> Self;
 
     fn hash(a:&H, b:&H) -> H;
-    fn set_parent_hash(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
+    fn set_parent(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
     fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;
+    fn get_node_with_hash(&self, index: u32, hash: &H) -> Result<Self::Node, MerkleError>;
+
     fn get_root_hash(&self) -> H;
     fn update_root_hash(&mut self, hash: &H);
-    fn get_node_with_hash(&self, index: u32, hash: &H) -> Result<Self::Node, MerkleError>;
 
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
         if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
@@ -190,7 +191,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
             hash = Self::hash(left, right);
             p = p/2;
             let index = p + (1 << depth) - 1 ;
-            self.set_parent_hash(index, &hash, left, right)?;
+            self.set_parent(index, &hash, left, right)?;
         };
         self.update_root_hash(&hash);
         proof.root = hash;
@@ -277,11 +278,13 @@ mod tests {
             return self.data[0]
         }
         fn update_root_hash(&mut self, _h: &u64) {}
+
         fn get_node_with_hash(&self, index: u32, _hash: &u64) -> Result<Self::Node, MerkleError> {
             self.boundary_check(index)?;
             Ok(MerkleU64Node {value: self.data[index as usize], index})
         }
-        fn set_parent_hash(&mut self, index: u32, hash: &u64, _left: &u64, _right: &u64) -> Result<(), MerkleError> {
+
+        fn set_parent(&mut self, index: u32, hash: &u64, _left: &u64, _right: &u64) -> Result<(), MerkleError> {
             self.boundary_check(index)?;
             self.data[index as usize] = *hash;
             Ok(())

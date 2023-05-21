@@ -107,14 +107,18 @@ impl<F: FieldExt> Reduce<F> {
             rules,
         }
     }
+    pub fn total_len(&self) -> usize {
+        self.rules.iter().fold(0, |acc, x| {
+            acc + x.nb_inputs()
+        })
+    }
 }
 
 impl<F:FieldExt> Reduce<F> {
     pub fn reduce(&mut self, v: u64) {
         let mut cursor = self.cursor;
-        let mut total = 0;
+        let total = self.total_len();
         for index in 0..self.rules.len() {
-            total += self.rules[index].nb_inputs();
             if cursor >= self.rules[index].nb_inputs() {
                 cursor = cursor - self.rules[index].nb_inputs();
             } else {
@@ -134,12 +138,33 @@ mod tests {
     use super::Reduce;
     use super::ReduceRule;
     use halo2_proofs::pairing::bn256::Fr;
+    fn new_reduce(rules: Vec<ReduceRule<Fr>>) -> Reduce<Fr> {
+        Reduce {
+           cursor: 0,
+           rules
+        }
+    }
+
     #[test]
     fn test_reduce_bytes() {
         let reducerule = ReduceRule::<Fr>::Bytes(vec![], 4);
         let mut reduce = Reduce { cursor:0, rules: vec![reducerule] };
         reduce.reduce(1);
     }
+
+    #[test]
+    fn test_reduce_u64() {
+        let mut get = new_reduce(vec![
+                ReduceRule::U64(0),
+                ReduceRule::U64(0),
+                ReduceRule::U64(0),
+                ReduceRule::U64(0),
+            ]);
+        get.reduce(12);
+        assert_eq!(get.cursor, 1);
+        assert_eq!(get.rules[0].u64_value().unwrap(), 12);
+    }
+
 }
 
 

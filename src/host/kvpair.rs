@@ -156,7 +156,7 @@ impl MerkleRecord {
 }
 
 impl MongoMerkle {
-    fn height() -> usize {
+    pub fn height() -> usize {
         return 20
     }
     fn empty_leaf(index: u32) -> MerkleRecord {

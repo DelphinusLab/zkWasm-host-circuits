@@ -183,6 +183,19 @@ macro_rules! customized_circuits_expand {
                 }
             }
 
+            fn get_expr_with_offset<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell, offset: usize) -> Expression<F> {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 0 { // advice
+                    meta.query_advice(self.witness[cell[1]], Rotation((cell[2] + offset) as i32))
+                } else if cell[0] == 1 { // fix
+                    meta.query_fixed(self.fixed[cell[1]], Rotation((cell[2] + offset) as i32))
+                } else { // selector
+                    meta.query_selector(self.selector[cell[1]])
+                }
+            }
+
+
             fn assign_cell<F:FieldExt>(
                 &self,
                 region: &mut Region<F>,
@@ -215,7 +228,7 @@ macro_rules! customized_circuits_expand {
                 &self,
                 region: &mut Region<F>,
                 start_offset: usize,
-                gate_cell: GateCell,
+                gate_cell: &GateCell,
             ) -> Result<(), Error> {
                 assert!(gate_cell.cell[0] == 2);
                 self.selector[gate_cell.cell[1]].enable(region, start_offset + gate_cell.cell[2])

@@ -3,6 +3,7 @@ use crate::{
     table_item,
     item_count,
     customized_circuits_expand,
+    constant_from,
 };
 use crate::utils::GateCell;
 use std::marker::PhantomData;
@@ -26,11 +27,11 @@ use halo2ecc_s::{
     },
 };
 
-use crate::constant_from;
 use crate::host::merkle::{MerkleTree, MerkleProof};
+use crate::host::kvpair::MongoMerkle;
 
 
-/* Given a merkel tree eg1:
+/* Given a merkel tree eg1 with height=3:
  * 0
  * 1 2
  * 3 4 5 6
@@ -39,8 +40,8 @@ use crate::host::merkle::{MerkleTree, MerkleProof};
  */
 
 customized_circuits!(MerkleConfig, 2, 7, 1, 2,
-   | carry   | left | right | index   | k   | odd   | pos   | is_set | sel
-   | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil
+   | carry   | left | right | index   | k   | odd   | pos   | is_set | is_proof_start | sel
+   | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil            | nil
 );
 
 
@@ -90,6 +91,10 @@ impl<F: FieldExt> MerkleChip<F> {
         }
     }
 
+    pub fn proof_height() -> usize {
+        MongoMerkle::height()
+    }
+
     pub fn configure(cs: &mut ConstraintSystem<F>) -> MerkleConfig {
         let witness= [0; 7]
                 .map(|_|cs.advice_column());
@@ -126,6 +131,26 @@ impl<F: FieldExt> MerkleChip<F> {
                 sel * pos * (constant_from!(2) * k_n + odd_n - k),
             ]
         });
+
+        cs.create_gate("set get has equal path", |meta| {
+            let left = config.get_expr(meta, MerkleConfig::left());
+            let right = config.get_expr(meta, MerkleConfig::right());
+            let odd = config.get_expr(meta, MerkleConfig::odd());
+            let is_set = config.get_expr(meta, MerkleConfig::is_set());
+            let sel = config.get_expr(meta, MerkleConfig::sel());
+            
+            let left_rel = config.get_expr_with_offset(meta, MerkleConfig::left(), Self::proof_height());
+            let right_rel = config.get_expr_with_offset(meta, MerkleConfig::right(), Self::proof_height());
+            let odd_rel = config.get_expr_with_offset(meta, MerkleConfig::odd(), Self::proof_height());
+
+            let get_rel = left * (constant_from!(1) - odd.clone()) + right * odd;
+            let set_rel = left_rel * (constant_from!(1) - odd_rel.clone()) + right_rel * odd_rel;
+
+            vec![
+                is_set * sel * (get_rel - set_rel)
+            ]
+        });
+
         config
     }
 
@@ -133,52 +158,55 @@ impl<F: FieldExt> MerkleChip<F> {
     fn assign_proof<const D: usize, M: MerkleTree<F, D>>(
         &self,
         region: &mut Region<F>,
-        start_offset: usize,
+        offset: &mut usize,
         _merkle: &M,
         proof: &MerkleProof<F, D>,
     ) -> Result<(), Error> {
-        let mut offset = proof.index - (1u32 << D) - 1;
+        let mut index_offset = proof.index - (1u32 << D) - 1;
         let mut carry = proof.source;
+        self.config.enable_selector(region, *offset, &MerkleConfig::is_proof_start())?;
         for i in 0..D {
             let depth = D-i-1;
             let pos = (1u32 << depth) - 1;
-            let index = offset + pos;
-            let k = offset/2;
-            let odd = offset - (k*2);
+            let index = index_offset + pos;
+            let k = index_offset / 2;
+            let odd = index_offset - (k*2);
             let (left, right) = if odd == 1 { (&proof.assist[i], &carry) } else { (&carry, &proof.assist[i]) };
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::pos(), F::from(pos as u64))?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::k(), F::from(k as u64))?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::odd(), F::from(odd as u64))?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::carry(), carry)?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::index(), F::from(index as u64))?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::left(), *left)?;
-            self.config.assign_cell(region, start_offset+i, &MerkleConfig::right(), *right)?;
-            offset = offset/2;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::pos(), F::from(pos as u64))?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::k(), F::from(k as u64))?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::odd(), F::from(odd as u64))?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::carry(), carry)?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::index(), F::from(index as u64))?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::left(), *left)?;
+            self.config.assign_cell(region, *offset+i, &MerkleConfig::right(), *right)?;
+            self.config.enable_selector(region, *offset+i, &MerkleConfig::sel())?;
+            index_offset = index_offset / 2;
             carry = M::hash(left, right);
         }
+        *offset += D;
         Ok(())
     }
 
     pub fn assign_get<const D: usize, M: MerkleTree<F, D>>(
         &self,
         region: &mut Region<F>,
-        start_offset: usize,
+        offset: &mut usize,
         merkle: &M,
         proof: &MerkleProof<F, D>,
     ) -> Result<(), Error> {
-        self.assign_proof(region, start_offset, merkle, proof)
+        self.assign_proof(region, offset, merkle, proof)
     }
 
     pub fn assign_set<const D: usize, M: MerkleTree<F, D>>(
         &self,
         region: &mut Region<F>,
-        start_offset: usize,
+        offset: &mut usize,
         merkle: &M,
         proof_get: &MerkleProof<F, D>,
         proof_set: &MerkleProof<F, D>,
     ) -> Result<(), Error> {
-        self.assign_proof(region, start_offset, merkle, proof_get)?;
-        self.assign_proof(region, start_offset, merkle, proof_set)
+        self.assign_proof(region, offset, merkle, proof_get)?;
+        self.assign_proof(region, offset, merkle, proof_set)
     }
 }
 

@@ -246,7 +246,7 @@ impl<F: FieldExt> ModExpChip<F> {
             let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
             self.config.assign_cell(region, *offset, &cs[i], v).unwrap();
         }
-        self.config.enable_selector(region, *offset, ModExpConfig::sel())?;
+        self.config.enable_selector(region, *offset, &ModExpConfig::sel())?;
         *offset = *offset+1;
         Ok(limbs)
     }

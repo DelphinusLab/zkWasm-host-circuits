@@ -96,10 +96,21 @@ impl MongoMerkle {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
-        collection
-            .insert_one(record, None)
-            .await?;
-        Ok(())
+        let mut filter = doc! {};
+        filter.insert("index", record.index);
+        filter.insert("hash", bytes_to_bson(&record.hash));
+        let exists = collection.find_one(filter, None).await?;
+        exists.map_or({
+                collection
+                    .insert_one(record, None)
+                    .await?;
+                Ok(())
+            },
+            |_| {
+                //println!("find existing node, preventing duplicate");
+                Ok(())
+            }
+        )
     }
 }
 

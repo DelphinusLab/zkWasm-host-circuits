@@ -50,6 +50,7 @@ fn bytes_to_bson(x: &[u8;32]) -> Bson {
     })
 }
 
+#[derive (Debug)]
 pub struct MongoMerkle {
     contract_address: [u8;32],
     root_hash: [u8; 32],
@@ -193,7 +194,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
 
     fn construct(id: Self::Id) -> Self {
         MongoMerkle {
-           contract_address: id,
+           contract_address: [0;32],
            root_hash: id,
            default_hash: (*DEFAULT_HASH_VEC).clone()
         }
@@ -276,13 +277,47 @@ mod tests {
     fn test_mongo_merkle_dummy() {
         let mut mt = MongoMerkle::construct(DEFAULT_HASH_VEC[MongoMerkle::height()]);
         let root = mt.get_root_hash();
+        let root64 = root.chunks(8).into_iter().map(|x| {
+           u64::from_le_bytes(x.to_vec().try_into().unwrap())
+        }).collect::<Vec<u64>>();
+
         println!("root hash is {:?}", root);
+        println!("root64 hash is {:?}", root64);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        leaf.set(&[1u8;32].to_vec());
+        let update_data = [0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        leaf.set(&update_data.to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root.chunks(8).into_iter().map(|x| {
+           u64::from_le_bytes(x.to_vec().try_into().unwrap())
+        }).collect::<Vec<u64>>();
+
+        println!("root hash is {:?}", root);
+        println!("root64 hash is {:?}", root64);
+
+        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
+        println!("mt is {:?}", &mt);
+        println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
+
+
+        let a = [146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11];
+        let mt = MongoMerkle::construct(a);
+        println!("mt is {:?}", &mt);
+        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
+        println!("kv pair again < {:?}, {:?} >", leaf.index, leaf.data);
+
+    }
+
+    #[test]
+    fn test_merkle_get() {
+        let a = [146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11];
+        let mt = MongoMerkle::construct(a);
         let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
     }
+
+
 
     #[test]
     fn test_generate_kv_input() {

@@ -14,6 +14,7 @@ use mongodb::{
 use mongodb::bson::{
     spec::BinarySubtype, Bson
 };
+use mongodb::options::DropCollectionOptions;
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -66,9 +67,18 @@ pub async fn get_collection<T>(
     Ok(database.collection::<T>(name.as_str()))
 }
 
+pub async fn drop_collection<T>(
+    database: String,
+    name: String,
+) -> Result<(), mongodb::error::Error> {
+    let collection = get_collection::<MerkleRecord>(database, name).await?;
+    let options = DropCollectionOptions::builder().build();
+    collection.drop(options).await
+}
+
 impl MongoMerkle {
     fn get_collection_name(&self) -> String {
-        format!("MERKLEDATA-{}", hex::encode(&self.contract_address))
+        format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
     fn get_db_name() -> String {
         return "zkwasmkvpair".to_string()
@@ -199,13 +209,13 @@ lazy_static::lazy_static! {
 }
 
 impl MerkleTree<[u8;32], 20> for MongoMerkle {
-
     type Id = [u8; 32];
+    type Addr = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(id: Self::Id) -> Self {
+    fn construct(addr: Self::Addr, id: Self::Id) -> Self {
         MongoMerkle {
-           contract_address: [0;32],
+           contract_address: addr,
            root_hash: id,
            default_hash: (*DEFAULT_HASH_VEC).clone()
         }
@@ -274,7 +284,7 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
-        self.boundary_check(leaf.index())?;
+        self.boundary_check(leaf.index())?; //should be leaf check?
         executor::block_on(self.update_record(leaf.clone())).expect("Unexpected DB Error");
         Ok(())
     }
@@ -282,18 +292,28 @@ impl MerkleTree<[u8;32], 20> for MongoMerkle {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::merkle::{MerkleNode, MerkleTree};
-    use super::{MongoMerkle, DEFAULT_HASH_VEC};
+    use crate::host::{merkle::{MerkleNode, MerkleTree}, kvpair::drop_collection};
+    use super::{MongoMerkle, MerkleRecord, DEFAULT_HASH_VEC};
+    use futures::executor;
     #[test]
+    /* Basic tests for 20 height m tree
+     * 1. Clear DB. Create default empty m tree. Check root.
+     * 2. Update index=2_u32.pow(20) - 1 leave value. Check root.
+     * 3. Check index=2_u32.pow(20) - 1 leave value updated.
+     * 4. Load m tree from DB, check root and leave value.
+     */
     fn test_mongo_merkle_dummy() {
-        let mut mt = MongoMerkle::construct(DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        // 1
+        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        executor::block_on(drop_collection::<MerkleRecord>(MongoMerkle::get_db_name(), mt.get_collection_name())).expect("Unexpected DB Error");
         let root = mt.get_root_hash();
         let root64 = root.chunks(8).into_iter().map(|x| {
            u64::from_le_bytes(x.to_vec().try_into().unwrap())
         }).collect::<Vec<u64>>();
+        assert_eq!(root, [166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75, 233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9]);
+        assert_eq!(root64, [4074723173704310182, 3116368985344895753, 15689180094961269493, 694055158784170088]);
 
-        println!("root hash is {:?}", root);
-        println!("root64 hash is {:?}", root64);
+        // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         let update_data = [0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         leaf.set(&update_data.to_vec());
@@ -303,36 +323,27 @@ mod tests {
         let root64 = root.chunks(8).into_iter().map(|x| {
            u64::from_le_bytes(x.to_vec().try_into().unwrap())
         }).collect::<Vec<u64>>();
+        assert_eq!(root, [146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11]);
+        assert_eq!(root64, [4859954923657534098, 3281306917386732753, 3001185769554269820, 848449750789948694]);
 
-        println!("root hash is {:?}", root);
-        println!("root64 hash is {:?}", root64);
-
+        // 3
         let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        println!("mt is {:?}", &mt);
-        println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
+        assert_eq!(leaf.index, 2_u32.pow(20) - 1);
+        assert_eq!(leaf.data, [0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-
+        // 4
         let a = [146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11];
-        let mt = MongoMerkle::construct(a);
-        println!("mt is {:?}", &mt);
+        let mt = MongoMerkle::construct([0; 32],a);
+        assert_eq!(mt.get_root_hash(), a);
         let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        println!("kv pair again < {:?}, {:?} >", leaf.index, leaf.data);
+        assert_eq!(leaf.index, 2_u32.pow(20) - 1);
+        assert_eq!(leaf.data, [0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
     }
-
-    #[test]
-    fn test_merkle_get() {
-        let a = [146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11];
-        let mt = MongoMerkle::construct(a);
-        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        println!("kv pair < {:?}, {:?} >", leaf.index, leaf.data);
-    }
-
-
 
     #[test]
     fn test_generate_kv_input() {
-        let mut mt = MongoMerkle::construct(DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
         leaf.set(&[1u8;32].to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();

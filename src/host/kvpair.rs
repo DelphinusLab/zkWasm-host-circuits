@@ -310,14 +310,168 @@ mod tests {
         merkle::{MerkleNode, MerkleTree},
     };
     use futures::executor;
+
+    #[test]
+    /* Test for check parent node
+     * 1. Clear m tree collection. Create default empty m tree. Check root.
+     * 2. Update index=2_u32.pow(20) - 1 (first leaf) leave value.
+     * 3. Update index=2_u32.pow(20) (second leaf) leave value.
+     * 4. Get index=2_u32.pow(19) - 1 node with hash and confirm the left and right are previous set leaves.
+     * 5. Load mt from DB and Get index=2_u32.pow(19) - 1 node with hash and confirm the left and right are previous set leaves.
+     */
+    fn test_mongo_merkle_parent_node() {
+        // Init checking results
+        const TEST_ADDR: [u8; 32] = [1; 32];
+
+        const DEFAULT_ROOT_HASH: [u8; 32] = [
+            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
+            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+        ];
+        const DEFAULT_ROOT_HASH64: [u64; 4] = [
+            4074723173704310182,
+            3116368985344895753,
+            15689180094961269493,
+            694055158784170088,
+        ];
+
+        const INDEX1: u32 = 2_u32.pow(20) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
+            146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
+            142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
+        ];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
+            4859954923657534098,
+            3281306917386732753,
+            3001185769554269820,
+            848449750789948694,
+        ];
+
+        const INDEX2: u32 = 2_u32.pow(20);
+        const LEAF2_DATA: [u8; 32] = [
+            0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [
+            85, 8, 43, 221, 140, 128, 115, 118, 70, 71, 130, 25, 120, 183, 70, 207, 168, 71, 44,
+            41, 135, 151, 172, 193, 83, 125, 3, 205, 166, 227, 251, 20,
+        ];
+        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [
+            8535307061291583573,
+            14935826940672755526,
+            13955695952081471400,
+            1512052405456567635,
+        ];
+
+        const PARENT_INDEX: u32 = 2_u32.pow(19) - 1;
+
+        // 1
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        executor::block_on(drop_collection::<MerkleRecord>(
+            MongoMerkle::get_db_name(),
+            mt.get_collection_name(),
+        ))
+        .expect("Unexpected DB Error");
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, DEFAULT_ROOT_HASH);
+        assert_eq!(root64, DEFAULT_ROOT_HASH64);
+
+        // 2
+        let (mut leaf1, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf1.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf1).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF1);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF1);
+
+        // 3
+        let (mut leaf2, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        leaf2.set(&LEAF2_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf2).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF2);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF2);
+
+        // 4
+        let parent_hash: [u8; 32] = MongoMerkle::hash(&leaf1.hash, &leaf2.hash);
+        let parent_node = mt.get_node_with_hash(PARENT_INDEX, &parent_hash).unwrap();
+        assert_eq!(leaf1.hash, parent_node.left().unwrap());
+        assert_eq!(leaf2.hash, parent_node.right().unwrap());
+
+        // 5
+        let a: [u8; 32] = ROOT_HASH_AFTER_LEAF2;
+        let mt_loaded: MongoMerkle = MongoMerkle::construct(TEST_ADDR, a);
+        assert_eq!(mt_loaded.get_root_hash(), a);
+        let (leaf1, _) = mt_loaded.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf1.index, INDEX1);
+        assert_eq!(leaf1.data, LEAF1_DATA);
+        let (leaf2, _) = mt_loaded.get_leaf_with_proof(INDEX2).unwrap();
+        assert_eq!(leaf2.index, INDEX2);
+        assert_eq!(leaf2.data, LEAF2_DATA);
+        let parent_hash: [u8; 32] = MongoMerkle::hash(&leaf1.hash, &leaf2.hash);
+        let parent_node = mt_loaded
+            .get_node_with_hash(PARENT_INDEX, &parent_hash)
+            .unwrap();
+        assert_eq!(leaf1.hash, parent_node.left().unwrap());
+        assert_eq!(leaf2.hash, parent_node.right().unwrap());
+    }
+
     #[test]
     /* Basic tests for 20 height m tree
-     * 1. Clear DB. Create default empty m tree. Check root.
-     * 2. Update index=2_u32.pow(20) - 1 leave value. Check root.
+     * 1. Clear m tree collection. Create default empty m tree. Check root.
+     * 2. Update index=2_u32.pow(20) - 1 (first leaf) leave value. Check root.
      * 3. Check index=2_u32.pow(20) - 1 leave value updated.
      * 4. Load m tree from DB, check root and leave value.
      */
-    fn test_mongo_merkle_dummy() {
+    fn test_mongo_merkle_single_leaf_update() {
+        // Init checking results
+        const DEFAULT_ROOT_HASH: [u8; 32] = [
+            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
+            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+        ];
+        const DEFAULT_ROOT_HASH64: [u64; 4] = [
+            4074723173704310182,
+            3116368985344895753,
+            15689180094961269493,
+            694055158784170088,
+        ];
+
+        const INDEX1: u32 = 2_u32.pow(20) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
+            146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
+            142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
+        ];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
+            4859954923657534098,
+            3281306917386732753,
+            3001185769554269820,
+            848449750789948694,
+        ];
+
         // 1
         let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
@@ -331,30 +485,12 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
-        assert_eq!(
-            root,
-            [
-                166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186,
-                75, 233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9
-            ]
-        );
-        assert_eq!(
-            root64,
-            [
-                4074723173704310182,
-                3116368985344895753,
-                15689180094961269493,
-                694055158784170088
-            ]
-        );
+        assert_eq!(root, DEFAULT_ROOT_HASH);
+        assert_eq!(root64, DEFAULT_ROOT_HASH64);
 
         // 2
-        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        let update_data = [
-            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ];
-        leaf.set(&update_data.to_vec());
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();
 
         let root = mt.get_root_hash();
@@ -363,50 +499,174 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
-        assert_eq!(
-            root,
-            [
-                146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61,
-                115, 142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11
-            ]
-        );
-        assert_eq!(
-            root64,
-            [
-                4859954923657534098,
-                3281306917386732753,
-                3001185769554269820,
-                848449750789948694
-            ]
-        );
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF1);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF1);
 
         // 3
-        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        assert_eq!(leaf.index, 2_u32.pow(20) - 1);
-        assert_eq!(
-            leaf.data,
-            [
-                0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0
-            ]
-        );
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
 
         // 4
-        let a = [
+        let a = ROOT_HASH_AFTER_LEAF1;
+        let mt = MongoMerkle::construct([0; 32], a);
+        assert_eq!(mt.get_root_hash(), a);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
+    }
+
+    #[test]
+    /* Tests for 20 height m tree with updating multple leaves
+     * 1. Clear m tree collection. Create default empty m tree. Check root (default one, A).
+     * 2. Update index=2_u32.pow(20) - 1 (first leaf) leave value. Check root (1 leave updated, B). Check index=2_u32.pow(20) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(20) (second leaf) leave value. Check root (1 leave updated, C). Check index=2_u32.pow(20) leave value updated.
+     * 4. Update index=2_u32.pow(21) - 2 (last leaf) leave value. Check root (1 leave updated, D). Check index=2_u32.pow(21) -2 leave value updated.
+     * 5. Load m tree from DB with D root hash, check root and leaves' values.
+     */
+    fn test_mongo_merkle_multi_leaves_update() {
+        // Init checking results
+        const DEFAULT_ROOT_HASH: [u8; 32] = [
+            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
+            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+        ];
+        const DEFAULT_ROOT_HASH64: [u64; 4] = [
+            4074723173704310182,
+            3116368985344895753,
+            15689180094961269493,
+            694055158784170088,
+        ];
+
+        const INDEX1: u32 = 2_u32.pow(20) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
             146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
             142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
         ];
-        let mt = MongoMerkle::construct([0; 32], a);
-        assert_eq!(mt.get_root_hash(), a);
-        let (leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        assert_eq!(leaf.index, 2_u32.pow(20) - 1);
-        assert_eq!(
-            leaf.data,
-            [
-                0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0
-            ]
-        );
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
+            4859954923657534098,
+            3281306917386732753,
+            3001185769554269820,
+            848449750789948694,
+        ];
+
+        const INDEX2: u32 = 2_u32.pow(20);
+        const LEAF2_DATA: [u8; 32] = [
+            0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [
+            85, 8, 43, 221, 140, 128, 115, 118, 70, 71, 130, 25, 120, 183, 70, 207, 168, 71, 44,
+            41, 135, 151, 172, 193, 83, 125, 3, 205, 166, 227, 251, 20,
+        ];
+        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [
+            8535307061291583573,
+            14935826940672755526,
+            13955695952081471400,
+            1512052405456567635,
+        ];
+
+        const INDEX3: u32 = 2_u32.pow(21) - 2;
+        const LEAF3_DATA: [u8; 32] = [
+            18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF3: [u8; 32] = [
+            28, 84, 99, 220, 229, 74, 35, 103, 22, 167, 191, 145, 179, 136, 24, 147, 189, 87, 94,
+            132, 23, 141, 77, 57, 81, 181, 165, 158, 112, 90, 186, 34,
+        ];
+        const ROOT64_HASH_AFTER_LEAF3: [u64; 4] = [
+            7431866161196913692,
+            10599372027842242326,
+            4129111565513152445,
+            2502411982702228817,
+        ];
+
+        // 1
+        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        executor::block_on(drop_collection::<MerkleRecord>(
+            MongoMerkle::get_db_name(),
+            mt.get_collection_name(),
+        ))
+        .expect("Unexpected DB Error");
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, DEFAULT_ROOT_HASH);
+        assert_eq!(root64, DEFAULT_ROOT_HASH64);
+
+        // 2
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF1);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF1);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        leaf.set(&LEAF2_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF2);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF2);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        assert_eq!(leaf.index, INDEX2);
+        assert_eq!(leaf.data, LEAF2_DATA);
+
+        // 4
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        leaf.set(&LEAF3_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF3);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF3);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        assert_eq!(leaf.index, INDEX3);
+        assert_eq!(leaf.data, LEAF3_DATA);
+
+        // 5
+        let mt = MongoMerkle::construct([0; 32], ROOT_HASH_AFTER_LEAF3);
+        assert_eq!(mt.get_root_hash(), ROOT_HASH_AFTER_LEAF3);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        assert_eq!(leaf.index, INDEX2);
+        assert_eq!(leaf.data, LEAF2_DATA);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        assert_eq!(leaf.index, INDEX3);
+        assert_eq!(leaf.data, LEAF3_DATA);
     }
 
     #[test]

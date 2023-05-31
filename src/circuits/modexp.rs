@@ -591,9 +591,12 @@ impl<F: FieldExt> ModExpChip<F> {
         modulus: &Number<F>,
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
+        
         self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 108)?;
         self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
         self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
+        // todo() fix issue here: index out of bounds: the len is 1 but the index is 1
+
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
         let zero = acc.clone();
         for limb in limbs {
@@ -601,6 +604,56 @@ impl<F: FieldExt> ModExpChip<F> {
             acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
             acc = self.mod_add(region, offset, &acc, &v)?;
         }
+        
+        /*
+         * General routine for a^b mod n, by repeated modular multiplication:
+         * 
+         *  - set an accumulator 'acc' to 1.
+         *  - set a register 'squared' = a.
+         *  - using register m as 'muled'
+         *  - decompose the exponent into bits.
+         *  - loop over all bits of the exponent.
+         *  entry
+         *    | → ┐
+         *    ↑   ↓ 0. take a copy of acc by setting acc_old <-- acc
+         *    ↑   ↓ 1. set m = (acc * squared) mod n
+         *    ↑   ↓ 2. if: exponent bit is 1 then set acc <-- m
+         *    ↑   ↓        exponent bit is 0 then set acc <-- acc_old
+         *    ↑   ↓ 3. set squared = (squared * squared) mod n
+         *    └ ← ┘
+         */
+
+        //let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;  //commented out to not conflict above.
+        let mut squared = base.clone();
+        let mut muled = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
+
+        let bn_exp: BigUint = ((field_to_bn(&exp.limbs[2].value)) << 216) 
+            + ((field_to_bn(&exp.limbs[1].value)) << 108) 
+            + field_to_bn(&exp.limbs[0].value);
+
+        let exp_bits = bn_exp
+            .to_bytes_le()
+            .into_iter()
+            .flat_map(|v| {
+                (0..8)
+                    .map(|i: u8| (v >> i) & 1u8 == 1u8)
+                    .collect::<Vec<bool>>()
+            })
+            .collect::<Vec<bool>>();
+
+        let exp_bits = exp_bits[0..(bn_exp.bits() as usize)].to_vec();
+
+        for exp_bit in exp_bits.into_iter() {
+
+            // Compute `acc * squared`.
+            let muled = self.mod_mult(region, offset, &acc, &squared, &modulus)?;
+
+            // If exp_bit = true, set acc <-- (acc * squared). o.w., set acc <-- acc_old.
+            // square squared. using mod_mult()
+            // todo() finish implementation.
+        }
+
+
         Ok(acc)
     }
 }
@@ -611,12 +664,20 @@ mod tests {
     use halo2_proofs::dev::MockProver;
     use num_bigint::BigUint;
 
+
+
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
         plonk::{
             Advice, Circuit, Column, ConstraintSystem, Error
         },
     };
+
+    use crate::utils::*;
+    use rand::{thread_rng, Rng};
+    use num_bigint::RandomBits;
+
+    const LIMB_WIDTH: usize = 108;
 
     use super::{
         ModExpChip,
@@ -748,14 +809,19 @@ mod tests {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
-                || "assign mod mult",
+                || "assign mod exp",
                 |mut region| {
                     let mut offset = 0;
                     let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
                     let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
-                    let bn_rem = self.base.clone() * self.base.clone() % self.modulus.clone();
-                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
-                    let rem = modexpchip.mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
+
+                    let exp = helperchip.assign_base(&mut region, &mut offset, &self.exp)?; 
+
+                    let bn_res = self.base.clone() * self.exp.clone() % self.modulus.clone();   // needs pow
+
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
+
+                    let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
                     for i in 0..4 {
                         println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
                         println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
@@ -771,16 +837,287 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_modexp_circuit() {
         let base = BigUint::from(1u128 << 100);
-        let exp = BigUint::from(2u128 << 100);
+        let exp = BigUint::from(170u128);   // 0xAA
         let modulus = BigUint::from(7u128);
         let test_circuit = TestCircuit {base, exp, modulus} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
+
+
+
+
+
+    #[test]
+    fn test_mod_power108m1_circuit() {
+
+        #[derive(Clone, Debug, Default)]
+        struct TestModpower108m1Circuit {
+            a: BigUint,
+        }
+    
+        impl Circuit<Fr> for TestModpower108m1Circuit {
+            type Config = TestConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+    
+            fn without_witnesses(&self) -> Self {
+                Self::default()
+            }
+    
+            fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+                Self::Config {
+                   modexpconfig: ModExpChip::<Fr>::configure(meta),
+                   helperconfig: HelperChip::configure(meta)
+                }
+            }
+    
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fr>,
+            ) -> Result<(), Error> {
+                let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                let helperchip = HelperChip::new(config.clone().helperconfig);
+     
+                layouter.assign_region(
+                    || "mod_power108m1",
+                    |mut region| {
+                        let mut offset = 0;
+                        let a = helperchip.assign_base(&mut region, &mut offset, &self.a)?;
+     
+                        // calculate addition of all limbs.
+                        let bn_lm0 = &self.a & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                        let bn_lm1 = BigUint::from(&self.a >> 108) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                        let bn_lm2 = BigUint::from(&self.a >> 216) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                        let bn_res = bn_lm0 + bn_lm1 + bn_lm2;
+                        let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
+    
+                        let rem = modexpchip.mod_power108m1(&mut region, &mut offset, &a )?;
+
+                        assert_eq!(field_to_bn(&rem[3].value), bn_res);
+                        Ok(rem)
+                    }
+                )?;
+    
+                Ok(())
+            }
+        }
+
+        // mod_power108m1() calculates a  (2^{108}-1) exactly for values a \in {0, (2^{108}-1)\}. 
+        // for values greater than (2^{108}-1), mod_power108m1() overflows the 109+th bit.
+
+        // test expected overflow of 1 bit 0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        let a = BigUint::parse_bytes(b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap();  
+        let test_circuit = TestModpower108m1Circuit{a} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+        // test mathematical result for value < 108 bits, 0x1ffffffffffffffffffffffffffd
+        let a = BigUint::parse_bytes(b"ffffffffffffffffffffffffffe", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap(); 
+        let test_circuit = TestModpower108m1Circuit{a} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+        // test overflow max bits
+        let mut rng = thread_rng();
+        let bit_len = (LIMB_WIDTH + LIMB_WIDTH + 108) as u64;
+        let mut b = BigUint::default();
+        while b.bits() != bit_len {
+            b = rng.sample(RandomBits::new(bit_len));
+        }
+        let a = b;
+        println!("bit_len = {}", bit_len);
+        println!("a = 0x{}", a.to_str_radix(16));
+
+        let test_circuit = TestModpower108m1Circuit{a} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+
+    #[test]
+    fn test_mod_power216_circuit() {
+
+        #[derive(Clone, Debug, Default)]
+        struct TestModpower216Circuit {
+            a: BigUint,
+        }
+    
+        impl Circuit<Fr> for TestModpower216Circuit {
+            type Config = TestConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+    
+            fn without_witnesses(&self) -> Self {
+                Self::default()
+            }
+    
+            fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+                Self::Config {
+                   modexpconfig: ModExpChip::<Fr>::configure(meta),
+                   helperconfig: HelperChip::configure(meta)
+                }
+            }
+    
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fr>,
+            ) -> Result<(), Error> {
+                let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                let helperchip = HelperChip::new(config.clone().helperconfig);
+     
+                layouter.assign_region(
+                    || "mod_power216",
+                    |mut region| {
+                        let mut offset = 0;
+                        let base = helperchip.assign_base(&mut region, &mut offset, &self.a)?;
+                        let bn_modulus = BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108);
+                        let modulus = helperchip.assign_modulus(&mut region, &mut offset, &bn_modulus)?;
+                        let bn_rem = self.a.clone() % bn_modulus;
+                        let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                        let rem = modexpchip.mod_power216(&mut region, &mut offset, &base )?;
+
+                        for i in 0..4 {
+                            println!("result is {:?}", &result.limbs[i].value);
+                            println!("resultcell is {:?}", &result.limbs[i].cell);
+                        }
+
+                        // rem from mod_power216() should be equal to the bn calculated remainder.
+                        assert_eq!(field_to_bn(&rem.value), bn_rem);
+                        Ok(rem)
+                    }
+                )?;
+    
+                Ok(())
+            }
+        }
+        // test should result in (2^216)-1) as rem
+        let a = BigUint::parse_bytes(b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap();  
+        let test_circuit = TestModpower216Circuit{a} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+        let mut rng = thread_rng();
+        let bit_len = (3*LIMB_WIDTH + 1) as u64;
+        let mut b = BigUint::default();
+        while b.bits() != bit_len {
+            b = rng.sample(RandomBits::new(bit_len));
+        }
+        let a = b;
+        println!("bit_len = {}", bit_len);
+        println!("a = 0x{}", a.to_str_radix(16));
+
+        let test_circuit = TestModpower216Circuit{a} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+
+    }
+
+    #[test]
+    fn test_mod_mult_circuit() {
+
+        #[derive(Clone, Debug, Default)]
+        struct TestModMultCircuit {
+            l: BigUint,
+            r: BigUint,
+            modulus: BigUint,
+        }
+    
+        impl Circuit<Fr> for TestModMultCircuit {
+            type Config = TestConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+    
+            fn without_witnesses(&self) -> Self {
+                Self::default()
+            }
+    
+            fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+                Self::Config {
+                   modexpconfig: ModExpChip::<Fr>::configure(meta),
+                   helperconfig: HelperChip::configure(meta)
+                }
+            }
+    
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fr>,
+            ) -> Result<(), Error> {
+                let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                let helperchip = HelperChip::new(config.clone().helperconfig);
+                layouter.assign_region(
+                    || "assign mod mult",
+                    |mut region| {
+                        let mut offset = 0;
+                        let base = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
+                        let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+                        let bn_rem = self.l.clone() * self.r.clone() % self.modulus.clone();
+
+                        println!("bn_rem = 0x{}", bn_rem.to_str_radix(16));
+
+                        let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                        let rem = modexpchip.mod_mult(&mut region, &mut offset, &base, &base, &modulus)?;
+                        for i in 0..4 {
+                            println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                            println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+                            region.constrain_equal(
+                                rem.limbs[i].clone().cell.unwrap().cell(),
+                                result.limbs[i].clone().cell.unwrap().cell()
+                            )?;
+                        }
+                        Ok(())
+                    }
+                )?;
+                Ok(())
+            }
+        }
+
+        // test mod_mult() with l*l (mod modulus)
+        let l = BigUint::from(3u128);
+        let r = l.clone();
+        let modulus = BigUint::from(5u128);
+
+        let test_circuit = TestModMultCircuit{l, r, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+    }
+
+
+
+
+
+
+
+
+
+
+
 }
 
 

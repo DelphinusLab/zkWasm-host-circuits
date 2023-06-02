@@ -501,6 +501,7 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
+
     /* decompose a limb into binary cells, in big endian*/
     pub fn decompose_limb(
         &self,
@@ -512,46 +513,82 @@ impl<F: FieldExt> ModExpChip<F> {
     ) -> Result <(), Error> {
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
         bool_limbs.truncate(limbsize);
+        let exbits = (4 - bool_limbs.len() % 4) % 4; 
+        if bool_limbs.len() % 4 != 0 { bool_limbs.extend(vec![0; 4 - bool_limbs.len() % 4])}
         bool_limbs.reverse();
         let mut v = F::zero();
-        for i in 0..(bool_limbs.len()/4) {
-            let l0 = F::from_u128(bool_limbs[i*4] as u128);
-            let l1 = F::from_u128(bool_limbs[(i*4)+1] as u128);
-            let l2 = F::from_u128(bool_limbs[(i*4)+2] as u128);
-            let l3 = F::from_u128(bool_limbs[(i*4)+3] as u128);
-            let v_next = v * F::from_u128(16u128)
-                + l0 * F::from_u128(8u128)
-                + l1 * F::from_u128(4u128)
-                + l2 * F::from_u128(2u128)
-                + l3 * F::from_u128(1u128);
+        let bll: usize;
+        if field_to_bn(&limb.value) != BigUint::from(0u128) { bll = bool_limbs.len(); } else { bll = 0; } 
+        for i in (0..bll).step_by(4) {
+
+            let mut l0 = Some(Limb::new(None, F::from_u128(bool_limbs[i] as u128)));
+            let mut l1 = Some(Limb::new(None, F::from_u128(bool_limbs[i+1] as u128)));
+            let mut l2 = Some(Limb::new(None, F::from_u128(bool_limbs[i+2] as u128)));
+            let mut l3 = Some(Limb::new(None, F::from_u128(bool_limbs[i+3] as u128)));
+            let mut cl0 = Some(F::from_u128(8u128));
+            let mut cl1 = Some(F::from_u128(4u128));
+            let mut cl2 = Some(F::from_u128(2u128));
+            let cl3 = Some(F::from_u128(1u128));
+            let mut v_next = F::from_u128(0u128);
+
+            if i == 0 && exbits != 0 {
+                if exbits == 3 as usize {
+                    (l0, l1, l2) = (None, None, None);
+                    (cl0, cl1, cl2) = (None, None, None);
+                    l3 = Some(Limb::new(None, F::from_u128(bool_limbs[i+3] as u128)));
+                    v_next = v * F::from_u128(16u128) + l3.clone().unwrap().value * F::from_u128(1u128);
+                }
+                else if exbits == 2 as usize {
+                    (l0, l1) = (None, None);
+                    (cl0, cl1) = (None, None);
+                    l2 = Some(Limb::new(None, F::from_u128(bool_limbs[i+2] as u128)));
+                    l3 = Some(Limb::new(None, F::from_u128(bool_limbs[i+3] as u128)));
+                    v_next = v * F::from_u128(16u128) 
+                        + l2.clone().unwrap().value * F::from_u128(2u128) + l3.clone().unwrap().value * F::from_u128(1u128);
+                } 
+                else if exbits == 1 as usize {
+                    l0 = None;
+                    cl0 = None;
+                    l1 = Some(Limb::new(None, F::from_u128(bool_limbs[i+1] as u128)));
+                    l2 = Some(Limb::new(None, F::from_u128(bool_limbs[i+2] as u128)));
+                    l3 = Some(Limb::new(None, F::from_u128(bool_limbs[i+3] as u128)));
+                    v_next = v * F::from_u128(16u128)
+                        + l1.clone().unwrap().value * F::from_u128(4u128)
+                        + l2.clone().unwrap().value * F::from_u128(2u128)
+                        + l3.clone().unwrap().value * F::from_u128(1u128);
+                }               
+            } else {
+                let l0 = Some(Limb::new(None, F::from_u128(bool_limbs[i] as u128)));
+                let l1 = Some(Limb::new(None, F::from_u128(bool_limbs[i+1] as u128)));
+                let l2 = Some(Limb::new(None, F::from_u128(bool_limbs[i+2] as u128)));
+                let l3 = Some(Limb::new(None, F::from_u128(bool_limbs[i+3] as u128)));
+                v_next = v * F::from_u128(16u128)
+                    + l0.unwrap().value * F::from_u128(8u128)
+                    + l1.unwrap().value * F::from_u128(4u128)
+                    + l2.unwrap().value * F::from_u128(2u128)
+                    + l3.unwrap().value * F::from_u128(1u128);
+            }
+
             let l = self.assign_line(
                 region,
                 offset,
                 [
-                    Some(Limb::new(None, l0)),
-                    Some(Limb::new(None, l1)),
-                    Some(Limb::new(None, l2)),
-                    Some(Limb::new(None, l3)),
+                    l0, l1, l2, l3,
                     Some(Limb::new(None, v)),
                     Some(Limb::new(None, v_next)),
                 ],
                 [
-                    Some(F::from_u128(8u128)),
-                    Some(F::from_u128(4u128)),
-                    Some(F::from_u128(2u128)),
-                    Some(F::from_u128(1u128)),
+                    cl0, cl1, cl2, cl3,
                     Some(F::from_u128(16u128)),
                     Some(-F::one()),
                     None, None, None
                 ],
             )?;
-            limbs.append(&mut l.to_vec()[0..4].to_vec());
+            limbs.append(&mut l.to_vec()[0..(4 - exbits)].to_vec());
             v = v_next;
         }
-   
-        //constraint all the limbs to be either 1 or 0
-        let _l = self.assert_limbs_bit(region, offset, limbs.to_vec());
 
+        let _l = self.assert_limbs_bit(region, offset, limbs.to_vec());
         Ok(())
     }
 
@@ -628,18 +665,18 @@ impl<F: FieldExt> ModExpChip<F> {
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
         
-        // self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 108)?;
-        // self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
-        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
-        // todo() fix issue here: index out of bounds: the len is 1 but the index is 1
+        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 108)?;
+        self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
+        self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 40)?; //256 - 216 = 40
+ 
 
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
         let zero = acc.clone();
-        // for limb in limbs {
-        //     let v = self.select(region, offset, &limb, &zero, base)?;
-        //     acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
-        //     acc = self.mod_add(region, offset, &acc, &v)?;
-        // }
+        for limb in limbs {
+            // let v = self.select(region, offset, &limb, &zero, base)?;
+            // acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
+            // acc = self.mod_add(region, offset, &acc, &v)?;
+        }
         
         /*
          * General routine for a^b mod n, by repeated modular multiplication:
@@ -877,7 +914,15 @@ mod tests {
     fn test_modexp_circuit() {
         let base = BigUint::from(1u128 << 100);
         //let exp = BigUint::from(170u128);   // 0xAA
-        let exp = BigUint::parse_bytes(b"CBA9", 16).unwrap();
+        //let exp = BigUint::parse_bytes(b"CBA9", 16).unwrap();
+        //let exp = BigUint::parse_bytes(b"87", 16).unwrap();
+
+        let exp = BigUint::parse_bytes(b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 16).unwrap() 
+            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
+            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
+            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108));   
+        
+
         let modulus = BigUint::from(7u128);
         let test_circuit = TestCircuit {base, exp, modulus} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();

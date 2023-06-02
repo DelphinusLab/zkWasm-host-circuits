@@ -514,11 +514,11 @@ impl<F: FieldExt> ModExpChip<F> {
         bool_limbs.truncate(limbsize);
         bool_limbs.reverse();
         let mut v = F::zero();
-        for i in 0..27 {
-            let l0 = F::from_u128(bool_limbs[i] as u128);
-            let l1 = F::from_u128(bool_limbs[i+1] as u128);
-            let l2 = F::from_u128(bool_limbs[i+2] as u128);
-            let l3 = F::from_u128(bool_limbs[i+3] as u128);
+        for i in 0..(bool_limbs.len()/4) {
+            let l0 = F::from_u128(bool_limbs[i*4] as u128);
+            let l1 = F::from_u128(bool_limbs[(i*4)+1] as u128);
+            let l2 = F::from_u128(bool_limbs[(i*4)+2] as u128);
+            let l3 = F::from_u128(bool_limbs[(i*4)+3] as u128);
             let v_next = v * F::from_u128(16u128)
                 + l0 * F::from_u128(8u128)
                 + l1 * F::from_u128(4u128)
@@ -545,12 +545,48 @@ impl<F: FieldExt> ModExpChip<F> {
                     None, None, None
                 ],
             )?;
-            limbs.append(&mut l.to_vec()[0..3].to_vec());
+            limbs.append(&mut l.to_vec()[0..4].to_vec());
             v = v_next;
         }
-        /* todo
-         * constraint all the limbs to be either 1 or 0
-         */
+   
+        //constraint all the limbs to be either 1 or 0
+        let _l = self.assert_limbs_bit(region, offset, limbs.to_vec());
+
+        Ok(())
+    }
+
+    // Enforces limb value is `0` or `1`.
+    fn assert_limbs_bit(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        limbs: Vec<Limb<F>>
+    ) -> Result<(), Error> {
+        // apply eqn: (val * val) - val = 0,
+        // by: (ws[1] * ws[2] * cs[7]) + (ws[0] * cs[0]) = 0,
+        // (val * val * 1) + (val * -1) = 0.
+        for i in 0..(limbs.len()) {
+            let l0 = limbs[i].value;
+            let l1 = limbs[i].value;
+            let _l = self.assign_line(
+                region,
+                offset,
+                [
+                    Some(Limb::new(None, l0)),
+                    Some(Limb::new(None, l0)),
+                    Some(Limb::new(None, l1)),
+                    None,
+                    None,
+                    None,
+                ],
+                [
+                    Some(-F::one()), None, None, None, None, None,      
+                    None,                                               
+                    Some(F::one()),                                    
+                    None,                                               
+                ],
+            )?;
+        }
         Ok(())
     }
 
@@ -592,18 +628,18 @@ impl<F: FieldExt> ModExpChip<F> {
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
         
-        self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 108)?;
-        self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
+        // self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 108)?;
+        // self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
         self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
         // todo() fix issue here: index out of bounds: the len is 1 but the index is 1
 
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
         let zero = acc.clone();
-        for limb in limbs {
-            let v = self.select(region, offset, &limb, &zero, base)?;
-            acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
-            acc = self.mod_add(region, offset, &acc, &v)?;
-        }
+        // for limb in limbs {
+        //     let v = self.select(region, offset, &limb, &zero, base)?;
+        //     acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
+        //     acc = self.mod_add(region, offset, &acc, &v)?;
+        // }
         
         /*
          * General routine for a^b mod n, by repeated modular multiplication:
@@ -840,7 +876,8 @@ mod tests {
     #[test]
     fn test_modexp_circuit() {
         let base = BigUint::from(1u128 << 100);
-        let exp = BigUint::from(170u128);   // 0xAA
+        //let exp = BigUint::from(170u128);   // 0xAA
+        let exp = BigUint::parse_bytes(b"CBA9", 16).unwrap();
         let modulus = BigUint::from(7u128);
         let test_circuit = TestCircuit {base, exp, modulus} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();

@@ -30,12 +30,13 @@ use num_bigint::BigUint;
  * sum limbs * acc will be the sum of the target
  */
 customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
-   | limb   |  acc   | rem   | table | sel 
+   | limb   |  acc   | rem   | table | sel
    | limb_n |  acc_n | rem_n | nil   | sel_n
 );
 
 pub struct RangeCheckChip<F:FieldExt> {
     config: RangeCheckConfig,
+    offset: usize,
     _marker: PhantomData<F>
 }
 
@@ -44,6 +45,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
     pub fn new(config: RangeCheckConfig) -> Self {
         RangeCheckChip {
             config,
+            offset: 0,
             _marker: PhantomData,
         }
     }
@@ -102,9 +104,44 @@ impl<F: FieldExt> RangeCheckChip<F> {
         });
         config
     }
+
+    fn assign_value_with_range (
+        &mut self,
+        region: &mut Region<F>,
+        value: F,
+        sz: usize,
+    ) -> Result<(), Error> {
+        let mut limbs = vec![];
+        let mut bn = field_to_bn(&value);
+        let mut cs = vec![];
+        for i in 0..sz {
+            cs.push(bn_to_field(&bn));
+            let limb = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
+            bn = (bn - limb.clone()).div(BigUint::from(1u128<<108));
+            limbs.push(bn_to_field(&limb));
+        }
+        for i in 0..sz {
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), limbs.pop().unwrap())?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), cs.pop().unwrap())?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::from_u128((sz-i) as u128))?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::one())?;
+            self.offset += 1;
+        }
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::zero())?;
+        Ok(())
+    }
+
+    fn initialize(
+        &self,
+        region: &mut Region<F>
+    ) -> Result<(), Error> {
+        let mut offset = 0;
+        for i in 0..4096 {
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::table(), F::from_u128(i as u128))?;
+        }
+        Ok(())
+    }
 }
-
- 
-
-
-

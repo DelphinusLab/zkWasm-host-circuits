@@ -63,11 +63,11 @@ fn get_offset(index: u32) -> u32 {
 pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     type Node: MerkleNode<H>;
     type Id;
-    type Addr;
+    type Root;
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
-    fn construct(addr: Self::Addr, id: Self::Id) -> Self;
+    fn construct(addr: Self::Id, id: Self::Root) -> Self;
 
     fn hash(a:&H, b:&H) -> H;
     fn set_parent(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
@@ -266,9 +266,9 @@ mod tests {
 
     impl MerkleTree<u64, 6> for MerkleAsArray {
         type Id = String;
-        type Addr = String;
+        type Root = String;
         type Node = MerkleU64Node;
-        fn construct(_addr: Self::Addr, _id: Self::Id) -> Self {
+        fn construct(_addr: Self::Id, _id: Self::Root) -> Self {
             MerkleAsArray {
                 data: [0 as u64; 127]
             }

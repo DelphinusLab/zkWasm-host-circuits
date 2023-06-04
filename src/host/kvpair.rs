@@ -217,13 +217,13 @@ lazy_static::lazy_static! {
 
 impl MerkleTree<[u8; 32], 20> for MongoMerkle {
     type Id = [u8; 32];
-    type Addr = [u8; 32];
+    type Root = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(addr: Self::Addr, id: Self::Id) -> Self {
+    fn construct(addr: Self::Id, root: Self::Root) -> Self {
         MongoMerkle {
             contract_address: addr,
-            root_hash: id,
+            root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
         }
     }

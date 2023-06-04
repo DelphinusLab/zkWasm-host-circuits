@@ -50,6 +50,21 @@ impl<F: FieldExt> RangeCheckChip<F> {
         }
     }
 
+    pub fn register_range(
+        &self,
+        meta: &mut ConstraintSystem<F>,
+        column: impl FnOnce(&mut VirtualCells<F>)->Expression<F>,
+        index: impl FnOnce(&mut VirtualCells<F>)->Expression<F>) {
+        meta.lookup_any("register range", |meta| {
+            let acc = self.config.get_expr(meta, RangeCheckConfig::acc());
+            let rem = self.config.get_expr(meta, RangeCheckConfig::rem());
+            let column = column(meta);
+            let index = index(meta);
+            vec![(acc, column), (rem, index)]
+        });
+        ()
+    }
+
     pub fn configure(cs: &mut ConstraintSystem<F>) -> RangeCheckConfig {
         let witness= [0; 3]
                 .map(|_|cs.advice_column());

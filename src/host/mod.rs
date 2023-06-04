@@ -35,6 +35,9 @@ pub enum ForeignInst {
     KVPairAddress,
     KVPairSet,
     KVPairGet,
+    SHA256New,
+    SHA256Push,
+    SHA256Finalize,
 }
 
 pub const MONGODB_URI:&str = "mongodb://localhost:27017";

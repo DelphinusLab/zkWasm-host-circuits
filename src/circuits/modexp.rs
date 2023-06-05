@@ -844,23 +844,24 @@ mod test {
             HelperChipConfig { limb }
         }
 
-        fn assign_base (
+        fn assign_base(
             &self,
-            region: &mut Region<Fr>,
-            offset: &mut usize,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
             base: &BigUint,
-        ) -> Result<Number<F>,Error> {
+        ) -> Result<Number<Fr>, Error> {
             Ok(Number::from_bn(base))
         }
 
-        fn assign_modulus (
+        fn assign_modulus(
             &self,
-            region: &mut Region<Fr>,
-            offset: &mut usize,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
             modulus: &BigUint,
-        ) -> Result<Number<F>,Error> {
+        ) -> Result<Number<Fr>, Error> {
             Ok(Number::from_bn(modulus))
         }
+
 
         fn assign_result (
             &self,

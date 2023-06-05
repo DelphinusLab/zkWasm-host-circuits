@@ -49,6 +49,7 @@ pub fn cell_to_limbs<F: FieldExt>(cell: &AssignedCell<F, F>) -> [F; 4] {
     u32_to_limbs(a)
 }
 
+#[derive (Debug)]
 pub struct GateCell {
     pub cell: [usize;3],
     pub name: String,

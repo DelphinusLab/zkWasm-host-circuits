@@ -19,6 +19,12 @@ macro_rules! constant {
     };
 }
 
+#[macro_export]
+macro_rules! value_for_assign {
+    ($x: expr) => {
+        Ok($x)
+    };
+}
 
 #[macro_export]
 macro_rules! item_count {

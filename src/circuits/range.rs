@@ -9,6 +9,7 @@ use crate::{
     item_count,
     customized_circuits_expand,
     constant_from,
+    value_for_assign,
 };
 use std::ops::Div;
 
@@ -34,9 +35,34 @@ customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
    | nil    |  acc_n | rem_n | nil   | sel_n
 );
 
+impl RangeCheckConfig {
+    /// register a column (col) to be range checked by limb size (sz)
+    pub fn register_column<F: FieldExt> (
+        &self,
+        cs: &mut ConstraintSystem<F>,
+        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+    ) {
+        cs.lookup_any("check ranges", |meta| {
+            let acc = self.get_expr(meta, RangeCheckConfig::acc());
+            let rem = self.get_expr(meta, RangeCheckConfig::rem());
+            //vec![(col(meta), acc), (sz(meta), rem)]
+            vec![(col(meta), acc)]
+        });
+        /*
+        cs.lookup_any("check ranges 2", |meta| {
+            let rem = self.get_expr(meta, RangeCheckConfig::rem());
+            //vec![(col(meta), acc), (sz(meta), rem)]
+            vec![(sz(meta), rem)]
+        });
+        */
+    }
+
+
+}
+
 pub struct RangeCheckChip<F:FieldExt> {
     config: RangeCheckConfig,
-    offset: usize,
     _marker: PhantomData<F>
 }
 
@@ -45,7 +71,6 @@ impl<F: FieldExt> RangeCheckChip<F> {
     pub fn new(config: RangeCheckConfig) -> Self {
         RangeCheckChip {
             config,
-            offset: 0,
             _marker: PhantomData,
         }
     }
@@ -75,6 +100,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         let config = RangeCheckConfig { fixed, selector, witness };
 
         // Range Check of all limbs
+        //
         cs.lookup_any("within ranges", |meta| {
             let limb = config.get_expr(meta, RangeCheckConfig::limb());
             let table = config.get_expr(meta, RangeCheckConfig::table());
@@ -97,13 +123,6 @@ impl<F: FieldExt> RangeCheckChip<F> {
 
         // Second we make sure if the rem is not zero then
         // carry = carry_n * 2^12 + limb
-        // for example, suppose we have range check with 5 limb
-        // | a_0 | carry_0 | 5 | 1 |
-        // | a_1 | carry_1 | 4 | 1 |
-        // | a_2 | carry_2 | 3 | 1 |
-        // | a_3 | carry_3 | 2 | 1 |
-        // | a_4 | carry_4 | 1 | 1 |
-        // | nil | 0       | 0 | 0 |
         cs.create_gate("limb acc constraint", |meta| {
             let limb = config.get_expr(meta, RangeCheckConfig::limb());
             let acc = config.get_expr(meta, RangeCheckConfig::acc());
@@ -112,7 +131,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
             let sel_n = config.get_expr(meta, RangeCheckConfig::sel_n());
 
             vec![
-                sel * (acc - limb - acc_n * constant_from!(2u64<<12) * sel_n)
+                sel * (acc - limb - acc_n * constant_from!(1u64<<12) * sel_n)
             ]
 
         });
@@ -122,6 +141,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
     pub fn assign_value_with_range (
         &mut self,
         region: &mut Region<F>,
+        offset: &mut usize,
         value: F,
         sz: usize,
     ) -> Result<(), Error> {
@@ -130,21 +150,26 @@ impl<F: FieldExt> RangeCheckChip<F> {
         let mut cs = vec![];
         for _ in 0..sz {
             cs.push(bn_to_field(&bn));
-            let limb = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
-            bn = (bn - limb.clone()).div(BigUint::from(1u128<<108));
+            let limb = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<12));
+            bn = (bn - limb.clone()).div(BigUint::from(1u128<<12));
             limbs.push(bn_to_field(&limb));
         }
+        cs.reverse();
+        limbs.reverse();
         for i in 0..sz {
-            self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), limbs.pop().unwrap())?;
-            self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), cs.pop().unwrap())?;
-            self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::from_u128((sz-i) as u128))?;
-            self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::one())?;
-            self.offset += 1;
+            let limb = limbs.pop().unwrap();
+            let acc = cs.pop().unwrap();
+            self.config.assign_cell(region, *offset, &RangeCheckConfig::limb(), limb)?;
+            self.config.assign_cell(region, *offset, &RangeCheckConfig::acc(), acc)?;
+            self.config.assign_cell(region, *offset, &RangeCheckConfig::rem(), F::from_u128((sz-i) as u128))?;
+            self.config.assign_cell(region, *offset, &RangeCheckConfig::sel(), F::one())?;
+            *offset += 1;
         }
-        self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), F::zero())?;
-        self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), F::zero())?;
-        self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::zero())?;
-        self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::zero())?;
+        self.config.assign_cell(region, *offset, &RangeCheckConfig::limb(), F::zero())?;
+        self.config.assign_cell(region, *offset, &RangeCheckConfig::acc(), F::zero())?;
+        self.config.assign_cell(region, *offset, &RangeCheckConfig::rem(), F::zero())?;
+        self.config.assign_cell(region, *offset, &RangeCheckConfig::sel(), F::zero())?;
+        *offset+=1;
         Ok(())
     }
 
@@ -153,7 +178,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         region: &mut Region<F>
     ) -> Result<(), Error> {
         for i in 0..4096 {
-            self.config.assign_cell(region, self.offset, &RangeCheckConfig::table(), F::from_u128(i as u128))?;
+            self.config.assign_cell(region, i, &RangeCheckConfig::table(), F::from_u128(i as u128))?;
         }
         Ok(())
     }
@@ -164,25 +189,31 @@ impl<F: FieldExt> RangeCheckChip<F> {
 mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
-    use num_bigint::BigUint;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner, AssignedCell},
         plonk::{
-            Advice, Circuit, Column, ConstraintSystem, Error
+            Advice, Circuit, Column, ConstraintSystem, Error, VirtualCells,
+            Expression
         },
+        poly::Rotation,
     };
 
     use super::{
-        ModExpChip,
-        ModExpConfig,
-        Number,
-        Limb,
+        RangeCheckChip,
+        RangeCheckConfig,
     };
+    use crate::value_for_assign;
 
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
         limb: Column<Advice>
+    }
+
+    impl HelperChipConfig {
+        pub fn range_check_column (&self, cs: &mut VirtualCells<Fr>) -> Expression<Fr> {
+            cs.query_advice(self.limb, Rotation::cur())
+        }
     }
 
     #[derive(Clone, Debug)]
@@ -211,54 +242,38 @@ mod tests {
         }
 
         fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
-            let limb= cs.advice_column();
+            let limb = cs.advice_column();
             cs.enable_equality(limb);
             HelperChipConfig {
                 limb,
             }
         }
 
-        fn assign_results(
+        fn assign_value(
             &self,
             region: &mut Region<Fr>,
             offset: &mut usize,
-            result: &BigUint,
-        ) -> Result<Number<Fr>, Error> {
-            let n = Number::from_bn(result);
-            let mut cells = vec![];
-            for i in 0..4 {
-                let c = region.assign_advice(
-                    || format!("assign input"),
-                    self.config.limb,
-                    *offset + i,
-                    || Ok(n.limbs[i].value)
-                )?;
-                cells.push(Some(c));
-                *offset = *offset + 1;
-            }
-            let n = Number {
-                limbs: [
-                    Limb::new(cells[0].clone(), n.limbs[0].value),
-                    Limb::new(cells[1].clone(), n.limbs[1].value),
-                    Limb::new(cells[2].clone(), n.limbs[2].value),
-                    Limb::new(cells[3].clone(), n.limbs[3].value),
-                ]
-            };
-            Ok(n)
+            value: Fr,
+        ) -> Result<AssignedCell<Fr, Fr>, Error> {
+            let c = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb,
+                *offset,
+                || value_for_assign!(value)
+            )?;
+            *offset = *offset + 1;
+            Ok(c)
         }
 
     }
 
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {
-        base: BigUint,
-        exp: BigUint,
-        modulus: BigUint,
     }
 
     #[derive(Clone, Debug)]
     struct TestConfig {
-        modexpconfig: ModExpConfig,
+        rangecheckconfig: RangeCheckConfig,
         helperconfig: HelperChipConfig,
     }
 
@@ -271,8 +286,17 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            let helperconfig = HelperChip::configure(meta);
+
+            rangecheckconfig.register_column(
+                meta,
+                |c| helperconfig.range_check_column(c),
+                |_| Expression::Constant(Fr::from(4 as u64))
+            );
+
             Self::Config {
-               modexpconfig: ModExpChip::<Fr>::configure(meta),
+               rangecheckconfig: RangeCheckChip::<Fr>::configure(meta),
                helperconfig: HelperChip::configure(meta)
             }
         }
@@ -282,12 +306,17 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            let helper_chip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
-                || "assign mod mult",
+                || "range check test",
                 |mut region| {
-                    todo!();
+                    let v = Fr::from(1u64<<24 + 1);
+                    let mut offset = 0;
+                    range_chip.initialize(&mut region)?;
+                    range_chip.assign_value_with_range(&mut region, &mut offset, v, 4)?;
+                    offset = 0;
+                    helper_chip.assign_value(&mut region, &mut offset, v)?;
                     Ok(())
                 }
             )?;
@@ -297,11 +326,8 @@ mod tests {
 
 
     #[test]
-    fn test_modexp_circuit() {
-        let base = BigUint::from(1u128 << 100);
-        let exp = BigUint::from(2u128 << 100);
-        let modulus = BigUint::from(7u128);
-        let test_circuit = TestCircuit {base, exp, modulus} ;
+    fn test_range_circuit() {
+        let test_circuit = TestCircuit {} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }

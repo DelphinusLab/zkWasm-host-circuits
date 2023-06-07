@@ -9,10 +9,8 @@ use crate::{
     item_count,
     customized_circuits_expand,
     constant_from,
-    value_for_assign,
 };
 use std::ops::Div;
-
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, AssignedCell},
@@ -26,9 +24,9 @@ use std::marker::PhantomData;
 use num_bigint::BigUint;
 
 /*
- * Customized gates range_check(target)
- * limbs \in table
- * sum limbs * acc will be the sum of the target
+ * Customized gates range_check(target) with each limb less than 2^12
+ * acc will be the sum of the target limbs and rem is the remaining limbs
+ * of the target value.
  */
 customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
    | limb   |  acc   | rem   | table | sel
@@ -37,7 +35,7 @@ customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
 
 impl RangeCheckConfig {
     /// register a column (col) to be range checked by limb size (sz)
-    pub fn register_column<F: FieldExt> (
+    pub fn register<F: FieldExt> (
         &self,
         cs: &mut ConstraintSystem<F>,
         col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
@@ -46,23 +44,14 @@ impl RangeCheckConfig {
         cs.lookup_any("check ranges", |meta| {
             let acc = self.get_expr(meta, RangeCheckConfig::acc());
             let rem = self.get_expr(meta, RangeCheckConfig::rem());
-            //vec![(col(meta), acc), (sz(meta), rem)]
-            vec![(col(meta), acc)]
+            vec![(col(meta), acc), (sz(meta), rem)]
         });
-        /*
-        cs.lookup_any("check ranges 2", |meta| {
-            let rem = self.get_expr(meta, RangeCheckConfig::rem());
-            //vec![(col(meta), acc), (sz(meta), rem)]
-            vec![(sz(meta), rem)]
-        });
-        */
     }
-
-
 }
 
 pub struct RangeCheckChip<F:FieldExt> {
     config: RangeCheckConfig,
+    offset: usize,
     _marker: PhantomData<F>
 }
 
@@ -71,23 +60,9 @@ impl<F: FieldExt> RangeCheckChip<F> {
     pub fn new(config: RangeCheckConfig) -> Self {
         RangeCheckChip {
             config,
+            offset:0,
             _marker: PhantomData,
         }
-    }
-
-    pub fn register_range(
-        &self,
-        meta: &mut ConstraintSystem<F>,
-        column: impl FnOnce(&mut VirtualCells<F>)->Expression<F>,
-        index: impl FnOnce(&mut VirtualCells<F>)->Expression<F>) {
-        meta.lookup_any("register range", |meta| {
-            let acc = self.config.get_expr(meta, RangeCheckConfig::acc());
-            let rem = self.config.get_expr(meta, RangeCheckConfig::rem());
-            let column = column(meta);
-            let index = index(meta);
-            vec![(acc, column), (rem, index)]
-        });
-        ()
     }
 
     pub fn configure(cs: &mut ConstraintSystem<F>) -> RangeCheckConfig {
@@ -107,8 +82,6 @@ impl<F: FieldExt> RangeCheckChip<F> {
             vec![(limb, table)]
         });
 
-
-
         // First we require the rem is continus if it is not zero
         cs.create_gate("range check constraint", |meta| {
             let rem = config.get_expr(meta, RangeCheckConfig::rem());
@@ -116,7 +89,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
             let sel = config.get_expr(meta, RangeCheckConfig::sel());
 
             vec![
-                sel * rem.clone() * (rem - rem_n - constant_from!(1))
+                sel * rem.clone() * (rem - rem_n - constant_from!(1)),
             ]
 
         });
@@ -131,17 +104,28 @@ impl<F: FieldExt> RangeCheckChip<F> {
             let sel_n = config.get_expr(meta, RangeCheckConfig::sel_n());
 
             vec![
-                sel * (acc - limb - acc_n * constant_from!(1u64<<12) * sel_n)
+                sel.clone() * (acc.clone() - limb - acc_n * constant_from!(1u64<<12) * sel_n),
+                sel.clone() * (constant_from!(1) - sel.clone()),
+                //(constant_from!(1) - sel) * acc, // if sel is 0 then acc must equal to 0
             ]
 
         });
+        cs.create_gate("end with zero", |meta| {
+            let sel = config.get_expr(meta, RangeCheckConfig::sel());
+            let acc_n = config.get_expr(meta, RangeCheckConfig::acc_n());
+            let sel_n = config.get_expr(meta, RangeCheckConfig::sel_n());
+            vec![
+                sel * acc_n * (constant_from!(1) - sel_n), // if sel is 0 then acc must equal to 0
+            ]
+        });
+
         config
     }
 
+    /// Make sure the (value, sz) pair is lookupable in the range_chip
     pub fn assign_value_with_range (
         &mut self,
         region: &mut Region<F>,
-        offset: &mut usize,
         value: F,
         sz: usize,
     ) -> Result<(), Error> {
@@ -159,27 +143,31 @@ impl<F: FieldExt> RangeCheckChip<F> {
         for i in 0..sz {
             let limb = limbs.pop().unwrap();
             let acc = cs.pop().unwrap();
-            self.config.assign_cell(region, *offset, &RangeCheckConfig::limb(), limb)?;
-            self.config.assign_cell(region, *offset, &RangeCheckConfig::acc(), acc)?;
-            self.config.assign_cell(region, *offset, &RangeCheckConfig::rem(), F::from_u128((sz-i) as u128))?;
-            self.config.assign_cell(region, *offset, &RangeCheckConfig::sel(), F::one())?;
-            *offset += 1;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), limb)?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), acc)?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::from_u128((sz-i) as u128))?;
+            self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::one())?;
+            self.offset += 1;
         }
-        self.config.assign_cell(region, *offset, &RangeCheckConfig::limb(), F::zero())?;
-        self.config.assign_cell(region, *offset, &RangeCheckConfig::acc(), F::zero())?;
-        self.config.assign_cell(region, *offset, &RangeCheckConfig::rem(), F::zero())?;
-        self.config.assign_cell(region, *offset, &RangeCheckConfig::sel(), F::zero())?;
-        *offset+=1;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::limb(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::acc(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::rem(), F::zero())?;
+        self.config.assign_cell(region, self.offset, &RangeCheckConfig::sel(), F::zero())?;
+        self.offset += 1;
         Ok(())
     }
 
+    /// initialize the table column from 1 to 2^12
+    /// initialize needs to be called before using the range_chip
     pub fn initialize(
-        &self,
-        region: &mut Region<F>
+        &mut self,
+        region: &mut Region<F>,
     ) -> Result<(), Error> {
         for i in 0..4096 {
             self.config.assign_cell(region, i, &RangeCheckConfig::table(), F::from_u128(i as u128))?;
         }
+        self.offset = 0;
+        self.assign_value_with_range(region, F::zero(), 25)?;
         Ok(())
     }
 }
@@ -289,15 +277,15 @@ mod tests {
             let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             let helperconfig = HelperChip::configure(meta);
 
-            rangecheckconfig.register_column(
+            rangecheckconfig.register(
                 meta,
                 |c| helperconfig.range_check_column(c),
                 |_| Expression::Constant(Fr::from(4 as u64))
             );
 
             Self::Config {
-               rangecheckconfig: RangeCheckChip::<Fr>::configure(meta),
-               helperconfig: HelperChip::configure(meta)
+               rangecheckconfig,
+               helperconfig,
             }
         }
 
@@ -312,10 +300,11 @@ mod tests {
                 || "range check test",
                 |mut region| {
                     let v = Fr::from(1u64<<24 + 1);
-                    let mut offset = 0;
                     range_chip.initialize(&mut region)?;
-                    range_chip.assign_value_with_range(&mut region, &mut offset, v, 4)?;
-                    offset = 0;
+                    range_chip.assign_value_with_range(&mut region, v, 4)?;
+
+                    // assign helper
+                    let mut offset = 0;
                     helper_chip.assign_value(&mut region, &mut offset, v)?;
                     Ok(())
                 }
@@ -324,13 +313,10 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_range_circuit() {
         let test_circuit = TestCircuit {} ;
-        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 }
-
-

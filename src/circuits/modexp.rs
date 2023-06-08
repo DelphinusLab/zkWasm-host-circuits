@@ -616,6 +616,55 @@ impl<F: FieldExt> ModExpChip<F> {
     }
 
 
+    pub fn decompose_limb_check_helper(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        l: &Number<F>,
+    ) -> Result <Number<F>, Error> {
+
+        println!("-------------------------------decompose_limb_check_helper(): START\n");
+
+        let mut limbs = vec![];
+
+        //let number = Number::from_bn(&BigUint::from(1u128));
+        let number = l.clone();
+
+     
+        println!("c -> l -> number    = 0x{}", number.to_bn().to_str_radix(16));
+
+        //self.decompose_limb_original(region, offset, &number.limbs[0], &mut limbs, 20)?;
+        //self.decompose_limb_old1(region, offset, &number.limbs[0], &mut limbs, 20)?;
+        //self.decompose_limb_old2(region, offset, &number.limbs[0], &mut limbs, 20)?;
+        // self.decompose_limb_old3(region, offset, &number.limbs[0], &mut limbs, 20)?;
+        self.decompose_limb(region, offset, &number.limbs[0], &mut limbs, 20)?;
+
+
+        //let mut res = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(5 as u128)))?;
+        //let mut res: Number<F> = Number::from_bn(&BigUint::from(0 as u128));
+
+        println!("\nReturning from decompose_limb_xx() ");
+        println!("limbs.len() = {}", limbs.len());
+
+        let mut bits_limbs: Vec<Number<F>> = vec![];
+
+        for limb in limbs.clone() {
+            print!("{:?},", field_to_bn(&limb.value).to_radix_le(16));
+
+            bits_limbs.push(Number::from_bn(&field_to_bn(&limb.value)));
+
+            
+        }
+
+        let res = self.assign_constant(region, offset, bits_limbs[0].clone() )?;
+        
+        println!("\n\n-------------------------------decompose_limb_check_helper(): END\n");
+        Ok(res)
+    }
+
+
+
+
     // Enforces limb value is `0` or `1`.
     fn assert_limbs_bit(
         &self,
@@ -651,6 +700,7 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(())
     }
 
+/* 
     pub fn select(
         &self,
         region: &mut Region<F>,
@@ -678,6 +728,60 @@ impl<F: FieldExt> ModExpChip<F> {
         }
         Ok(Number { limbs: limbs.try_into().unwrap() })
     }
+*/
+
+    /// Selects result based on the condition exp_bit = '1' or '0' \
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `cond` - the exp_bit as a Limb in F, is only 0x1 or 0x0
+    /// * `acc`  - the acc value from previous round
+    /// * `g`    - the value of (acc*sq) mod m
+    /// 
+    /// # Constraint 
+    /// 
+    /// (cond * g) + (1 - cond)*acc + (-1 * res) = 0
+    /// 
+    /// where: \
+    ///         res = g,   if exp_bit = '1' \
+    ///         res = acc, if exp_bit = '0' \
+    /// 
+    /// # Example
+    /// ```
+    /// let select(region, offset, &cond, &acc, &g);
+    /// ```
+    /// 
+    pub fn select(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        cond: &Limb<F>,
+        acc: &Number<F>,
+        g: &Number<F>,
+    ) -> Result <Number<F>, Error> {
+        // (cond * g) + (1 - cond)*acc + (-1 * res) = 0
+        
+        let result = if cond.value == F::one() { g.clone() } else { acc.clone() };
+        let mut limbs = vec![];
+        for i in 0..4 {
+            let l = self.assign_line(region, offset,
+                [
+                    Some(g.limbs[i].clone()),
+                    Some(Limb::new(None, F::one() - cond.clone().value)),
+                    Some(acc.limbs[i].clone()),
+                    Some(result.limbs[i].clone()),
+                    None,
+                    None,
+                ],
+                [Some(cond.value), None, None, Some(-F::one()), None, None, None, Some(F::one()), None]
+            )?;
+            limbs.push(l[3].clone());
+        }
+
+        Ok(Number { limbs: limbs.try_into().unwrap() })
+    }
+
+
 
     pub fn mod_exp(
         &self,
@@ -691,16 +795,16 @@ impl<F: FieldExt> ModExpChip<F> {
         
         self.decompose_limb(region, offset, &exp.limbs[2], &mut limbs, 40)?;    //256 - 216 = 40
         self.decompose_limb(region, offset, &exp.limbs[1], &mut limbs, 108)?;
-        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 108)?; 
+        self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 108)?;         
  
 
-        let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
-        let zero = acc.clone();
-        for limb in limbs {
-            // let v = self.select(region, offset, &limb, &zero, base)?;
-            // acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
-            // acc = self.mod_add(region, offset, &acc, &v)?;
-        }
+        // let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
+        // let zero = acc.clone();
+        // for limb in limbs {
+        //     let v = self.select(region, offset, &limb, &zero, base)?;
+        //     acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
+        //     acc = self.mod_add(region, offset, &acc, &v)?;
+        // }
         
         /*
          * General routine for a^b mod n, by repeated modular multiplication:
@@ -720,36 +824,14 @@ impl<F: FieldExt> ModExpChip<F> {
          *    └ ← ┘
          */
 
-        //let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;  //commented out to not conflict above.
-        let mut squared = base.clone();
-        let mut muled = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
+        let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;
+        let mut sq = base.clone();
 
-        let bn_exp: BigUint = ((field_to_bn(&exp.limbs[2].value)) << 216) 
-            + ((field_to_bn(&exp.limbs[1].value)) << 108) 
-            + field_to_bn(&exp.limbs[0].value);
-
-        let exp_bits = bn_exp
-            .to_bytes_le()
-            .into_iter()
-            .flat_map(|v| {
-                (0..8)
-                    .map(|i: u8| (v >> i) & 1u8 == 1u8)
-                    .collect::<Vec<bool>>()
-            })
-            .collect::<Vec<bool>>();
-
-        let exp_bits = exp_bits[0..(bn_exp.bits() as usize)].to_vec();
-
-        for exp_bit in exp_bits.into_iter() {
-
-            // Compute `acc * squared`.
-            let muled = self.mod_mult(region, offset, &acc, &squared, &modulus)?;
-
-            // If exp_bit = true, set acc <-- (acc * squared). o.w., set acc <-- acc_old.
-            // square squared. using mod_mult()
-            // todo() finish implementation.
+        for limb in limbs.iter().rev() {
+            let g = self.mod_mult(region, offset, &acc, &sq, modulus)?;
+            acc = self.select(region, offset, &limb, &acc, &g)?;
+            sq = self.mod_mult(region, offset, &sq, &sq, modulus)?;
         }
-
 
         Ok(acc)
     }
@@ -830,6 +912,15 @@ mod tests {
             Ok(Number::from_bn(base))
         }
 
+        fn assign_exponent(
+            &self,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
+            exponent: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(exponent))
+        }
+
         fn assign_modulus(
             &self,
             _region: &mut Region<Fr>,
@@ -905,23 +996,49 @@ mod tests {
         ) -> Result<(), Error> {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
+            // layouter.assign_region(
+            //     || "assign mod exp",
+            //     |mut region| {
+            //         let mut offset = 0;
+            //         let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
+            //         let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+
+            //         let exp = helperchip.assign_base(&mut region, &mut offset, &self.exp)?; 
+
+            //         let bn_res = self.base.clone() * self.exp.clone() % self.modulus.clone();   // needs pow
+
+            //         let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
+
+            //         let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
+            //         for i in 0..4 {
+            //             println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+            //             println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+            //             region.constrain_equal(
+            //                 rem.limbs[i].clone().cell.unwrap().cell(),
+            //                 result.limbs[i].clone().cell.unwrap().cell()
+            //             )?;
+            //         }
+            //         Ok(())
+            //     }
+            // )?;
+
             layouter.assign_region(
                 || "assign mod exp",
                 |mut region| {
                     let mut offset = 0;
                     let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
                     let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+                    let exp = helperchip.assign_exponent(&mut region, &mut offset, &self.exp)?; 
 
-                    let exp = helperchip.assign_base(&mut region, &mut offset, &self.exp)?; 
-
-                    let bn_res = self.base.clone() * self.exp.clone() % self.modulus.clone();   // needs pow
-
-                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
-
+                    let bn_rem = self.base.clone().pow(self.exp.to_str_radix(10).parse::<u32>().unwrap()) % self.modulus.clone();
+                    
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
                     let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
+
                     for i in 0..4 {
-                        println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
-                        println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+                        println!("rem is {:?}, \t result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                        println!("remcell is \t{:?}", &rem.limbs[i].cell);
+                        println!("resultcell is \t {:?}", &result.limbs[i].cell);
                         region.constrain_equal(
                             rem.limbs[i].clone().cell.unwrap().cell(),
                             result.limbs[i].clone().cell.unwrap().cell()
@@ -930,13 +1047,18 @@ mod tests {
                     Ok(())
                 }
             )?;
+
+
+
+
+
             Ok(())
         }
     }
 
     #[test]
     fn test_modexp_circuit() {
-        let base = BigUint::from(1u128 << 100);
+        // let base = BigUint::from(1u128 << 100);
         //let exp = BigUint::from(170u128);   // 0xAA
         //let exp = BigUint::parse_bytes(b"CBA9", 16).unwrap();
         //let exp = BigUint::parse_bytes(b"87", 16).unwrap();
@@ -946,14 +1068,20 @@ mod tests {
         //     + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
         //     + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108));   
 
-        let exp = BigUint::parse_bytes(b"1B0000000000000000000000001CF0000000000000000000000003", 16).unwrap() 
-            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
-            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
-            + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108));   
+        // let exp = BigUint::parse_bytes(b"1B0000000000000000000000001CF0000000000000000000000003", 16).unwrap() 
+        //     + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
+        //     + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108))
+        //     + (BigUint::from(1u128 << 108) * BigUint::from(1u128 << 108));   
         
-        
+        // let modulus = BigUint::from(7u128);
 
-        let modulus = BigUint::from(7u128);
+        let base = BigUint::from(5u128); 
+        let exp = BigUint::from(22u128);
+        let modulus = BigUint::from(37u128);
+
+
+
+
         let test_circuit = TestCircuit {base, exp, modulus} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
@@ -1222,10 +1350,109 @@ mod tests {
 
 
 
+    #[test]
+    fn test_decompose_limb_circuit() {
+
+
+        #[derive(Clone, Debug, Default)]
+        struct TestDecomposeLimbCircuit {
+            l: BigUint,
+        }
+    
+        impl Circuit<Fr> for TestDecomposeLimbCircuit {
+            type Config = TestConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+    
+            fn without_witnesses(&self) -> Self {
+                Self::default()
+            }
+    
+            fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+                Self::Config {
+                   modexpconfig: ModExpChip::<Fr>::configure(meta),
+                   helperconfig: HelperChip::configure(meta)
+                }
+            }
+    
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fr>,
+            ) -> Result<(), Error> {
+                let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                let helperchip = HelperChip::new(config.clone().helperconfig);
+                layouter.assign_region(
+                    || "assign decompose_limb test",
+                    |mut region| {
+                        let mut offset = 0;
+
+                        let l = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
+
+                        let bn_res = BigUint::parse_bytes(b"1", 16).unwrap();
+                        
+                        let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
+
+
+
+                        //let number = Number::from_bn(&BigUint::from(1u128));
+                        let number = l.clone();
+                        println!("number    = 0x{}", number.to_bn().to_str_radix(16));
+
+
+                        println!("\n\n########### synthesize   ##############  decompose_limb() ######################### START ###\n");
+
+                        println!("l       = 0x{}", &self.l.to_str_radix(16));
+                        println!("");
+                        println!("bn_res  = 0x{}", bn_res.to_str_radix(16));
+
+
+                        
+
+                        //modexpchip.decompose_limb(&mut region, &mut offset, &number.limbs[0], &mut limbs, 20)?;
+                        let res = modexpchip.decompose_limb_check_helper(&mut region, &mut offset, &l)?;
+
+
+                        for i in 0..4 {
+                            println!("res is {:?}, \t result is {:?}", &res.limbs[i].value, &result.limbs[i].value);
+                            println!("res_cell is    {:?}", &res.limbs[i].cell);
+                            println!("result_cell is {:?}", &result.limbs[i].cell);
+
+                            // region.constrain_equal(
+                            //     res.limbs[i].clone().cell.unwrap().cell(),
+                            //     result.limbs[i].clone().cell.unwrap().cell()
+                            // )?;
+                        }
+
+                        println!("\n\n########### synthesize   ##############  decompose_limb() ########################### END ###\n");
+
+                        Ok(())
+                    }
+                )?;
+                Ok(())
+            }
+        }
 
 
 
 
+        let l = BigUint::from(15u128);
+        // let l = BigUint::from(7u128);
+        //let l = BigUint::from(3u128);
+        //let l = BigUint::from(1u128);
+
+
+        let test_circuit = TestDecomposeLimbCircuit{l} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+
+
+        //assert_eq!(prover.verify(), Ok(()));
+        assert_ne!(prover.verify(), Ok(()));
+
+
+    }
 
 
 

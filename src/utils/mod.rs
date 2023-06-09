@@ -171,7 +171,7 @@ macro_rules! customized_circuits_expand {
         }
 
         impl $name {
-            fn get_expr<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell) -> Expression<F> {
+            pub fn get_expr<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell) -> Expression<F> {
                 let cell = gate_cell.cell;
                 //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
                 if cell[0] == 0 { // advice
@@ -183,7 +183,7 @@ macro_rules! customized_circuits_expand {
                 }
             }
 
-            fn get_expr_with_offset<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell, offset: usize) -> Expression<F> {
+            pub fn get_expr_with_offset<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell, offset: usize) -> Expression<F> {
                 let cell = gate_cell.cell;
                 //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
                 if cell[0] == 0 { // advice
@@ -195,8 +195,37 @@ macro_rules! customized_circuits_expand {
                 }
             }
 
+            pub fn get_advice_column(&self, gate_cell: GateCell) -> Column<Advice> {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 0 { // advice
+                    self.witness[cell[1]]
+                } else {
+                    unreachable!();
+                }
+            }
 
-            fn assign_cell<F:FieldExt>(
+            pub fn get_fixed_column(&self, gate_cell: GateCell) -> Column<Fixed> {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 1 { // advice
+                    self.fixed[cell[1]]
+                } else {
+                    unreachable!();
+                }
+            }
+
+            pub fn get_selector_column(&self, gate_cell: GateCell) -> Selector {
+                let cell = gate_cell.cell;
+                //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
+                if cell[0] == 2 { // advice
+                    self.selector[cell[1]]
+                } else {
+                    unreachable!();
+                }
+            }
+
+            pub fn assign_cell<F:FieldExt>(
                 &self,
                 region: &mut Region<F>,
                 start_offset: usize,
@@ -224,7 +253,7 @@ macro_rules! customized_circuits_expand {
                 }
             }
 
-            fn enable_selector<F:FieldExt>(
+            pub fn enable_selector<F:FieldExt>(
                 &self,
                 region: &mut Region<F>,
                 start_offset: usize,

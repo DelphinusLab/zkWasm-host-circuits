@@ -136,7 +136,7 @@ impl<F: FieldExt> MerkleChip<F> {
             let odd = config.get_expr(meta, MerkleConfig::odd());
             let is_set = config.get_expr(meta, MerkleConfig::is_set());
             let sel = config.get_expr(meta, MerkleConfig::sel());
-            
+
             let left_rel = config.get_expr_with_offset(meta, MerkleConfig::left(), Self::proof_height());
             let right_rel = config.get_expr_with_offset(meta, MerkleConfig::right(), Self::proof_height());
             let odd_rel = config.get_expr_with_offset(meta, MerkleConfig::odd(), Self::proof_height());
@@ -212,8 +212,6 @@ impl super::HostOpSelector for MerkleChip<Fr> {
     type Config = MerkleConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
-        _base_config: &BaseChipConfig,
-        _range_config: &RangeChipConfig,
     ) -> Self::Config {
         MerkleChip::<Fr>::configure(meta)
     }
@@ -302,9 +300,6 @@ impl super::HostOpSelector for MerkleChip<Fr> {
     fn synthesize(
         &self,
         arg_cells: &Vec<AssignedCell<Fr, Fr>>,
-        base_chip: &BaseChip<Fr>,
-        range_chip: &RangeChip<Fr>,
-        point_select_chip: &SelectChip<Fr>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         todo!();

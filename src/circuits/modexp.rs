@@ -337,7 +337,21 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(l[2].clone())
     }
 
-
+    /// Computes (lhs * rhs) mod ((2^(108)) - 1)  \
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `lhs` - left hand Number
+    /// * `rhs` - right hand Number
+    /// 
+    /// # Constraint 
+    /// 
+    ///  (l * r) - (q * m) - r = 0
+    /// 
+    /// # Returns 
+    /// 
+    ///  res in l[3]
+    ///   
     pub fn mod_power108m1_mul (
        &self,
        region: &mut Region<F>,
@@ -615,7 +629,16 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(())
     }
 
-
+    /// Helper function for testing of decompose_limb() \
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `l` - the limb to decompose into limb bits
+    /// 
+    /// # Returns 
+    /// 
+    /// * res - the first bits_limbs[], statically assigned as the first for now.
+    /// 
     pub fn decompose_limb_check_helper(
         &self,
         region: &mut Region<F>,
@@ -623,49 +646,29 @@ impl<F: FieldExt> ModExpChip<F> {
         l: &Number<F>,
     ) -> Result <Number<F>, Error> {
 
-        println!("-------------------------------decompose_limb_check_helper(): START\n");
-
         let mut limbs = vec![];
-
-        //let number = Number::from_bn(&BigUint::from(1u128));
         let number = l.clone();
 
-     
-        println!("c -> l -> number    = 0x{}", number.to_bn().to_str_radix(16));
-
-        //self.decompose_limb_original(region, offset, &number.limbs[0], &mut limbs, 20)?;
-        //self.decompose_limb_old1(region, offset, &number.limbs[0], &mut limbs, 20)?;
-        //self.decompose_limb_old2(region, offset, &number.limbs[0], &mut limbs, 20)?;
-        // self.decompose_limb_old3(region, offset, &number.limbs[0], &mut limbs, 20)?;
         self.decompose_limb(region, offset, &number.limbs[0], &mut limbs, 20)?;
-
-
-        //let mut res = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(5 as u128)))?;
-        //let mut res: Number<F> = Number::from_bn(&BigUint::from(0 as u128));
-
-        println!("\nReturning from decompose_limb_xx() ");
-        println!("limbs.len() = {}", limbs.len());
 
         let mut bits_limbs: Vec<Number<F>> = vec![];
 
         for limb in limbs.clone() {
-            print!("{:?},", field_to_bn(&limb.value).to_radix_le(16));
-
             bits_limbs.push(Number::from_bn(&field_to_bn(&limb.value)));
-
-            
         }
 
         let res = self.assign_constant(region, offset, bits_limbs[0].clone() )?;
-        
-        println!("\n\n-------------------------------decompose_limb_check_helper(): END\n");
         Ok(res)
     }
 
-
-
-
-    // Enforces limb value is `0` or `1`.
+    /// Constrains all the values of Vec<Limb<F>> passed in 
+    /// to the value of either '1' or '0'. \
+    ///  i.e., Enforces limb value is `0` or `1`.
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `limbs` - the vec of limb that should contain only 0x1 or 0x0 \
+    /// 
     fn assert_limbs_bit(
         &self,
         region: &mut Region<F>,
@@ -996,31 +999,6 @@ mod tests {
         ) -> Result<(), Error> {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
-            // layouter.assign_region(
-            //     || "assign mod exp",
-            //     |mut region| {
-            //         let mut offset = 0;
-            //         let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
-            //         let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
-
-            //         let exp = helperchip.assign_base(&mut region, &mut offset, &self.exp)?; 
-
-            //         let bn_res = self.base.clone() * self.exp.clone() % self.modulus.clone();   // needs pow
-
-            //         let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
-
-            //         let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
-            //         for i in 0..4 {
-            //             println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
-            //             println!("remcell is {:?}, resultcell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
-            //             region.constrain_equal(
-            //                 rem.limbs[i].clone().cell.unwrap().cell(),
-            //                 result.limbs[i].clone().cell.unwrap().cell()
-            //             )?;
-            //         }
-            //         Ok(())
-            //     }
-            // )?;
 
             layouter.assign_region(
                 || "assign mod exp",
@@ -1047,11 +1025,6 @@ mod tests {
                     Ok(())
                 }
             )?;
-
-
-
-
-
             Ok(())
         }
     }
@@ -1078,9 +1051,6 @@ mod tests {
         let base = BigUint::from(5u128); 
         let exp = BigUint::from(22u128);
         let modulus = BigUint::from(37u128);
-
-
-
 
         let test_circuit = TestCircuit {base, exp, modulus} ;
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
@@ -1276,6 +1246,81 @@ mod tests {
     }
 
     #[test]
+    fn test_mod_power108m1_mul_circuit() {
+
+        #[derive(Clone, Debug, Default)]
+        struct TestModpower108m1_mulCircuit {
+            a: BigUint,
+            b: BigUint,
+            modulus: BigUint,
+        }
+    
+        impl Circuit<Fr> for TestModpower108m1_mulCircuit {
+            type Config = TestConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+    
+            fn without_witnesses(&self) -> Self {
+                Self::default()
+            }
+    
+            fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+                Self::Config {
+                   modexpconfig: ModExpChip::<Fr>::configure(meta),
+                   helperconfig: HelperChip::configure(meta)
+                }
+            }
+    
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fr>,
+            ) -> Result<(), Error> {
+                let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                let helperchip = HelperChip::new(config.clone().helperconfig);
+     
+                layouter.assign_region(
+                    || "mod_power108m1_mul",
+                    |mut region| {
+                        let mut offset = 0;
+                        let bn_rem = self.a.clone() * self.b.clone() % self.modulus.clone();
+                        let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+    
+                        println!("\n bn_rem = {:?} \n", bn_rem);
+
+                        let lhs  = helperchip.assign_modulus(&mut region, &mut offset, &self.a)?;
+                        let rhs  = helperchip.assign_base(&mut region, &mut offset, &self.b)?;
+                        
+                        let res = modexpchip.mod_power108m1_mul(&mut region, &mut offset, &lhs, &rhs )?;
+    
+                        println!("\nresult is:\n {:?}", res);
+
+                        Ok(res)
+                        //Ok(())
+                    }
+                )?;
+                Ok(())
+            }
+        }
+
+
+        let a = BigUint::parse_bytes(b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap();  
+        //let a = BigUint::from(5u128); 
+        //let a = BigUint::parse_bytes(b"fffffffffffffffffffffffffff", 16).unwrap();
+
+        let b = BigUint::from(1u128);
+        let modulus = BigUint::parse_bytes(b"fffffffffffffffffffffffffff", 16).unwrap();
+
+        let test_circuit = TestModpower108m1_mulCircuit{a, b, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover) => prover,
+            Err(e) => panic!("{:#?}", e)
+        };
+        assert_eq!(prover.verify(), Ok(()));
+
+    }
+
+    #[test]
     fn test_mod_mult_circuit() {
 
         #[derive(Clone, Debug, Default)]
@@ -1351,29 +1396,65 @@ mod tests {
 
 
     #[test]
-    fn test_decompose_limb_circuit() {
+    fn test_decompose_limb_circuit(){
 
+        use std::fmt;
+        use halo2_proofs::{
+            dev::{
+                VerifyFailure, 
+                FailureLocation,
+            },
+            plonk::Any,
+        };
+        
+        pub enum CircuitError {
+            ProverError(Error),
+            VerifierError(Vec<VerifyFailure>),
+            NoOperation,
+        }
+        
+        impl fmt::Debug for CircuitError {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    CircuitError::ProverError(prover_error) => {
+                        write!(f, "prover error in circuit: {}", prover_error)
+                    }
+                    CircuitError::VerifierError(verifier_error) => {
+                        write!(f, "verifier error in circuit: {:#?}", verifier_error)
+                    }
+                    CircuitError::NoOperation => {
+                        write!(f, "no operation is set.")
+                    }
+                }
+            }
+        }
+
+        #[derive(Clone, Debug)]
+        struct TestConfig {
+            modexpconfig: ModExpConfig,
+            helperconfig: HelperChipConfig,
+        }
 
         #[derive(Clone, Debug, Default)]
         struct TestDecomposeLimbCircuit {
             l: BigUint,
         }
-    
+
         impl Circuit<Fr> for TestDecomposeLimbCircuit {
             type Config = TestConfig;
             type FloorPlanner = SimpleFloorPlanner;
-    
+
             fn without_witnesses(&self) -> Self {
                 Self::default()
             }
-    
+
             fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
                 Self::Config {
-                   modexpconfig: ModExpChip::<Fr>::configure(meta),
-                   helperconfig: HelperChip::configure(meta)
+                modexpconfig: ModExpChip::<Fr>::configure(meta),
+                helperconfig: HelperChip::configure(meta)
                 }
             }
-    
+
             fn synthesize(
                 &self,
                 config: Self::Config,
@@ -1387,44 +1468,27 @@ mod tests {
                         let mut offset = 0;
 
                         let l = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
-
                         let bn_res = BigUint::parse_bytes(b"1", 16).unwrap();
-                        
                         let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
 
 
-
-                        //let number = Number::from_bn(&BigUint::from(1u128));
                         let number = l.clone();
-                        println!("number    = 0x{}", number.to_bn().to_str_radix(16));
-
-
-                        println!("\n\n########### synthesize   ##############  decompose_limb() ######################### START ###\n");
-
-                        println!("l       = 0x{}", &self.l.to_str_radix(16));
                         println!("");
+                        println!("number  = 0x{}", number.to_bn().to_str_radix(16));
+                        println!("l       = 0x{}", &self.l.to_str_radix(16));
                         println!("bn_res  = 0x{}", bn_res.to_str_radix(16));
 
-
-                        
-
-                        //modexpchip.decompose_limb(&mut region, &mut offset, &number.limbs[0], &mut limbs, 20)?;
                         let res = modexpchip.decompose_limb_check_helper(&mut region, &mut offset, &l)?;
-
 
                         for i in 0..4 {
                             println!("res is {:?}, \t result is {:?}", &res.limbs[i].value, &result.limbs[i].value);
                             println!("res_cell is    {:?}", &res.limbs[i].cell);
                             println!("result_cell is {:?}", &result.limbs[i].cell);
-
-                            // region.constrain_equal(
-                            //     res.limbs[i].clone().cell.unwrap().cell(),
-                            //     result.limbs[i].clone().cell.unwrap().cell()
-                            // )?;
+                            region.constrain_equal(
+                                res.limbs[i].clone().cell.unwrap().cell(),
+                                result.limbs[i].clone().cell.unwrap().cell()
+                            )?;
                         }
-
-                        println!("\n\n########### synthesize   ##############  decompose_limb() ########################### END ###\n");
-
                         Ok(())
                     }
                 )?;
@@ -1433,28 +1497,70 @@ mod tests {
         }
 
 
+        fn run_circuit () -> Result<(), CircuitError> {
+        
+            // this is a known error in the decompse_limb circuit, for advice any advice values 0x0 - 0xF. 
+            // todo() fix this VerifyFailure error.
+            let known_verifyerror = Err::<(), Vec<VerifyFailure>> (vec![VerifyFailure::ConstraintNotSatisfied {
+                constraint: ((0, "one line constraint").into(), 0, "").into(),
+                location: FailureLocation::InRegion {
+                    region: (0, "assign decompose_limb test").into(),
+                    offset: 4,
+                },
+                cell_values: vec![
+                    (((Any::Advice, 0).into(), 0).into(), "1".to_string()),
+                    (((Any::Advice, 1).into(), 0).into(), "1".to_string()),
+                    (((Any::Advice, 2).into(), 0).into(), "1".to_string()),
+                    (((Any::Advice, 3).into(), 0).into(), "1".to_string()),
+                    (((Any::Advice, 4).into(), 0).into(), "0".to_string()),
+                    (((Any::Advice, 4).into(), 1).into(), "0".to_string()),
+                    (((Any::Fixed, 0).into(), 0).into(), "0x8".to_string()),
+                    (((Any::Fixed, 1).into(), 0).into(), "0x4".to_string()),
+                    (((Any::Fixed, 2).into(), 0).into(), "0x2".to_string()),
+                    (((Any::Fixed, 3).into(), 0).into(), "1".to_string()),
+                    (((Any::Fixed, 4).into(), 0).into(), "0x10".to_string()),
+                    (((Any::Fixed, 5).into(), 0).into(), "-1".to_string()),
+                    (((Any::Fixed, 6).into(), 0).into(), "0".to_string()),
+                    (((Any::Fixed, 7).into(), 0).into(), "0".to_string()),
+                    (((Any::Fixed, 8).into(), 0).into(), "0".to_string()),
+                ],
+            }]).unwrap_err();
 
 
-        let l = BigUint::from(15u128);
-        // let l = BigUint::from(7u128);
-        //let l = BigUint::from(3u128);
-        //let l = BigUint::from(1u128);
+            let l = BigUint::from(15u128);
+            //let l = BigUint::from(7u128);
+            //let l = BigUint::from(3u128);
+            //let l = BigUint::from(1u128);
 
+            let test_circuit = TestDecomposeLimbCircuit{l} ;
 
-        let test_circuit = TestDecomposeLimbCircuit{l} ;
-        let prover = match MockProver::run(16, &test_circuit, vec![]) {
-            Ok(prover) => prover,
-            Err(e) => panic!("{:#?}", e)
-        };
+            let prover = match MockProver::run(16, &test_circuit, vec![]) {
+                Ok(prover_run) => prover_run,
+                Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+            };
+ 
+            match prover.verify() {
+                Ok(_) =>  {
+                    println!("\nprover verify ok.");
+                    return Ok(())
+                },
+                Err(verifier_error) => {
+                    print!("\nprover verify error -> ");
+                    if verifier_error == known_verifyerror { 
+                        print!("\tknown error, return Ok to runner\n");
+                        return Ok(())
+                    } else { 
+                        print!("\tunknown error!, return CircuitError to runner\n");
+                        return Err(CircuitError::VerifierError(verifier_error)) 
+                    }
+                }
+            }
+        }
 
-
-        //assert_eq!(prover.verify(), Ok(()));
-        assert_ne!(prover.verify(), Ok(()));
-
+        let output = run_circuit().expect("circuit failed");
+        println!("circuit run finished!\n\nresult: {:#?}", output);
 
     }
-
-
 
 
 }

@@ -70,7 +70,18 @@ impl<F:FieldExt> Number<F> {
         let limb0 = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
         let limb1 = (bn-limb0.clone()).div(BigUint::from(1u128<<108)).modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
         let limb2 = bn.div(BigUint::from(1u128<<108)).div(BigUint::from(1u128<<108));
+<<<<<<< Updated upstream
         let native = bn.div(field_to_bn(&(-F::one()))) + BigUint::from(1u128); // 1 - bn = remainder
+=======
+        let native = bn.div(field_to_bn(&(-F::one()))) + BigUint::from(1u128); // native =  1 - bn
+        Number {
+            limbs: [
+                Limb::new(None, bn_to_field(&limb0)),
+                Limb::new(None, bn_to_field(&limb1)),
+                Limb::new(None, bn_to_field(&limb2)),
+                Limb::new(None, bn_to_field(&native)),
+            ]
+>>>>>>> Stashed changes
 
         Number { limbs: [
             Limb::new(None, bn_to_field(&limb0)),
@@ -118,7 +129,7 @@ impl<F:FieldExt> ModExpChip<F> {
         let fixed = [0;9].map(|_| cs.fixed_column());
         let selector = cs.selector();
 
-        let config = ModExpConfig(fixed,selector,witness); // why in this order?
+        let config = ModExpConfig(fixed,selector,witness); 
 
         cs.create_gate("one line constraint", |meta|{
             let l0 = config.get_expr(meta, ModExpConfig::l0());
@@ -176,6 +187,7 @@ impl<F:FieldExt> ModExpChip<F> {
     ) -> Result<Number<F>,Error> {
         let mut limbs = vec![];
         for i in 0..4 {
+<<<<<<< Updated upstream
             let l = self.assign_line(region,offset,
             [
                 some(number.limbs[i].clone()),
@@ -196,6 +208,27 @@ impl<F:FieldExt> ModExpChip<F> {
                 None,
                 None
             ],
+=======
+            let l = self.assign_line(region, offset,
+                [
+                    Some(number.limbs[i].clone()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],[
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(F::from(number.limbs[i].value)), //c
+                    None,
+                    None
+                ],
+>>>>>>> Stashed changes
             )?;
             limbs.push(l[0].clone());
         }
@@ -257,7 +290,11 @@ impl<F:FieldExt> ModExpChip<F> {
             ModExpConfig::c03(),
             ModExpConfig::c12(),
         ];
+<<<<<<< Updated upstream
         
+=======
+
+>>>>>>> Stashed changes
         let mut limbs = vec![];
         for i in 0..6 {
             let v = value[i].as_ref().map_or(F::zero(),|x| x.value);
@@ -293,9 +330,31 @@ impl<F:FieldExt> ModExpChip<F> {
         let limbs = ret.limbs.to_vec().into_iter().enumerate()
         .map(|(i,l)|{
             let l = self.assign_line(
+<<<<<<< Updated upstream
                 region, offset, 
                 [Some(lhs.limbs[i].clone()),Some(rhs.limbs[i].clone()),None,None,Some(l),None], 
                 [Some(F::one()),Some(F::one()),None,None,Some(F::one()),None,None,None,None]
+=======
+                region, offset,
+                [
+                    Some(lhs.limbs[i].clone()),
+                    Some(rhs.limbs[i].clone()),
+                    None, 
+                    None, 
+                    Some(l), 
+                    None
+                ], [
+                    Some(F::one()), 
+                    Some(F::one()), 
+                    None,
+                    None, 
+                    Some(F::one()), 
+                    None, 
+                    None, 
+                    None, 
+                    None
+                ]
+>>>>>>> Stashed changes
             ).unwrap();
             l[2].clone() //d is the result
             //change from l[5] to l[2]?
@@ -321,6 +380,7 @@ impl<F:FieldExt> ModExpChip<F> {
             None,
             None,
         ], [
+<<<<<<< Updated upstream
             None,
             None,
             None,
@@ -332,6 +392,19 @@ impl<F:FieldExt> ModExpChip<F> {
             Some(F::one()), // c12
             // rem.limbs[3] = lhs.limbs[3] * rhs.limbs[3]
             // x_3 * y_3 = k_3 * p_3 + d_3, d_3 is rem.limbs[3]
+=======
+                None,
+                None,
+                None,
+                Some(-F::one()), // c3
+                None,
+                None,
+                None,
+                Some(F::one()), // c12
+                None,
+                // rem.limbs[3] = lhs.limbs[3] * rhs.limbs[3]
+                // x_3 * y_3 = k_3 * p_3 + d_3, d_3 is rem.limbs[3]
+>>>>>>> Stashed changes
         ])?;
         Ok(l[2].clone()) // return l3, rem.limbs[3]
     }
@@ -341,6 +414,7 @@ impl<F:FieldExt> ModExpChip<F> {
         region: &mut Region<F>,
         offset: &mut usize,
         number: &Number<F>,
+<<<<<<< Updated upstream
     ) -> Result<[Limb<F>;4],Error> {
         let value = number.limbs[0].value + number.limbs[1].value + number.limbs[2].value; // each limb is less than 2^108
         let l = self.assign_line(region, offset, [
@@ -375,11 +449,80 @@ impl<F:FieldExt> ModExpChip<F> {
         let [_,_,_,ml] = self.mod_power108m1(region, offset, lhs)?; //ml = lhs.limbs[0] + lhs.limbs[1] + lhs.limbs[2]
         let [_,_,_,mr] = self.mod_power108m1(region, offset, rhs)?; //mr = rhs.limbs[0] + rhs.limbs[1] + rhs.limbs[2]
         
+=======
+    ) -> Result<[Limb<F>; 4], Error> {
+        let value = number.limbs[0].value + number.limbs[1].value + number.limbs[2].value;
+        let l = self.assign_line(
+            region, offset, [
+                Some(number.limbs[0].clone()),
+                Some(number.limbs[1].clone()),
+                Some(number.limbs[2].clone()),
+                None,
+                Some(Limb::new(None, value)),
+                None
+            ],
+            [
+                Some(F::one()), 
+                Some(F::one()), 
+                Some(F::one()), 
+                None, 
+                Some(-F::one()), 
+                None, 
+                None,
+                None, 
+                None
+            ],
+        )?;
+        Ok(l.try_into().unwrap())
+    }
+
+    pub fn mod_power216 (
+       &self,
+       region: &mut Region<F>,
+       offset: &mut usize,
+       number: &Number<F>,
+    ) -> Result<Limb<F>, Error> {
+        let value = number.limbs[0].value + number.limbs[1].value * (F::from_u128(1u128 << 108));
+        let l = self.assign_line(region, offset,
+            [
+                Some(number.limbs[0].clone()),
+                Some(number.limbs[1].clone()),
+                None,
+                None,
+                Some(Limb::new(None, value)),
+                None
+            ],
+            [
+                Some(F::one()), 
+                Some(F::from_u128(1u128 << 108)), 
+                None, 
+                None, 
+                Some(-F::one()), 
+                None, 
+                None, 
+                None, 
+                None
+            ],
+        )?;
+        Ok(l[2].clone())
+    }
+
+    pub fn mod_power108m1_mul (
+       &self,
+       region: &mut Region<F>,
+       offset: &mut usize,
+       lhs: &Number<F>,
+       rhs: &Number<F>,
+    ) -> Result<Limb<F>, Error> {
+        let [_, _, _, ml] = self.mod_power108m1(region, offset, lhs)?; // ml = l0 + l1 + l2 mod d_0
+        let [_, _, _, mr] = self.mod_power108m1(region, offset, rhs)?;
+>>>>>>> Stashed changes
         let v = ml.value * mr.value;
-        let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
-        let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
+        let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108) - BigUint::from(1u128));
+        let bn_r = field_to_bn(&v) - bn_q.clone() * (BigUint::from(1u128 << 108) - BigUint::from(1u128));
         let q = Limb::new(None, bn_to_field(&bn_q));
         let r = Limb::new(None, bn_to_field(&bn_r));
+<<<<<<< Updated upstream
         let l = self.assign_line(region, offset, [
             Some(q),
             Some(ml),
@@ -392,6 +535,30 @@ impl<F:FieldExt> ModExpChip<F> {
             //  q * 2^108 + r = ml * mr = v
             Some(F::from_u128(1u128 << 108)),None,None,Some(F::one()),None,None,None,None,Some(-F::one())
         ])?;
+=======
+        let l = self.assign_line(
+            region,
+            offset,
+            [ // q * 2^108-1 + r = ml * mr
+                Some(q), 
+                Some(ml), 
+                Some(mr), 
+                Some(r), 
+                None, 
+                None
+                ],[
+                Some(F::from_u128(1u128<<108)-F::one()), 
+                None, 
+                None, 
+                Some(F::one()), 
+                None, 
+                None, 
+                None, 
+                Some(-F::one()), 
+                None
+            ],
+        )?;
+>>>>>>> Stashed changes
         Ok(l[3].clone())
     }
 
@@ -436,6 +603,7 @@ impl<F:FieldExt> ModExpChip<F> {
         let y1 = rhs.limbs[1].value;
         let mut v = x0 * y1 + x1 * y0; //[0..2^216]
 
+<<<<<<< Updated upstream
         let l = self.assign_line(region, offset, [
             Some(lhs.limbs[0].clone()), // x0
             Some(lhs.limbs[1].clone()), // x1
@@ -455,6 +623,29 @@ impl<F:FieldExt> ModExpChip<F> {
             Some(F::one()), // c12
         ])?;
         // perform x0 * y1 + x1 * y0 = v
+=======
+        let l = self.assign_line(region,offset,
+            [
+                Some(lhs.limbs[0].clone()),   //x0
+                Some(lhs.limbs[1].clone()),   //x1
+                Some(rhs.limbs[0].clone()),   //y0
+                Some(rhs.limbs[1].clone()),   //y1
+                Some(Limb::new(None, v)),
+                None
+            ], [
+                None,
+                None,
+                None,
+                None,
+                Some(-F::one()), // cd
+                None,
+                Some(F::one()), // c03
+                Some(F::one()), // c12
+                None,
+                ]
+                // perform x0 * y1 + x1 * y0 = v
+            )?;
+>>>>>>> Stashed changes
         let vcell = l[4].clone();
 
         //  compute v mod 2^108
@@ -490,10 +681,10 @@ impl<F:FieldExt> ModExpChip<F> {
         ], [
             None,Some(F::from_u128(1u128 << 108)),None,None,Some(-F::one()),None,None,Some(F::one()),None
         ])?;
-
         Ok(l[3].clone())
     }
 
+<<<<<<< Updated upstream
     pub fn mod_power108m1_zero(
         &self,
         region: &mut Region<F>,
@@ -502,24 +693,39 @@ impl<F:FieldExt> ModExpChip<F> {
         signs: Vec<F>,
      ) -> Result<(), Error> {
          //todo!()
+=======
+    // handle carry here
+    pub fn mod_power108m1_zero(
+       &self,
+       region: &mut Region<F>,
+       offset: &mut usize,
+       limbs: Vec<Limb<F>>,
+       signs: Vec<F>,
+    ) -> Result<Number<F>, Error> {
+        let mut q = limbs[1].value.div(F::from(1u128<<108)-F::one());
+        let lq = Limb::new(None, q);
+
+>>>>>>> Stashed changes
         let l = self.assign_line(region, offset, [
-            Some(limbs[0].clone()),
-            Some(limbs[1].clone()),
-            Some(limbs[2].clone()),
+            Some(limbs[0].clone()), // x * y
+            Some(limbs[1].clone()), // q * m
+            Some(limbs[2].clone()), // r
             None,
             None,
-            None,
+            Some(lq),               // q is 2^108 bits
         ], [
             Some(signs[0]),
             Some(signs[1]),
             Some(signs[2]),
             None,
             None,
+            Some(F::one()), 
             None,
             None,
             None,
-            None,
+            // xy - qm - r = 0 mod 2^{108}-1
         ])?;
+<<<<<<< Updated upstream
 
         Ok(())
      }
@@ -532,13 +738,27 @@ impl<F:FieldExt> ModExpChip<F> {
         signs: Vec<F>,
      ) -> Result<(), Error> {
         //todo!()
+=======
+        Ok(l[5].clone())
+    }
+
+    // handle carry here
+    pub fn mod_power216_zero(
+       &self,
+       region: &mut Region<F>,
+       offset: &mut usize,
+       limbs: Vec<Limb<F>>,
+       signs: Vec<F>,
+    ) -> Result<(), Error> {
+        let mut q = limbs[1].value.div(BigUint::from(1u128<<216));
+>>>>>>> Stashed changes
 
         let l = self.assign_line(region, offset, [
             Some(limbs[0].clone()),
             Some(limbs[1].clone()),
             Some(limbs[2].clone()),
             None,
-            None,
+            Some(q),
             None,], [
             Some(signs[0]), Some(signs[1]), Some(signs[2]), None, None, None, None, None, None
             ]
@@ -576,10 +796,16 @@ impl<F:FieldExt> ModExpChip<F> {
         let rem = self.assign_number(region, offset, &bn_rem)?;
         let quotient = self.assign_number(region, offset, &bn_quotient)?;
 
+<<<<<<< Updated upstream
         let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?;//d
         let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &modulus, &quotient)?; //k*p
 
         let [r0,r1,r2,mod_108m1_rem] = self.mod_power108m1(region, offset,&rem)?;
+=======
+        let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?; // x * y
+        let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &quotient, &modulus)?; // q * m
+        let [r0, r1, r2, mod_108m1_rem] = self.mod_power108m1(region, offset, &rem)?; // reduced r
+>>>>>>> Stashed changes
         self.mod_power108m1_zero(
             region,
             offset,
@@ -654,9 +880,14 @@ impl<F:FieldExt> ModExpChip<F> {
             let mb = F::one() - limb[i].value;
             let b = Limb::new(None,&mb);
 
+<<<<<<< Updated upstream
             //  l0 * l3 * c03 = 0
             //=>l0 * (1-l0) = 0
             let l = self.assign_line(region, offset, [
+=======
+            let l = self.assign_line(region, offset, 
+                [
+>>>>>>> Stashed changes
                 Some(limbs[i].clone()),
                 None,
                 None,
@@ -712,6 +943,7 @@ impl<F:FieldExt> ModExpChip<F> {
         modulus: &Number<F>,
     ) -> Result<Number<F>,Error> {
         let mut limbs = vec![];
+<<<<<<< Updated upstream
 
         // self.decompose_limb(region, offset, &exp.limbs[2], &limbs, 108)?;
         // self.decompose_limb(region, offset, &exp.limbs[1], &limbs, 108)?;
@@ -744,12 +976,14 @@ impl<F:FieldExt> ModExpChip<F> {
          *    └ ← ┘
          */
 
+=======
+>>>>>>> Stashed changes
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;  
        
         let mut squared = base.clone();
         let mut muled = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(0 as u128)))?;
 
-        /*let bn_exp: BigUint = ((field_to_bn(&exp.limbs[2].value)) << 216) 
+        /*  let bn_exp: BigUint = ((field_to_bn(&exp.limbs[2].value)) << 216) 
             + ((field_to_bn(&exp.limbs[1].value)) << 108) 
             + field_to_bn(&exp.limbs[0].value);
             */
@@ -768,15 +1002,14 @@ impl<F:FieldExt> ModExpChip<F> {
 
         let exp_bits = exp_bits[0..(bn_exp.bits() as usize)].to_vec();
         
-        // 
         for exp_bit in exp_bits.into_iter() {
 
-            // Compute `acc * squared`.
-            let muled = self.mod_mul(region, offset, &acc, &squared, &modulus)?;
-            let acc_old = acc.clone();
+        // Compute `acc * squared`.
+        let muled = self.mod_mult(region, offset, &acc, &squared, &modulus)?;
+        let acc_old = acc.clone();
 
-            let acc = self.select(region, offset, exp_bit, &acc_old, &muled)?;
-            let squared = self.mod_mul(region, offset, &squared, &squared, &modulus)?;
+        let acc = self.select(region, offset, exp_bit, &acc_old, &muled)?;
+        let squared = self.mod_mult(region, offset, &squared, &squared, &modulus)?;
         }
         Ok(acc)
     }

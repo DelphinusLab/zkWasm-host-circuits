@@ -22,8 +22,15 @@ use halo2_proofs::{
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector, Expression, VirtualCells},
     poly::Rotation,
 };
-use std::marker::PhantomData;
-use std::{fs::File, io::BufReader, path::PathBuf};
+
+
+
+use std::{
+    marker::PhantomData,
+    fs::File,
+    io::BufReader,
+    path::PathBuf
+};
 
 use crate::circuits::{
     bls::Bls381PairChip, bls::Bls381SumChip, bn256::Bn256PairChip, bn256::Bn256SumChip,
@@ -31,6 +38,7 @@ use crate::circuits::{
 };
 
 use crate::utils::GateCell;
+use crate::utils::params::{HostCircuitInfo, Prover};
 
 customized_circuits!(HostOpConfig, 2, 7, 1, 0,
    | shared_operand | shared_opcode | shared_index | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator
@@ -39,6 +47,7 @@ customized_circuits!(HostOpConfig, 2, 7, 1, 0,
 
 use halo2_proofs::dev::MockProver;
 use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::pairing::bn256::Bn256;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(&self, layouter: impl Layouter<F>, a: Vec<F>) -> Result<Self, Error>;
@@ -174,6 +183,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
     }
 }
 
+#[derive(Clone)]
 struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
@@ -295,7 +305,7 @@ fn main() {
 
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
-    match opname {
+    let circuit_info: Box<dyn Prover::<Bn256>> = match opname {
         OpType::BLS381PAIR => {
             let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
                 shared_operands,
@@ -303,8 +313,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover = MockProver::run(k, &bls381pair_circuit, vec![]).unwrap();
-            assert_eq!(prover.verify(), Ok(()));
+            Box::new(HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![vec![]]))
         }
         OpType::BLS381SUM => {
             let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
@@ -313,8 +322,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover = MockProver::run(k, &bls381sum_circuit, vec![]).unwrap();
-            assert_eq!(prover.verify(), Ok(()));
+            Box::new(HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![vec![]]))
         }
         OpType::BN256PAIR => {
             let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
@@ -323,8 +331,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover = MockProver::run(k, &bn256pair_circuit, vec![]).unwrap();
-            assert_eq!(prover.verify(), Ok(()));
+            Box::new(HostCircuitInfo::new(bn256pair_circuit, "opname.into()".to_string(), vec![vec![]]))
         }
         OpType::BN256SUM => {
             let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
@@ -333,12 +340,13 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover = MockProver::run(k, &bn256sum_circuit, vec![]).unwrap();
-            assert_eq!(prover.verify(), Ok(()));
+            Box::new(HostCircuitInfo::new(bn256sum_circuit, "opname.into()".to_string(), vec![vec![]]))
         }
         OpType::POSEDONHASH => {
             todo!()
         }
     };
+
+    circuit_info.mock_proof(k);
     println!("Mock Verify Pass.");
 }

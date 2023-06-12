@@ -18,7 +18,7 @@ pub struct ExternalHostCallEntry {
     pub is_ret: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(clap::ArgEnum, Clone, Copy, Debug)]
 pub enum ForeignInst {
     Log = 0,
     BlspairG1,

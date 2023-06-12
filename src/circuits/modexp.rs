@@ -598,8 +598,10 @@ impl<F: FieldExt> ModExpChip<F> {
         self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;
         let one = acc.clone();
+        println!("limbs is {:?}", limbs);
         for limb in limbs {
             let v = self.select(region, offset, &limb, &one, base)?;
+            println!("v is {:?}, acc is {:?}", v.to_bn(), acc.to_bn());
             acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
             acc = self.mod_mult(region, offset, &acc, &v, modulus)?;
         }

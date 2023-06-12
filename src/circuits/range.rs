@@ -10,11 +10,11 @@ use crate::{
     customized_circuits_expand,
     constant_from,
 };
-use std::ops::{Mul, Div};
+use std::ops::Div;
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Region, AssignedCell},
+    circuit::{Region, AssignedCell},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells
@@ -31,7 +31,7 @@ use num_bigint::BigUint;
  */
 customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
    | limb   |  acc   | rem   | table | sel
-   | limb_n |  acc_n | rem_n | nil   | sel_n
+   | nil    |  acc_n | rem_n | nil   | sel_n
 );
 
 pub struct RangeCheckChip<F:FieldExt> {
@@ -106,7 +106,6 @@ impl<F: FieldExt> RangeCheckChip<F> {
         // | nil | 0       | 0 | 0 |
         cs.create_gate("limb acc constraint", |meta| {
             let limb = config.get_expr(meta, RangeCheckConfig::limb());
-            let limb_n = config.get_expr(meta, RangeCheckConfig::limb_n());
             let acc = config.get_expr(meta, RangeCheckConfig::acc());
             let acc_n = config.get_expr(meta, RangeCheckConfig::acc_n());
             let sel = config.get_expr(meta, RangeCheckConfig::sel());
@@ -120,7 +119,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         config
     }
 
-    fn assign_value_with_range (
+    pub fn assign_value_with_range (
         &mut self,
         region: &mut Region<F>,
         value: F,
@@ -129,7 +128,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         let mut limbs = vec![];
         let mut bn = field_to_bn(&value);
         let mut cs = vec![];
-        for i in 0..sz {
+        for _ in 0..sz {
             cs.push(bn_to_field(&bn));
             let limb = bn.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<108));
             bn = (bn - limb.clone()).div(BigUint::from(1u128<<108));
@@ -149,11 +148,10 @@ impl<F: FieldExt> RangeCheckChip<F> {
         Ok(())
     }
 
-    fn initialize(
+    pub fn initialize(
         &self,
         region: &mut Region<F>
     ) -> Result<(), Error> {
-        let mut offset = 0;
         for i in 0..4096 {
             self.config.assign_cell(region, self.offset, &RangeCheckConfig::table(), F::from_u128(i as u128))?;
         }

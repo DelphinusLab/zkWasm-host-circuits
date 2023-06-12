@@ -4,6 +4,7 @@
 pub mod circuits;
 pub mod host;
 pub mod utils;
+mod adaptor;
 
 /*
 use crate::{
@@ -45,7 +46,6 @@ customized_circuits!(HostOpConfig, 2, 7, 1, 0,
    | nil            | nil           | nil          | filtered_operand_n | nil              | nil            | merged_op_n | nil
 );
 
-use halo2_proofs::dev::MockProver;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bn256::Bn256;
 

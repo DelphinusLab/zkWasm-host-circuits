@@ -19,12 +19,6 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Chip, Region, AssignedCell, Layouter};
 use halo2_proofs::pairing::bn256::Fr;
 
-use halo2ecc_s::circuit::{
-    base_chip::{BaseChip, BaseChipConfig},
-    range_chip::{RangeChip, RangeChipConfig},
-    select_chip::SelectChip,
-};
-
 use crate::host::merkle::{MerkleTree, MerkleProof};
 use crate::host::kvpair::MongoMerkle;
 

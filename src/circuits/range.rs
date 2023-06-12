@@ -158,3 +158,153 @@ impl<F: FieldExt> RangeCheckChip<F> {
         Ok(())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::dev::MockProver;
+    use num_bigint::BigUint;
+
+    use halo2_proofs::{
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        plonk::{
+            Advice, Circuit, Column, ConstraintSystem, Error
+        },
+    };
+
+    use super::{
+        ModExpChip,
+        ModExpConfig,
+        Number,
+        Limb,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChipConfig {
+        limb: Column<Advice>
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChip {
+        config: HelperChipConfig
+    }
+
+    impl Chip<Fr> for HelperChip {
+        type Config = HelperChipConfig;
+        type Loaded = ();
+
+        fn config(&self) -> &Self::Config {
+            &self.config
+        }
+
+        fn loaded(&self) -> &Self::Loaded {
+            &()
+        }
+    }
+
+    impl HelperChip {
+        fn new(config: HelperChipConfig) -> Self {
+            HelperChip{
+                config,
+            }
+        }
+
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
+            let limb= cs.advice_column();
+            cs.enable_equality(limb);
+            HelperChipConfig {
+                limb,
+            }
+        }
+
+        fn assign_results(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            result: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            let n = Number::from_bn(result);
+            let mut cells = vec![];
+            for i in 0..4 {
+                let c = region.assign_advice(
+                    || format!("assign input"),
+                    self.config.limb,
+                    *offset + i,
+                    || Ok(n.limbs[i].value)
+                )?;
+                cells.push(Some(c));
+                *offset = *offset + 1;
+            }
+            let n = Number {
+                limbs: [
+                    Limb::new(cells[0].clone(), n.limbs[0].value),
+                    Limb::new(cells[1].clone(), n.limbs[1].value),
+                    Limb::new(cells[2].clone(), n.limbs[2].value),
+                    Limb::new(cells[3].clone(), n.limbs[3].value),
+                ]
+            };
+            Ok(n)
+        }
+
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestCircuit {
+        base: BigUint,
+        exp: BigUint,
+        modulus: BigUint,
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        modexpconfig: ModExpConfig,
+        helperconfig: HelperChipConfig,
+    }
+
+    impl Circuit<Fr> for TestCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta),
+               helperconfig: HelperChip::configure(meta)
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            layouter.assign_region(
+                || "assign mod mult",
+                |mut region| {
+                    todo!();
+                    Ok(())
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+
+    #[test]
+    fn test_modexp_circuit() {
+        let base = BigUint::from(1u128 << 100);
+        let exp = BigUint::from(2u128 << 100);
+        let modulus = BigUint::from(7u128);
+        let test_circuit = TestCircuit {base, exp, modulus} ;
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
+}
+
+

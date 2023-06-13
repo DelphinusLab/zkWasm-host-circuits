@@ -517,10 +517,10 @@ impl<F: FieldExt> ModExpChip<F> {
         bool_limbs.reverse();
         let mut v = F::zero();
         for i in 0..(limbsize/4) {
-            let l0 = F::from_u128(bool_limbs[i] as u128);
-            let l1 = F::from_u128(bool_limbs[i+1] as u128);
-            let l2 = F::from_u128(bool_limbs[i+2] as u128);
-            let l3 = F::from_u128(bool_limbs[i+3] as u128);
+            let l0 = F::from_u128(bool_limbs[4*i] as u128);
+            let l1 = F::from_u128(bool_limbs[4*i+1] as u128);
+            let l2 = F::from_u128(bool_limbs[4*i+2] as u128);
+            let l3 = F::from_u128(bool_limbs[4*i+3] as u128);
             let v_next = v * F::from_u128(16u128)
                 + l0 * F::from_u128(8u128)
                 + l1 * F::from_u128(4u128)
@@ -547,7 +547,7 @@ impl<F: FieldExt> ModExpChip<F> {
                     None, None, None
                 ],
             )?;
-            limbs.append(&mut l.to_vec()[0..3].to_vec());
+            limbs.append(&mut l.to_vec()[0..4].to_vec());
             v = v_next;
         }
         /* todo
@@ -598,10 +598,10 @@ impl<F: FieldExt> ModExpChip<F> {
         self.decompose_limb(region, offset, &exp.limbs[0], &mut limbs, 40)?; //256 - 216 = 40
         let mut acc = self.assign_constant(region, offset, Number::from_bn(&BigUint::from(1 as u128)))?;
         let one = acc.clone();
-        println!("limbs is {:?}", limbs);
+        println!("limbs is {:?} with size {}", limbs, limbs.len());
         for limb in limbs {
             let v = self.select(region, offset, &limb, &one, base)?;
-            println!("v is {:?}, acc is {:?}", v.to_bn(), acc.to_bn());
+            println!("v is {:?}, acc is {:?}, limb is {:?}", v.to_bn(), acc.to_bn(), limb.value);
             acc = self.mod_mult(region, offset, &acc, &acc, modulus)?;
             acc = self.mod_mult(region, offset, &acc, &v, modulus)?;
         }
@@ -816,8 +816,6 @@ mod tests {
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
-
-
 }
 
 

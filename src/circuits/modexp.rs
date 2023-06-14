@@ -9,6 +9,8 @@ use crate::{
     item_count,
     customized_circuits_expand,
 };
+
+use crate::circuits::range::RangeCheckConfig;
 use std::ops::{Mul, Div};
 
 use halo2_proofs::{
@@ -26,9 +28,9 @@ use num_bigint::BigUint;
 /*
  * Customized gates for modexp
  */
-customized_circuits!(ModExpConfig, 2, 5, 9, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil
+customized_circuits!(ModExpConfig, 2, 5, 11, 1,
+   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | range | check_range | sel
+   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil   | nil         | nil
 );
 pub struct ModExpChip<F:FieldExt> {
     config: ModExpConfig,
@@ -108,16 +110,24 @@ impl<F: FieldExt> ModExpChip<F> {
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> ModExpConfig {
+    pub fn configure(cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> ModExpConfig {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 9].map(|_| cs.fixed_column());
+        let fixed = [0; 11].map(|_| cs.fixed_column());
         let selector =[cs.selector()];
 
         let config = ModExpConfig { fixed, selector, witness };
 
+        range_check_config.register(
+            cs,
+            |c| config.get_expr(c, ModExpConfig::l0()) * config.get_expr(c, ModExpConfig::check_range()),
+            |c| config.get_expr(c, ModExpConfig::range()),
+        );
+
         cs.create_gate("one line constraint", |meta| {
+
+
             let l0 = config.get_expr(meta, ModExpConfig::l0());
             let l1 = config.get_expr(meta, ModExpConfig::l1());
             let l2 = config.get_expr(meta, ModExpConfig::l2());
@@ -150,6 +160,7 @@ impl<F: FieldExt> ModExpChip<F> {
             ]
 
         });
+
         config
     }
 
@@ -635,6 +646,10 @@ mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
     use num_bigint::BigUint;
+    use crate::circuits::range::{
+        RangeCheckConfig,
+        RangeCheckChip,
+    };
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
@@ -759,6 +774,7 @@ mod tests {
     struct TestConfig {
         modexpconfig: ModExpConfig,
         helperconfig: HelperChipConfig,
+        rangecheckconfig: RangeCheckConfig,
     }
 
     impl Circuit<Fr> for TestCircuit {
@@ -770,9 +786,11 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             Self::Config {
-               modexpconfig: ModExpChip::<Fr>::configure(meta),
-               helperconfig: HelperChip::configure(meta)
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
             }
         }
 
@@ -783,9 +801,11 @@ mod tests {
         ) -> Result<(), Error> {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "assign mod mult",
                 |mut region| {
+                    range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
                     let exp = helperchip.assign_exp(&mut region, &mut offset, &self.exp)?;
@@ -794,8 +814,8 @@ mod tests {
                     let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
                     let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
                     for i in 0..4 {
-                        println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
-                        println!("rem cell is {:?}, result cell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+                        //println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                        //println!("rem cell is {:?}, result cell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
                         region.constrain_equal(
                             rem.limbs[i].clone().cell.unwrap().cell(),
                             result.limbs[i].clone().cell.unwrap().cell()

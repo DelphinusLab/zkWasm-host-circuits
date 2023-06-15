@@ -1,3 +1,4 @@
+
 use crate::utils::{
     GateCell,
     field_to_bn,
@@ -9,8 +10,6 @@ use crate::{
     item_count,
     customized_circuits_expand,
 };
-
-use crate::circuits::range::RangeCheckConfig;
 use std::ops::{Mul, Div};
 
 use halo2_proofs::{
@@ -28,9 +27,9 @@ use num_bigint::BigUint;
 /*
  * Customized gates for modexp
  */
-customized_circuits!(ModExpConfig, 2, 5, 11, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | range | check_range | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil   | nil         | nil
+customized_circuits!(ModExpConfig, 2, 5, 9, 1,
+   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | sel
+   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil
 );
 pub struct ModExpChip<F:FieldExt> {
     config: ModExpConfig,
@@ -52,7 +51,7 @@ impl<F: FieldExt> Limb<F> {
 #[derive(Clone, Debug)]
 pub struct Number<F: FieldExt> {
     limbs: [Limb<F>; 4],
-}
+} 
 
 impl<F: FieldExt> Number<F> {
     fn add(&self, n: &Self) -> Self {
@@ -110,24 +109,16 @@ impl<F: FieldExt> ModExpChip<F> {
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> ModExpConfig {
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> ModExpConfig {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 11].map(|_| cs.fixed_column());
+        let fixed = [0; 9].map(|_| cs.fixed_column());
         let selector =[cs.selector()];
 
         let config = ModExpConfig { fixed, selector, witness };
 
-        range_check_config.register(
-            cs,
-            |c| config.get_expr(c, ModExpConfig::l0()) * config.get_expr(c, ModExpConfig::check_range()),
-            |c| config.get_expr(c, ModExpConfig::range()),
-        );
-
         cs.create_gate("one line constraint", |meta| {
-
-
             let l0 = config.get_expr(meta, ModExpConfig::l0());
             let l1 = config.get_expr(meta, ModExpConfig::l1());
             let l2 = config.get_expr(meta, ModExpConfig::l2());
@@ -160,7 +151,6 @@ impl<F: FieldExt> ModExpChip<F> {
             ]
 
         });
-
         config
     }
 
@@ -181,7 +171,7 @@ impl<F: FieldExt> ModExpChip<F> {
                     None,
                     None,
                 ],
-                [None, None, None, None, None, None, Some(F::from(number.limbs[i].value)), None, None],
+                [Some(-F::one()), None, None, None, None, None, None, None, Some(F::from(number.limbs[i].value))],
             )?;
             limbs.push(l[0].clone())
         }
@@ -263,7 +253,7 @@ impl<F: FieldExt> ModExpChip<F> {
     }
 
 
-    pub fn mod_add (
+    pub fn mod_add ( // check every limbs in ret is correctly computed
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
@@ -271,18 +261,18 @@ impl<F: FieldExt> ModExpChip<F> {
         rhs: &Number<F>,
     ) -> Result<Number<F>, Error> {
         let ret = lhs.add(rhs);
-        let limbs = ret.limbs.to_vec().into_iter().enumerate().map(|(i, l)| {
+        let limbs = ret.limbs.to_vec().into_iter().enumerate().map(|(i, j)| {
             let l = self.assign_line(
                 region, offset,
-                [Some(lhs.limbs[i].clone()), Some(rhs.limbs[i].clone()), None, None, Some(l), None],
-                [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None, None],
+                [Some(lhs.limbs[i].clone()), Some(rhs.limbs[i].clone()), None, None, Some(j), None],
+                [Some(F::one()), Some(F::one()), None, None, Some(-F::one()), None, None, None, None],
             ).unwrap();
-            l[2].clone() // the fifth is the sum result d
+            l[2].clone() // the second is the sum result d
         }).collect::<Vec<_>>();
         Ok(Number {limbs: limbs.try_into().unwrap()})
     }
 
-    pub fn mod_native_mul(
+    pub fn mod_native_mul( // check rem % r is lhs * rhs % r
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
@@ -299,13 +289,13 @@ impl<F: FieldExt> ModExpChip<F> {
                 None,
                 None,
             ],
-            [None, None, None, Some(-F::one()), None, None, None, None, Some(F::one())],
+            [None, None, None, Some(-F::one()), None, None, None, Some(F::one()), None],
         )?;
         Ok(l[2].clone())
     }
 
 
-    pub fn mod_power108m1 (
+    pub fn mod_power108m1 ( // not reduced simply add all limbs
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
@@ -326,7 +316,7 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(l.try_into().unwrap())
     }
 
-    pub fn mod_power216 (
+    pub fn mod_power216 ( 
        &self,
        region: &mut Region<F>,
        offset: &mut usize,
@@ -349,7 +339,7 @@ impl<F: FieldExt> ModExpChip<F> {
     }
 
 
-    pub fn mod_power108m1_mul (
+    pub fn mod_power108m1_mul ( // check the multiplication is correct
        &self,
        region: &mut Region<F>,
        offset: &mut usize,
@@ -401,7 +391,7 @@ impl<F: FieldExt> ModExpChip<F> {
         )?;
         let vcell = l[4].clone();
 
-        //  compute v mod 2^108
+        //  compute v mod 2^108, making sure it is not overflow
         let bn_q = field_to_bn(&v).div(BigUint::from(1u128<<108));
         let bn_r = field_to_bn(&v) - bn_q.clone() * BigUint::from(1u128 << 108);
         let q = Limb::new(None, bn_to_field(&bn_q));
@@ -416,7 +406,8 @@ impl<F: FieldExt> ModExpChip<F> {
 
         let rcell = l[2].clone();
 
-        v = rcell.value * F::from_u128(1u128<<108) + x0 + y0;
+        
+        v = rcell.value * F::from_u128(1u128<<108) + x0 * y0;
 
         let l = self.assign_line(
             region,
@@ -429,10 +420,12 @@ impl<F: FieldExt> ModExpChip<F> {
                 Some(Limb::new(None, v)),
                 None
             ],
-            [Some(F::one()), Some(F::from_u128(1u128<<108)), None, Some(F::one()), Some(-F::one()), None, None, None, None],
+            [None, Some(F::from_u128(1u128<<108)), None, None, Some(-F::one()), None, Some(F::one()), None, None],
         )?;
 
         Ok(l[3].clone())
+        
+
     }
 
     pub fn mod_power108m1_zero(
@@ -443,6 +436,26 @@ impl<F: FieldExt> ModExpChip<F> {
        signs: Vec<F>,
     ) -> Result<(), Error> {
         //todo!()
+        //⟨xy⟩d0=⟨kp⟩d0+⟨d⟩d0
+        self.assign_line(region, offset, [
+            Some(limbs[0].clone()),
+            Some(limbs[1].clone()),
+            Some(limbs[2].clone()),
+            None,
+            None,
+            None,
+        ], [
+            Some(signs[0]),
+            Some(signs[1]),
+            Some(signs[2]),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ])?;
+
         Ok(())
     }
 
@@ -454,6 +467,24 @@ impl<F: FieldExt> ModExpChip<F> {
        signs: Vec<F>,
     ) -> Result<(), Error> {
         //todo!()
+        self.assign_line(region, offset, [
+            Some(limbs[0].clone()),
+            Some(limbs[1].clone()),
+            Some(limbs[2].clone()),
+            None,
+            None,
+            None,
+        ], [
+            Some(signs[0]),
+            Some(signs[1]),
+            Some(signs[2]),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ])?;
         Ok(())
     }
 
@@ -476,15 +507,16 @@ impl<F: FieldExt> ModExpChip<F> {
          */
         let bn_lhs = lhs.to_bn();
         let bn_rhs = rhs.to_bn();
-        let bn_mult = bn_lhs.mul(bn_rhs);
+        let bn_mult = bn_lhs.mul(bn_rhs); //result of multiplication using biguint mul method, the one we need to prove
         let bn_modulus = modulus.to_bn();
         let bn_quotient = bn_mult.clone().div(bn_modulus.clone()); //div_rem
         let bn_rem = bn_mult - (bn_quotient.clone() * bn_modulus.clone());
         let modulus = self.assign_number(region, offset, Number::from_bn(&bn_modulus))?;
         let rem = self.assign_number(region, offset, Number::from_bn(&bn_rem))?;
         let quotient = self.assign_number(region, offset, Number::from_bn(&bn_quotient))?;
-        let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?;
-        let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &quotient, &modulus)?;
+
+        let mod_108m1_lhs = self.mod_power108m1_mul(region, offset, lhs, rhs)?; // x * y mod 2^{108}-1
+        let mod_108m1_rhs = self.mod_power108m1_mul(region, offset, &quotient, &modulus)?; // q * m mod 2^{108}-1
         let [r0, r1, r2, mod_108m1_rem] = self.mod_power108m1(region, offset, &rem)?;
         self.mod_power108m1_zero(
             region,
@@ -504,7 +536,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let mod_native = self.mod_native_mul(
             region,
             offset,
-            &rem,
+            &rem, //x * y mod r
             &lhs,
             &rhs,
         )?;
@@ -558,6 +590,7 @@ impl<F: FieldExt> ModExpChip<F> {
                     None, None, None
                 ],
             )?;
+
             limbs.append(&mut l.to_vec()[0..4].to_vec());
             v = v_next;
         }
@@ -587,6 +620,26 @@ impl<F: FieldExt> ModExpChip<F> {
         /* todo
          * constraint all the limbs to be either 1 or 0
          */
+
+        // perform bit * (1 - bit)  = 0
+        for limb in limbs {
+            let mb = F::one() - limb.value;
+            let b = Limb::new(None,mb);
+
+            //  l0 * l3 * c03 = 0
+            //=>l0 * (1-l0) = 0
+            self.assign_line(region, offset, [
+                Some(limb.clone()),
+                None,
+                None,
+                Some(b.clone()),
+                None,
+                None,
+            ], [
+                None, None, None, None, None, None, Some(F::one()), None, None
+            ])?;
+        }
+
         Ok(())
     }
 
@@ -646,10 +699,6 @@ mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
     use num_bigint::BigUint;
-    use crate::circuits::range::{
-        RangeCheckConfig,
-        RangeCheckChip,
-    };
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
@@ -774,7 +823,6 @@ mod tests {
     struct TestConfig {
         modexpconfig: ModExpConfig,
         helperconfig: HelperChipConfig,
-        rangecheckconfig: RangeCheckConfig,
     }
 
     impl Circuit<Fr> for TestCircuit {
@@ -786,11 +834,9 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             Self::Config {
-               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
-               helperconfig: HelperChip::configure(meta),
-               rangecheckconfig,
+               modexpconfig: ModExpChip::<Fr>::configure(meta),
+               helperconfig: HelperChip::configure(meta)
             }
         }
 
@@ -801,11 +847,9 @@ mod tests {
         ) -> Result<(), Error> {
             let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "assign mod mult",
                 |mut region| {
-                    range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
                     let exp = helperchip.assign_exp(&mut region, &mut offset, &self.exp)?;
@@ -814,8 +858,8 @@ mod tests {
                     let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
                     let rem = modexpchip.mod_exp(&mut region, &mut offset, &base, &exp, &modulus)?;
                     for i in 0..4 {
-                        //println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
-                        //println!("rem cell is {:?}, result cell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
+                        println!("rem is {:?}, result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                        println!("rem cell is {:?}, result cell is {:?}", &rem.limbs[i].cell, &result.limbs[i].cell);
                         region.constrain_equal(
                             rem.limbs[i].clone().cell.unwrap().cell(),
                             result.limbs[i].clone().cell.unwrap().cell()
@@ -857,6 +901,14 @@ mod tests {
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
+
+    #[test]
+    fn test_modexp_circuit_03() {
+        let base = BigUint::from(128u128);
+        let exp = BigUint::from(2u128 << 10);
+        let modulus = BigUint::from(12u128);
+        let test_circuit = TestCircuit {base, exp, modulus} ;
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
 }
-
-

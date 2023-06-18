@@ -1,13 +1,11 @@
 use crate::utils::{
-    GateCell,
     field_to_bn,
     bn_to_field,
 };
-use crate::{
-    customized_circuits,
-    table_item,
-    item_count,
-    customized_circuits_expand,
+
+use crate::circuits::{
+    CommonGateConfig,
+    Limb,
 };
 
 use crate::circuits::range::{
@@ -19,39 +17,20 @@ use std::ops::{Mul, Div};
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Region, AssignedCell},
+    circuit::{Chip, Region},
     plonk::{
-        Fixed, Advice, Column, ConstraintSystem,
-        Error, Expression, Selector, VirtualCells
+        ConstraintSystem, Error
     },
-    poly::Rotation,
 };
 use std::marker::PhantomData;
 use num_bigint::BigUint;
 
-/*
- * Customized gates for modexp
- */
-customized_circuits!(ModExpConfig, 2, 5, 11, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | range | check_range | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil   | nil         | nil
-);
 pub struct ModExpChip<F:FieldExt> {
-    config: ModExpConfig,
+    config: CommonGateConfig,
     _marker: PhantomData<F>
 }
 
-#[derive(Clone, Debug)]
-pub struct Limb<F: FieldExt> {
-    cell: Option<AssignedCell<F, F>>,
-    value: F
-}
 
-impl<F: FieldExt> Limb<F> {
-    fn new(cell: Option<AssignedCell<F, F>>, value: F) -> Self {
-        Limb { cell, value }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Number<F: FieldExt> {
@@ -94,7 +73,7 @@ impl<F: FieldExt> Number<F> {
 }
 
 impl<F: FieldExt> Chip<F> for ModExpChip<F> {
-    type Config = ModExpConfig;
+    type Config = CommonGateConfig;
     type Loaded = ();
 
     fn config(&self) -> &Self::Config {
@@ -107,65 +86,15 @@ impl<F: FieldExt> Chip<F> for ModExpChip<F> {
 }
 
 impl<F: FieldExt> ModExpChip<F> {
-    pub fn new(config: ModExpConfig) -> Self {
+    pub fn new(config: CommonGateConfig) -> Self {
         ModExpChip {
             config,
             _marker: PhantomData,
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> ModExpConfig {
-        let witness= [0; 5]
-                .map(|_|cs.advice_column());
-        witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 11].map(|_| cs.fixed_column());
-        let selector =[cs.selector()];
-
-        let config = ModExpConfig { fixed, selector, witness };
-
-        range_check_config.register(
-            cs,
-            |c| config.get_expr(c, ModExpConfig::l0()) * config.get_expr(c, ModExpConfig::check_range()),
-            |c| config.get_expr(c, ModExpConfig::range()),
-        );
-
-        cs.create_gate("one line constraint", |meta| {
-
-
-            let l0 = config.get_expr(meta, ModExpConfig::l0());
-            let l1 = config.get_expr(meta, ModExpConfig::l1());
-            let l2 = config.get_expr(meta, ModExpConfig::l2());
-            let l3 = config.get_expr(meta, ModExpConfig::l3());
-            let d = config.get_expr(meta, ModExpConfig::d());
-            let dnext = config.get_expr(meta, ModExpConfig::d_n());
-            let c0 = config.get_expr(meta, ModExpConfig::c0());
-            let c1 = config.get_expr(meta, ModExpConfig::c1());
-            let c2 = config.get_expr(meta, ModExpConfig::c2());
-            let c3 = config.get_expr(meta, ModExpConfig::c3());
-            let c  = config.get_expr(meta, ModExpConfig::c());
-            let cd  = config.get_expr(meta, ModExpConfig::cd());
-            let cdn  = config.get_expr(meta, ModExpConfig::cdn());
-            let c03 = config.get_expr(meta, ModExpConfig::c03());
-            let c12  = config.get_expr(meta, ModExpConfig::c12());
-            let sel = config.get_expr(meta, ModExpConfig::sel());
-
-            // if odd then carry is put at right else put at left
-            vec![
-                sel * (
-                    l0.clone() * c0
-                +   l1.clone() * c1
-                +   l2.clone() * c2
-                +   l3.clone() * c3
-                +   d  * cd
-                +   dnext * cdn
-                +   l0 * l3 * c03
-                +   l1 * l2 * c12
-                +   c)
-            ]
-
-        });
-
-        config
+    pub fn configure(cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, range_check_config)
     }
 
     pub fn assign_constant (
@@ -178,7 +107,7 @@ impl<F: FieldExt> ModExpChip<F> {
     ) -> Result<Number<F>, Error> {
         let mut limbs = vec![];
         for i in 0..4 {
-            let l = self.assign_line(region, range_check_chip, offset,
+            let l = self.config.assign_line(region, range_check_chip, offset,
                 [
                     Some(number.limbs[i].clone()),
                     None,
@@ -206,82 +135,6 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(number)
     }
 
-    fn assign_line (
-       &self,
-       region: &mut Region<F>,
-       range_check_chip: &mut RangeCheckChip<F>,
-       offset: &mut usize,
-       value:  [Option<Limb<F>>; 6],
-       coeffs: [Option<F>; 9],
-       limbbound: usize, // the boundary limit of the first cell
-    ) -> Result<Vec<Limb<F>>, Error> {
-        let ws = value.clone().to_vec().iter()
-            .map(|x|x.clone().map_or(F::zero(), |x| x.value))
-            .collect::<Vec<F>>();
-        let cs = coeffs.clone().to_vec().iter().map(|x| x.map_or(F::zero(), |x| x)).collect::<Vec<F>>();
-        assert!(
-            ws[0] * cs[0]
-            + ws[1] * cs[1]
-            + ws[2] * cs[2]
-            + ws[3] * cs[3]
-            + ws[4] * cs[4]
-            + ws[5] * cs[5]
-            + ws[0] * ws[3] * cs[6]
-            + ws[1] * ws[2] * cs[7]
-            + cs[8] == F::zero()
-        );
-
-        let witnesses = [
-            ModExpConfig::l0(),
-            ModExpConfig::l1(),
-            ModExpConfig::l2(),
-            ModExpConfig::l3(),
-            ModExpConfig::d(),
-            ModExpConfig::d_n(),
-        ];
-        let cs = [
-            ModExpConfig::c0(),
-            ModExpConfig::c1(),
-            ModExpConfig::c2(),
-            ModExpConfig::c3(),
-            ModExpConfig::cd(),
-            ModExpConfig::cdn(),
-            ModExpConfig::c03(),
-            ModExpConfig::c12(),
-            ModExpConfig::c(),
-        ];
-
-
-        let mut limbs = vec![];
-        for i in 0..6 {
-            let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let cell = self.config.assign_cell(region, *offset, &witnesses[i], v).unwrap();
-            value[i].clone().map(|x| {
-                limbs.push(Limb::new(Some(cell.clone()), x.value));
-                x.cell.map(|c| {
-                    region.constrain_equal(cell.cell(), c.cell()).unwrap();
-                });
-            });
-        }
-        for i in 0..9 {
-            let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
-            self.config.assign_cell(region, *offset, &cs[i], v).unwrap();
-        }
-        self.config.enable_selector(region, *offset, &ModExpConfig::sel())?;
-        self.config.assign_cell(region, *offset, &ModExpConfig::range(), F::from(limbbound as u64))?;
-        self.config.assign_cell(region, *offset, &ModExpConfig::check_range(), F::from(
-            if limbbound == 0 {0u64} else {1u64}
-        ))?;
-
-        if limbbound != 0 {
-            range_check_chip.assign_value_with_range(region, value[0].as_ref().unwrap().value, limbbound)?;
-        };
-
-        *offset = *offset+1;
-        Ok(limbs)
-    }
-
-
     pub fn mod_add (
         &self,
         region: &mut Region<F>,
@@ -292,7 +145,7 @@ impl<F: FieldExt> ModExpChip<F> {
     ) -> Result<Number<F>, Error> {
         let ret = lhs.add(rhs);
         let limbs = ret.limbs.to_vec().into_iter().enumerate().map(|(i, l)| {
-            let l = self.assign_line(
+            let l = self.config.assign_line(
                 region, range_check_chip, offset,
                 [Some(lhs.limbs[i].clone()), Some(rhs.limbs[i].clone()), None, None, Some(l), None],
                 [Some(F::one()), Some(F::one()), None, None, Some(F::one()), None, None, None, None],
@@ -312,7 +165,7 @@ impl<F: FieldExt> ModExpChip<F> {
         lhs: &Number<F>,
         rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset, [
@@ -338,7 +191,7 @@ impl<F: FieldExt> ModExpChip<F> {
         number: &Number<F>,
     ) -> Result<[Limb<F>; 4], Error> {
         let value = number.limbs[0].value + number.limbs[1].value + number.limbs[2].value;
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -364,7 +217,7 @@ impl<F: FieldExt> ModExpChip<F> {
        number: &Number<F>,
     ) -> Result<Limb<F>, Error> {
         let value = number.limbs[0].value + number.limbs[1].value * (F::from_u128(1u128 << 108));
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -399,7 +252,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let bn_r = field_to_bn(&v) - bn_q.clone() * bn_modulus; // at most 108 bits
         let q = Limb::new(None, bn_to_field(&bn_q));
         let r = Limb::new(None, bn_to_field(&bn_r));
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -424,7 +277,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let y1 = rhs.limbs[1].value;
 
         let mut v =  x0 * y1 + x1 * y0; // 219 bits
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -447,7 +300,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let q = Limb::new(None, bn_to_field(&bn_q));
         let r = Limb::new(None, bn_to_field(&bn_r));
 
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -460,7 +313,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
         v = rcell.value * F::from_u128(1u128<<108) + x0 + y0;
 
-        let l = self.assign_line(
+        let l = self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -490,7 +343,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let c = (1u128<<108)-1;
         let v = F::from_u128(c * 16u128) + limbs[0].value*signs[0] + limbs[1].value *signs[1] + limbs[2].value*signs[2];
         let q = field_to_bn(&v).div(c);
-        self.assign_line(
+        self.config.assign_line(
             region,
             range_check_chip,
             offset,
@@ -605,7 +458,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 + l1 * F::from_u128(4u128)
                 + l2 * F::from_u128(2u128)
                 + l3 * F::from_u128(1u128);
-            let l = self.assign_line(
+            let l = self.config.assign_line(
                 region,
                 range_check_chip,
                 offset,
@@ -633,7 +486,7 @@ impl<F: FieldExt> ModExpChip<F> {
         }
         // constraint that limb.value is equal v_next so that the above limbs is
         // a real decompose of the limb.value
-        self.assign_line(
+        self.config.assign_line(
                 region,
                 range_check_chip,
                 offset,
@@ -675,7 +528,7 @@ impl<F: FieldExt> ModExpChip<F> {
         let result = if cond.value == F::zero() {one.clone()} else {base.clone()};
         let mut limbs = vec![];
         for i in 0..4 {
-            let l = self.assign_line(region, range_check_chip, offset,
+            let l = self.config.assign_line(region, range_check_chip, offset,
                 [
                     Some(base.limbs[i].clone()),
                     Some(one.limbs[i].clone()),
@@ -726,6 +579,7 @@ mod tests {
         RangeCheckChip,
     };
     use crate::value_for_assign;
+    use crate::circuits::CommonGateConfig;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
@@ -736,7 +590,6 @@ mod tests {
 
     use super::{
         ModExpChip,
-        ModExpConfig,
         Number,
         Limb,
     };
@@ -848,7 +701,7 @@ mod tests {
 
     #[derive(Clone, Debug)]
     struct TestConfig {
-        modexpconfig: ModExpConfig,
+        modexpconfig: CommonGateConfig,
         helperconfig: HelperChipConfig,
         rangecheckconfig: RangeCheckConfig,
     }

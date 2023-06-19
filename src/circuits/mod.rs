@@ -5,13 +5,16 @@ pub mod rmd160;
 pub mod modexp;
 pub mod poseidon;
 pub mod range;
+pub mod babyjub;
+
 
 use halo2_proofs::pairing::bn256::Fr;
 use crate::utils::{
     GateCell,
     field_to_bn,
-    bn_to_field,
 };
+
+
 use crate::{
     customized_circuits,
     table_item,
@@ -24,21 +27,15 @@ use crate::circuits::range::{
     RangeCheckChip,
 };
 
-use std::ops::{Mul, Div};
-
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Region, AssignedCell, Layouter},
+    circuit::{Region, AssignedCell, Layouter},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells
     },
     poly::Rotation,
 };
-use std::marker::PhantomData;
-use num_bigint::BigUint;
-
-
 
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
@@ -139,6 +136,116 @@ impl CommonGateConfig {
         config
     }
 
+    /// Select between f and t: if cond then t else f
+    pub fn select<F:FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        range_check_chip: &mut RangeCheckChip<F>,
+        offset: &mut usize,
+        cond: &Limb<F>,
+        f: &Limb<F>,
+        t: &Limb<F>,
+    ) -> Result<Limb<F>, Error> {
+        let result = if cond.value == F::zero() {f.clone()} else {t.clone()};
+        let l = self.assign_line(region, range_check_chip, offset,
+            [
+                Some(t.clone()),
+                Some(f.clone()),
+                Some(cond.clone()),
+                Some(cond.clone()),
+                Some(result.clone()),
+                None,
+            ],
+            [None, Some(F::one()), None, None, Some(-F::one()), None, Some(F::one()), Some(-F::one()), None],
+            0,
+        )?;
+        Ok(l[4].clone())
+    }
+
+    ///
+    /// decompose a limb into binary cells, in big endian
+    /// limbsize needs to be a multiple of 4
+    pub fn decompose_limb<F:FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        range_check_chip: &mut RangeCheckChip<F>,
+        offset: &mut usize,
+        limb: &Limb<F>,
+        limbs: &mut Vec<Limb<F>>,
+        limbsize: usize
+    ) -> Result <(), Error> {
+        let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
+        bool_limbs.truncate(limbsize);
+        bool_limbs.resize_with(limbsize, | | 0);
+        bool_limbs.reverse();
+        let mut v = F::zero();
+        for i in 0..(limbsize/4) {
+            let l0 = F::from_u128(bool_limbs[4*i] as u128);
+            let l1 = F::from_u128(bool_limbs[4*i+1] as u128);
+            let l2 = F::from_u128(bool_limbs[4*i+2] as u128);
+            let l3 = F::from_u128(bool_limbs[4*i+3] as u128);
+            let v_next = v * F::from_u128(16u128)
+                + l0 * F::from_u128(8u128)
+                + l1 * F::from_u128(4u128)
+                + l2 * F::from_u128(2u128)
+                + l3 * F::from_u128(1u128);
+            let l = self.assign_line(
+                region,
+                range_check_chip,
+                offset,
+                [
+                    Some(Limb::new(None, l0)),
+                    Some(Limb::new(None, l1)),
+                    Some(Limb::new(None, l2)),
+                    Some(Limb::new(None, l3)),
+                    Some(Limb::new(None, v)),
+                    Some(Limb::new(None, v_next)),
+                ],
+                [
+                    Some(F::from_u128(8u128)),
+                    Some(F::from_u128(4u128)),
+                    Some(F::from_u128(2u128)),
+                    Some(F::from_u128(1u128)),
+                    Some(F::from_u128(16u128)),
+                    Some(-F::one()),
+                    None, None, None
+                ],
+                0,
+            )?;
+            limbs.append(&mut l.to_vec()[0..4].to_vec());
+            v = v_next;
+        }
+        // constraint that limb.value is equal v_next so that the above limbs is
+        // a real decompose of the limb.value
+        self.assign_line(
+                region,
+                range_check_chip,
+                offset,
+                [
+                    Some(limb.clone()),
+                    None,
+                    None,
+                    None,
+                    Some(Limb::new(None, v)),
+                    None,
+                ],
+                [
+                    Some(F::one()),
+                    None,
+                    None,
+                    None,
+                    Some(-F::one()),
+                    None,
+                    None, None, None
+                ],
+                0,
+            )?;
+        /* todo
+         * constraint all the limbs to be either 1 or 0
+         */
+        Ok(())
+    }
+
 
     fn assign_line<F:FieldExt> (
        &self,
@@ -215,6 +322,3 @@ impl CommonGateConfig {
         Ok(limbs)
     }
 }
-
-
-

@@ -433,88 +433,6 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
-    /* decompose a limb into binary cells, in big endian*/
-    pub fn decompose_limb(
-        &self,
-        region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
-        offset: &mut usize,
-        limb: &Limb<F>,
-        limbs: &mut Vec<Limb<F>>,
-        limbsize: usize
-    ) -> Result <(), Error> {
-        let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
-        bool_limbs.truncate(limbsize);
-        bool_limbs.resize_with(limbsize, | | 0);
-        bool_limbs.reverse();
-        let mut v = F::zero();
-        for i in 0..(limbsize/4) {
-            let l0 = F::from_u128(bool_limbs[4*i] as u128);
-            let l1 = F::from_u128(bool_limbs[4*i+1] as u128);
-            let l2 = F::from_u128(bool_limbs[4*i+2] as u128);
-            let l3 = F::from_u128(bool_limbs[4*i+3] as u128);
-            let v_next = v * F::from_u128(16u128)
-                + l0 * F::from_u128(8u128)
-                + l1 * F::from_u128(4u128)
-                + l2 * F::from_u128(2u128)
-                + l3 * F::from_u128(1u128);
-            let l = self.config.assign_line(
-                region,
-                range_check_chip,
-                offset,
-                [
-                    Some(Limb::new(None, l0)),
-                    Some(Limb::new(None, l1)),
-                    Some(Limb::new(None, l2)),
-                    Some(Limb::new(None, l3)),
-                    Some(Limb::new(None, v)),
-                    Some(Limb::new(None, v_next)),
-                ],
-                [
-                    Some(F::from_u128(8u128)),
-                    Some(F::from_u128(4u128)),
-                    Some(F::from_u128(2u128)),
-                    Some(F::from_u128(1u128)),
-                    Some(F::from_u128(16u128)),
-                    Some(-F::one()),
-                    None, None, None
-                ],
-                0,
-            )?;
-            limbs.append(&mut l.to_vec()[0..4].to_vec());
-            v = v_next;
-        }
-        // constraint that limb.value is equal v_next so that the above limbs is
-        // a real decompose of the limb.value
-        self.config.assign_line(
-                region,
-                range_check_chip,
-                offset,
-                [
-                    Some(limb.clone()),
-                    None,
-                    None,
-                    None,
-                    Some(Limb::new(None, v)),
-                    None,
-                ],
-                [
-                    Some(F::one()),
-                    None,
-                    None,
-                    None,
-                    Some(-F::one()),
-                    None,
-                    None, None, None
-                ],
-                0,
-            )?;
-        /* todo
-         * constraint all the limbs to be either 1 or 0
-         */
-        Ok(())
-    }
-
     pub fn select(
         &self,
         region: &mut Region<F>,
@@ -555,9 +473,9 @@ impl<F: FieldExt> ModExpChip<F> {
         modulus: &Number<F>,
     ) -> Result <Number<F>, Error> {
         let mut limbs = vec![];
-        self.decompose_limb(region, range_check_chip, offset, &exp.limbs[2], &mut limbs, 40)?; //256 - 216 = 40
-        self.decompose_limb(region, range_check_chip, offset, &exp.limbs[1], &mut limbs, 108)?;
-        self.decompose_limb(region, range_check_chip, offset, &exp.limbs[0], &mut limbs, 108)?;
+        self.config.decompose_limb(region, range_check_chip, offset, &exp.limbs[2], &mut limbs, 40)?; //256 - 216 = 40
+        self.config.decompose_limb(region, range_check_chip, offset, &exp.limbs[1], &mut limbs, 108)?;
+        self.config.decompose_limb(region, range_check_chip, offset, &exp.limbs[0], &mut limbs, 108)?;
         let mut acc = self.assign_constant(region, range_check_chip, offset, Number::from_bn(&BigUint::from(1 as u128)), 0)?;
         let one = acc.clone();
         for limb in limbs {

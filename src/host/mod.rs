@@ -68,7 +68,7 @@ impl<F: FieldExt> ReduceRule<F> {
                 x.append(&mut bytes);
             }, // a * u64
             ReduceRule::Field(ref mut x, shift) => {
-                let mut acc = F::one();
+                let mut acc = F::from_u128(v as u128);
                 for _ in 0..offset {
                     acc = acc * F::from_u128(1u128 << *shift)
                 }
@@ -146,6 +146,7 @@ mod tests {
     use super::Reduce;
     use super::ReduceRule;
     use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::arithmetic::FieldExt;
     fn new_reduce(rules: Vec<ReduceRule<Fr>>) -> Reduce<Fr> {
         Reduce {
            cursor: 0,
@@ -173,6 +174,17 @@ mod tests {
         assert_eq!(get.rules[0].u64_value().unwrap(), 12);
     }
 
+    #[test]
+    fn test_reduce_fr() {
+        let mut get = new_reduce(vec![
+                ReduceRule::Field(Fr::zero(), 64),
+            ]);
+        get.reduce(1);
+        get.reduce(1);
+        get.reduce(0);
+        get.reduce(0);
+        assert_eq!(get.rules[0].field_value().unwrap(), Fr::from_u128((1u128<<64)+1));
+    }
 }
 
 

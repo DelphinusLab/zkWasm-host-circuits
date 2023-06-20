@@ -2909,6 +2909,7 @@ version = "0.1.0"
 dependencies = [
  "ark-std",
  "clap",
+ "ff",
  "futures",
  "halo2_proofs",
  "halo2aggregator-s",

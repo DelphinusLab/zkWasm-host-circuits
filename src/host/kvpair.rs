@@ -2,7 +2,8 @@ use super::MONGODB_URI;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
 use crate::host::poseidon::gen_hasher;
 use futures::executor;
-use halo2_proofs::pairing::bn256::Fq;
+use halo2_proofs::pairing::bn256::Fr;
+use ff::PrimeField;
 use lazy_static;
 use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
@@ -144,12 +145,12 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
                 let mut v = x.clone().to_vec();
                 v.extend_from_slice(&[0u8; 16]);
                 let f = v.try_into().unwrap();
-                Fq::from_bytes(&f).unwrap()
+                Fr::from_repr(f).unwrap()
             })
-            .collect::<Vec<Fq>>();
-        let values: [Fq; 2] = batchdata.try_into().unwrap();
+            .collect::<Vec<Fr>>();
+        let values: [Fr; 2] = batchdata.try_into().unwrap();
         hasher.update(&values);
-        self.hash = hasher.squeeze().to_bytes();
+        self.hash = hasher.squeeze().to_repr();
     }
     fn right(&self) -> Option<[u8; 32]> {
         Some(self.right)
@@ -238,10 +239,10 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
 
     fn hash(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
         let mut hasher = gen_hasher();
-        let a = Fq::from_bytes(a).unwrap();
-        let b = Fq::from_bytes(b).unwrap();
+        let a = Fr::from_repr(*a).unwrap();
+        let b = Fr::from_repr(*b).unwrap();
         hasher.update(&[a, b]);
-        hasher.squeeze().to_bytes()
+        hasher.squeeze().to_repr()
     }
 
     fn set_parent(

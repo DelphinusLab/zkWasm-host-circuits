@@ -39,6 +39,10 @@ pub enum ForeignInst {
     SHA256New,
     SHA256Push,
     SHA256Finalize,
+    PoseidonNew,
+    PoseidonPush,
+    PoseidonFinalize,
+
 }
 
 pub const MONGODB_URI:&str = "mongodb://localhost:27017";

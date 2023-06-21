@@ -1,9 +1,9 @@
 use super::MONGODB_URI;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
 use crate::host::poseidon::gen_hasher;
+use ff::PrimeField;
 use futures::executor;
 use halo2_proofs::pairing::bn256::Fr;
-use ff::PrimeField;
 use lazy_static;
 use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
@@ -190,7 +190,7 @@ impl MongoMerkle {
         leaf.set(&[0; 32].to_vec());
         leaf
     }
-    /// depth start from 0 upto Self::height()
+    /// depth start from 0 up to Self::height(). Example 20 height MongoMerkle, root depth=0, leaf depth=20
     fn get_default_hash(&self, depth: usize) -> Result<[u8; 32], MerkleError> {
         if depth <= Self::height() {
             Ok(self.default_hash[Self::height() - depth])
@@ -204,6 +204,9 @@ impl MongoMerkle {
     }
 }
 
+// In default_hash vec, it is from leaf to root.
+// For example, height of merkle tree is 20.
+// DEFAULT_HASH_VEC[0] leaf's default hash. DEFAULT_HASH_VEC[20] is root default hash. It has 21 layers including the leaf layer and root layer.
 lazy_static::lazy_static! {
     static ref DEFAULT_HASH_VEC: Vec<[u8; 32]> = {
         let mut leaf_hash = MongoMerkle::empty_leaf(0).hash;
@@ -325,14 +328,15 @@ mod tests {
         const TEST_ADDR: [u8; 32] = [1; 32];
 
         const DEFAULT_ROOT_HASH: [u8; 32] = [
-            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
-            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+            73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
+            100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
         ];
+
         const DEFAULT_ROOT_HASH64: [u64; 4] = [
-            4074723173704310182,
-            3116368985344895753,
-            15689180094961269493,
-            694055158784170088,
+            14768724118053802825,
+            12044759864135545626,
+            7296277131441537979,
+            802061392934800187,
         ];
 
         const INDEX1: u32 = 2_u32.pow(20) - 1;
@@ -340,32 +344,17 @@ mod tests {
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
-            146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
-            142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
-        ];
-        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
-            4859954923657534098,
-            3281306917386732753,
-            3001185769554269820,
-            848449750789948694,
-        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] =[220, 212, 154, 109, 18, 67, 151, 222, 104, 230, 29, 103, 72, 127, 226, 98, 46, 127, 161, 130, 32, 163, 238, 58, 18, 59, 206, 101, 225, 141, 44, 15];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [16039362344330646748, 7125397509397931624, 4246510858682859310, 1093404808759360274];
 
         const INDEX2: u32 = 2_u32.pow(20);
         const LEAF2_DATA: [u8; 32] = [
             0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [
-            85, 8, 43, 221, 140, 128, 115, 118, 70, 71, 130, 25, 120, 183, 70, 207, 168, 71, 44,
-            41, 135, 151, 172, 193, 83, 125, 3, 205, 166, 227, 251, 20,
-        ];
-        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [
-            8535307061291583573,
-            14935826940672755526,
-            13955695952081471400,
-            1512052405456567635,
-        ];
+
+        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [175, 143, 236, 107, 248, 137, 32, 236, 42, 18, 173, 218, 205, 20, 180, 200, 201, 160, 246, 213, 197, 176, 39, 245, 64, 103, 6, 30, 133, 153, 10, 38];
+        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [17014751092261293999, 14462207177763131946, 17665282427128815817, 2741172120221804352];
 
         const PARENT_INDEX: u32 = 2_u32.pow(19) - 1;
 
@@ -382,6 +371,7 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
+        /* */
         assert_eq!(root, DEFAULT_ROOT_HASH);
         assert_eq!(root64, DEFAULT_ROOT_HASH64);
 
@@ -446,15 +436,17 @@ mod tests {
      */
     fn test_mongo_merkle_single_leaf_update() {
         // Init checking results
+        const TEST_ADDR: [u8; 32] = [2; 32];
         const DEFAULT_ROOT_HASH: [u8; 32] = [
-            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
-            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+            73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
+            100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
         ];
+
         const DEFAULT_ROOT_HASH64: [u64; 4] = [
-            4074723173704310182,
-            3116368985344895753,
-            15689180094961269493,
-            694055158784170088,
+            14768724118053802825,
+            12044759864135545626,
+            7296277131441537979,
+            802061392934800187,
         ];
 
         const INDEX1: u32 = 2_u32.pow(20) - 1;
@@ -462,19 +454,11 @@ mod tests {
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
-            146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
-            142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
-        ];
-        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
-            4859954923657534098,
-            3281306917386732753,
-            3001185769554269820,
-            848449750789948694,
-        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [220, 212, 154, 109, 18, 67, 151, 222, 104, 230, 29, 103, 72, 127, 226, 98, 46, 127, 161, 130, 32, 163, 238, 58, 18, 59, 206, 101, 225, 141, 44, 15];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [16039362344330646748, 7125397509397931624, 4246510858682859310, 1093404808759360274];
 
         // 1
-        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
             MongoMerkle::get_db_name(),
             mt.get_collection_name(),
@@ -510,7 +494,7 @@ mod tests {
 
         // 4
         let a = ROOT_HASH_AFTER_LEAF1;
-        let mt = MongoMerkle::construct([0; 32], a);
+        let mt = MongoMerkle::construct(TEST_ADDR, a);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -527,15 +511,17 @@ mod tests {
      */
     fn test_mongo_merkle_multi_leaves_update() {
         // Init checking results
+        const TEST_ADDR: [u8; 32] = [3; 32];
         const DEFAULT_ROOT_HASH: [u8; 32] = [
-            166, 157, 178, 62, 35, 83, 140, 56, 9, 235, 134, 184, 20, 145, 63, 43, 245, 186, 75,
-            233, 43, 42, 187, 217, 104, 152, 219, 89, 125, 199, 161, 9,
+            73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
+            100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
         ];
+
         const DEFAULT_ROOT_HASH64: [u64; 4] = [
-            4074723173704310182,
-            3116368985344895753,
-            15689180094961269493,
-            694055158784170088,
+            14768724118053802825,
+            12044759864135545626,
+            7296277131441537979,
+            802061392934800187,
         ];
 
         const INDEX1: u32 = 2_u32.pow(20) - 1;
@@ -543,51 +529,27 @@ mod tests {
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
-            146, 154, 4, 1, 65, 7, 114, 67, 209, 68, 222, 153, 65, 139, 137, 45, 124, 86, 61, 115,
-            142, 90, 166, 41, 22, 133, 154, 149, 141, 76, 198, 11,
-        ];
-        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
-            4859954923657534098,
-            3281306917386732753,
-            3001185769554269820,
-            848449750789948694,
-        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [220, 212, 154, 109, 18, 67, 151, 222, 104, 230, 29, 103, 72, 127, 226, 98, 46, 127, 161, 130, 32, 163, 238, 58, 18, 59, 206, 101, 225, 141, 44, 15];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [16039362344330646748, 7125397509397931624, 4246510858682859310, 1093404808759360274];
 
         const INDEX2: u32 = 2_u32.pow(20);
         const LEAF2_DATA: [u8; 32] = [
             0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [
-            85, 8, 43, 221, 140, 128, 115, 118, 70, 71, 130, 25, 120, 183, 70, 207, 168, 71, 44,
-            41, 135, 151, 172, 193, 83, 125, 3, 205, 166, 227, 251, 20,
-        ];
-        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [
-            8535307061291583573,
-            14935826940672755526,
-            13955695952081471400,
-            1512052405456567635,
-        ];
+        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [175, 143, 236, 107, 248, 137, 32, 236, 42, 18, 173, 218, 205, 20, 180, 200, 201, 160, 246, 213, 197, 176, 39, 245, 64, 103, 6, 30, 133, 153, 10, 38];
+        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [17014751092261293999, 14462207177763131946, 17665282427128815817, 2741172120221804352];
 
         const INDEX3: u32 = 2_u32.pow(21) - 2;
         const LEAF3_DATA: [u8; 32] = [
             18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
         ];
-        const ROOT_HASH_AFTER_LEAF3: [u8; 32] = [
-            28, 84, 99, 220, 229, 74, 35, 103, 22, 167, 191, 145, 179, 136, 24, 147, 189, 87, 94,
-            132, 23, 141, 77, 57, 81, 181, 165, 158, 112, 90, 186, 34,
-        ];
-        const ROOT64_HASH_AFTER_LEAF3: [u64; 4] = [
-            7431866161196913692,
-            10599372027842242326,
-            4129111565513152445,
-            2502411982702228817,
-        ];
+        const ROOT_HASH_AFTER_LEAF3: [u8; 32] = [43, 187, 19, 165, 241, 143, 152, 84, 13, 90, 30, 178, 214, 218, 174, 172, 3, 62, 218, 225, 36, 25, 216, 69, 165, 241, 144, 78, 194, 164, 240, 21];
+        const ROOT64_HASH_AFTER_LEAF3: [u64; 4] = [6095780363665390379, 12443123436117449229, 5032800229785222659, 1580944623655776677];
 
         // 1
-        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
             MongoMerkle::get_db_name(),
             mt.get_collection_name(),
@@ -599,6 +561,7 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
+        
         assert_eq!(root, DEFAULT_ROOT_HASH);
         assert_eq!(root64, DEFAULT_ROOT_HASH64);
 
@@ -613,10 +576,12 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
+
         assert_eq!(root, ROOT_HASH_AFTER_LEAF1);
         assert_eq!(root64, ROOT64_HASH_AFTER_LEAF1);
 
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
 
@@ -631,6 +596,7 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
+        
         assert_eq!(root, ROOT_HASH_AFTER_LEAF2);
         assert_eq!(root64, ROOT64_HASH_AFTER_LEAF2);
 
@@ -649,6 +615,7 @@ mod tests {
             .into_iter()
             .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
             .collect::<Vec<u64>>();
+                
         assert_eq!(root, ROOT_HASH_AFTER_LEAF3);
         assert_eq!(root64, ROOT64_HASH_AFTER_LEAF3);
 
@@ -657,7 +624,7 @@ mod tests {
         assert_eq!(leaf.data, LEAF3_DATA);
 
         // 5
-        let mt = MongoMerkle::construct([0; 32], ROOT_HASH_AFTER_LEAF3);
+        let mt = MongoMerkle::construct(TEST_ADDR, ROOT_HASH_AFTER_LEAF3);
         assert_eq!(mt.get_root_hash(), ROOT_HASH_AFTER_LEAF3);
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);

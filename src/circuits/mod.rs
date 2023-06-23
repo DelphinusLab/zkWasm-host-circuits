@@ -62,11 +62,13 @@ pub trait HostOpSelector {
 }
 
 /*
- * Customized gates for modexp
+ * Customized gates for some of the common host circuits.
+ * lookup_hint: lookup information that is usually combined with l0
+ * lookup_ind: whether perform lookup at this line
  */
 customized_circuits!(CommonGateConfig, 2, 5, 11, 1,
-   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | range | check_range | sel
-   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil   | nil         | nil
+   | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | sel
+   | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         | nil
 );
 
 #[derive(Clone, Debug)]
@@ -93,8 +95,8 @@ impl CommonGateConfig {
 
         range_check_config.register(
             cs,
-            |c| config.get_expr(c, CommonGateConfig::l0()) * config.get_expr(c, CommonGateConfig::check_range()),
-            |c| config.get_expr(c, CommonGateConfig::range()),
+            |c| config.get_expr(c, CommonGateConfig::l0()) * config.get_expr(c, CommonGateConfig::lookup_ind()),
+            |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
         );
 
         cs.create_gate("one line constraint", |meta| {
@@ -246,6 +248,38 @@ impl CommonGateConfig {
         Ok(())
     }
 
+    /// put pure witness advices with no constraints.
+    fn assign_witness<F:FieldExt> (
+       &self,
+       region: &mut Region<F>,
+       range_check_chip: &mut RangeCheckChip<F>,
+       offset: &mut usize,
+       value:  [Option<Limb<F>>; 5],
+       hint: usize, // the boundary limit of the first cell
+    ) -> Result<Vec<Limb<F>>, Error> {
+        let witnesses = [
+            CommonGateConfig::l0(),
+            CommonGateConfig::l1(),
+            CommonGateConfig::l2(),
+            CommonGateConfig::l3(),
+            CommonGateConfig::d(),
+        ];
+        let mut limbs = vec![];
+        for i in 0..5 {
+            let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
+            let cell = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
+            value[i].clone().map(|x| {
+                limbs.push(Limb::new(Some(cell.clone()), x.value));
+                x.cell.map(|c| {
+                    region.constrain_equal(cell.cell(), c.cell()).unwrap();
+                });
+            });
+        }
+        *offset = *offset+1;
+        Ok(limbs)
+    }
+
+
 
     fn assign_line<F:FieldExt> (
        &self,
@@ -309,8 +343,8 @@ impl CommonGateConfig {
             self.assign_cell(region, *offset, &cs[i], v).unwrap();
         }
         self.enable_selector(region, *offset, &CommonGateConfig::sel())?;
-        self.assign_cell(region, *offset, &CommonGateConfig::range(), F::from(limbbound as u64))?;
-        self.assign_cell(region, *offset, &CommonGateConfig::check_range(), F::from(
+        self.assign_cell(region, *offset, &CommonGateConfig::lookup_hint(), F::from(limbbound as u64))?;
+        self.assign_cell(region, *offset, &CommonGateConfig::lookup_ind(), F::from(
             if limbbound == 0 {0u64} else {1u64}
         ))?;
 
@@ -320,5 +354,79 @@ impl CommonGateConfig {
 
         *offset = *offset+1;
         Ok(limbs)
+    }
+
+    pub fn assign_constant<F:FieldExt> (
+        &self,
+        region: &mut Region<F>,
+        range_check_chip: &mut RangeCheckChip<F>,
+        offset: &mut usize,
+        value: &F,
+    ) -> Result<Limb<F>, Error> {
+        let l = self.assign_line(region, range_check_chip, offset,
+                [
+                    Some(Limb::new(None, value.clone())),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
+                [None, None, None, None, None, None, Some(value.clone()), None, None],
+                0
+        )?;
+        Ok(l[0].clone())
+    }
+
+    fn sum_with_constant<F:FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        range_check_chip: &mut RangeCheckChip<F>,
+        offset: &mut usize,
+        inputs: Vec<(&Limb<F>, F)>,
+        constant: Option<F>,
+    ) -> Result <Limb<F>, Error> {
+        let mut acc = F::zero();
+        let mut firstline = true;
+        let operands = inputs.clone();
+        let mut r = None;
+        for chunk in operands.chunks(4) {
+            let result = chunk.iter().fold(acc, |acc, &(l,v)| acc + l.value * v);
+            if inputs.len() <= 3 { // solve it in oneline
+                let mut limbs = chunk.iter().map(|&(l, _v)| Some(l.clone())).collect::<Vec<Option<Limb<_>>>>();
+                let mut coeffs = chunk.iter().map(|&(_l, v)| Some(v.clone())).collect::<Vec<Option<F>>>();
+                limbs.resize_with(3, | | None);
+                coeffs.resize_with(3, | | None);
+                limbs.append(&mut vec![Some(Limb::new(None, result)), None, None]);
+                coeffs.append(&mut vec![Some(-F::one()), if firstline {Some(F::one())} else {None}, constant]);
+                acc = result;
+                let l = self.assign_line(
+                    region,
+                    range_check_chip,
+                    offset,
+                    limbs.try_into().unwrap(),
+                    coeffs.try_into().unwrap(),
+                    0
+                )?;
+                r = Some(l.last().unwrap().clone());
+            } else {
+                let mut limbs = chunk.iter().map(|&(l, _v)| Some(l.clone())).collect::<Vec<Option<Limb<_>>>>();
+                let mut coeffs = chunk.iter().map(|&(_l, v)| Some(v.clone())).collect::<Vec<Option<F>>>();
+                limbs.resize_with(4, | | None);
+                coeffs.resize_with(4, | | None);
+                limbs.append(&mut vec![None, Some(Limb::new(None, result)), None]);
+                coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None]);
+                self.assign_line(
+                    region,
+                    range_check_chip,
+                    offset,
+                    limbs.try_into().unwrap(),
+                    coeffs.try_into().unwrap(),
+                    0
+                )?;
+            }
+            firstline = false;
+        }
+        Ok(r.unwrap())
     }
 }

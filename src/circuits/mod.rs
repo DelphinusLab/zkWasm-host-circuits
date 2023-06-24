@@ -22,11 +22,6 @@ use crate::{
     customized_circuits_expand,
 };
 
-use crate::circuits::range::{
-    RangeCheckConfig,
-    RangeCheckChip,
-};
-
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Region, AssignedCell, Layouter},
@@ -83,8 +78,27 @@ impl<F: FieldExt> Limb<F> {
     }
 }
 
+pub trait LookupAssistConfig {
+    /// register a column (col) to be range checked by limb size (sz)
+    fn register<F: FieldExt> (
+        &self,
+        cs: &mut ConstraintSystem<F>,
+        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+    );
+}
+
+pub trait LookupAssistChip<F:FieldExt> {
+    fn provide_lookup_evidence (
+        &mut self,
+        region: &mut Region<F>,
+        value: F,
+        sz: u64,
+    ) -> Result<(), Error>;
+}
+
 impl CommonGateConfig {
-    pub fn configure<F:FieldExt> (cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> Self {
+    pub fn configure<F:FieldExt, LC:LookupAssistConfig> (cs: &mut ConstraintSystem<F>, lookup_assist_config: &LC) -> Self {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
@@ -93,7 +107,7 @@ impl CommonGateConfig {
 
         let config = CommonGateConfig { fixed, selector, witness };
 
-        range_check_config.register(
+        lookup_assist_config.register(
             cs,
             |c| config.get_expr(c, CommonGateConfig::l0()) * config.get_expr(c, CommonGateConfig::lookup_ind()),
             |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
@@ -139,10 +153,10 @@ impl CommonGateConfig {
     }
 
     /// Select between f and t: if cond then t else f
-    pub fn select<F:FieldExt>(
+    pub fn select<F:FieldExt, LC: LookupAssistChip<F>>(
         &self,
         region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
+        lookup_assist_chip: &mut LC,
         offset: &mut usize,
         cond: &Limb<F>,
         f: &Limb<F>,
@@ -150,7 +164,7 @@ impl CommonGateConfig {
         hint: u64,
     ) -> Result<Limb<F>, Error> {
         let result = if cond.value == F::zero() {f.clone()} else {t.clone()};
-        let l = self.assign_line(region, range_check_chip, offset,
+        let l = self.assign_line(region, lookup_assist_chip, offset,
             [
                 Some(t.clone()),
                 Some(f.clone()),
@@ -168,10 +182,10 @@ impl CommonGateConfig {
     ///
     /// decompose a limb into binary cells, in big endian
     /// limbsize needs to be a multiple of 4
-    pub fn decompose_limb<F:FieldExt>(
+    pub fn decompose_limb<F:FieldExt, LC:LookupAssistChip<F>>(
         &self,
         region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
+        lookup_assist_chip: &mut LC,
         offset: &mut usize,
         limb: &Limb<F>,
         limbs: &mut Vec<Limb<F>>,
@@ -194,7 +208,7 @@ impl CommonGateConfig {
                 + l3 * F::from_u128(1u128);
             let l = self.assign_line(
                 region,
-                range_check_chip,
+                lookup_assist_chip,
                 offset,
                 [
                     Some(Limb::new(None, l0)),
@@ -222,7 +236,7 @@ impl CommonGateConfig {
         // a real decompose of the limb.value
         self.assign_line(
                 region,
-                range_check_chip,
+                lookup_assist_chip,
                 offset,
                 [
                     Some(limb.clone()),
@@ -250,10 +264,10 @@ impl CommonGateConfig {
     }
 
     /// put pure witness advices with no constraints.
-    fn assign_witness<F:FieldExt> (
+    fn assign_witness<F:FieldExt, LC:LookupAssistChip<F>> (
        &self,
        region: &mut Region<F>,
-       range_check_chip: &mut RangeCheckChip<F>,
+       lookup_assist_chip: &mut LC,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 5],
        hint: u64, // the boundary limit of the first cell
@@ -287,10 +301,10 @@ impl CommonGateConfig {
 
 
 
-    fn assign_line<F:FieldExt> (
+    fn assign_line<F:FieldExt, LC:LookupAssistChip<F>> (
        &self,
        region: &mut Region<F>,
-       range_check_chip: &mut RangeCheckChip<F>,
+       lookup_assist_chip: &mut LC,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 6],
        coeffs: [Option<F>; 9],
@@ -355,21 +369,21 @@ impl CommonGateConfig {
         ))?;
 
         if hint != 0 {
-            range_check_chip.assign_value_with_range(region, value[0].as_ref().unwrap().value, hint)?;
+            lookup_assist_chip.provide_lookup_evidence(region, value[0].as_ref().unwrap().value, hint)?;
         };
 
         *offset = *offset+1;
         Ok(limbs)
     }
 
-    pub fn assign_constant<F:FieldExt> (
+    pub fn assign_constant<F:FieldExt, LC:LookupAssistChip<F>> (
         &self,
         region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
+        lookup_assist_chip: &mut LC,
         offset: &mut usize,
         value: &F,
     ) -> Result<Limb<F>, Error> {
-        let l = self.assign_line(region, range_check_chip, offset,
+        let l = self.assign_line(region, lookup_assist_chip, offset,
                 [
                     Some(Limb::new(None, value.clone())),
                     None,
@@ -384,10 +398,10 @@ impl CommonGateConfig {
         Ok(l[0].clone())
     }
 
-    fn sum_with_constant<F:FieldExt>(
+    fn sum_with_constant<F:FieldExt, LC:LookupAssistChip<F>>(
         &self,
         region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
+        lookup_assist_chip: &mut LC,
         offset: &mut usize,
         inputs: Vec<(&Limb<F>, F)>,
         constant: Option<F>,
@@ -408,7 +422,7 @@ impl CommonGateConfig {
                 coeffs.append(&mut vec![Some(-F::one()), if firstline {None} else {Some(F::one())}, None, None, None, constant]);
                 let l = self.assign_line(
                     region,
-                    range_check_chip,
+                    lookup_assist_chip,
                     offset,
                     limbs.try_into().unwrap(),
                     coeffs.try_into().unwrap(),
@@ -424,7 +438,7 @@ impl CommonGateConfig {
                 coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None, None, None]);
                 self.assign_line(
                     region,
-                    range_check_chip,
+                    lookup_assist_chip,
                     offset,
                     limbs.try_into().unwrap(),
                     coeffs.try_into().unwrap(),
@@ -439,7 +453,7 @@ impl CommonGateConfig {
             // collect the last acc as result
             self.assign_line(
                     region,
-                    range_check_chip,
+                    lookup_assist_chip,
                     offset,
                     [Some(Limb::new(None, result)), None, None, None, Some(Limb::new(None, acc)), None],
                     [Some(-F::one()), None, None, None, Some(F::one()), None, None, None, constant],

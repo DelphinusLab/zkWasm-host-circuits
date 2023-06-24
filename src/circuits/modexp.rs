@@ -25,6 +25,7 @@ use halo2_proofs::{
 use std::marker::PhantomData;
 use num_bigint::BigUint;
 
+
 pub struct ModExpChip<F:FieldExt> {
     config: CommonGateConfig,
     _marker: PhantomData<F>
@@ -497,7 +498,11 @@ mod tests {
         RangeCheckChip,
     };
     use crate::value_for_assign;
-    use crate::circuits::CommonGateConfig;
+    use crate::circuits::{
+        CommonGateConfig,
+        LookupAssistChip,
+        LookupAssistConfig,
+    };
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},

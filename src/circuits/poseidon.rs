@@ -131,7 +131,7 @@ impl<F: FieldExt> PoseidonChip<F> {
             range_check_chip,
             offset,
             [
-                Some(self.poseidon_state.state[0].clone()),
+                Some(self.poseidon_state.state[1].clone()),
                 Some(Limb::new(None, if squeeze {F::one()} else {F::zero()})),
                 Some(create_limb),
                 None,
@@ -401,7 +401,6 @@ impl<F: FieldExt> PoseidonState<F> {
 mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
-    use num_bigint::BigUint;
     use crate::circuits::range::{
         RangeCheckConfig,
         RangeCheckChip,
@@ -531,6 +530,7 @@ mod tests {
                         true
                     )?;
                     let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    println!("result is {:?}, descired is {:?}", hash.value, result.value);
                     region.constrain_equal(
                         hash.cell.unwrap().cell(),
                         result.cell.unwrap().cell()
@@ -545,8 +545,9 @@ mod tests {
 
     #[test]
     fn test_poseidon_circuit_00() {
+        let mut hasher = crate::host::poseidon::gen_hasher();
+        let result = hasher.squeeze();
         let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
-        let result = Fr::one();
         let test_circuit = TestCircuit {inputs, result};
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));

@@ -147,6 +147,7 @@ impl CommonGateConfig {
         cond: &Limb<F>,
         f: &Limb<F>,
         t: &Limb<F>,
+        hint: u64,
     ) -> Result<Limb<F>, Error> {
         let result = if cond.value == F::zero() {f.clone()} else {t.clone()};
         let l = self.assign_line(region, range_check_chip, offset,
@@ -159,7 +160,7 @@ impl CommonGateConfig {
                 None,
             ],
             [None, Some(F::one()), None, None, Some(-F::one()), None, Some(F::one()), Some(-F::one()), None],
-            0,
+            hint,
         )?;
         Ok(l[4].clone())
     }
@@ -255,7 +256,7 @@ impl CommonGateConfig {
        range_check_chip: &mut RangeCheckChip<F>,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 5],
-       hint: usize, // the boundary limit of the first cell
+       hint: u64, // the boundary limit of the first cell
     ) -> Result<Vec<Limb<F>>, Error> {
         let witnesses = [
             CommonGateConfig::l0(),
@@ -275,6 +276,11 @@ impl CommonGateConfig {
                 });
             });
         }
+        self.assign_cell(region, *offset, &CommonGateConfig::lookup_hint(), F::from(hint))?;
+        self.assign_cell(region, *offset, &CommonGateConfig::lookup_ind(), F::from(
+            if hint == 0 {0u64} else {1u64}
+        ))?;
+
         *offset = *offset+1;
         Ok(limbs)
     }
@@ -288,7 +294,7 @@ impl CommonGateConfig {
        offset: &mut usize,
        value:  [Option<Limb<F>>; 6],
        coeffs: [Option<F>; 9],
-       limbbound: usize, // the boundary limit of the first cell
+       hint: u64, // the boundary limit of the first cell
     ) -> Result<Vec<Limb<F>>, Error> {
         let ws = value.clone().to_vec().iter()
             .map(|x|x.clone().map_or(F::zero(), |x| x.value))
@@ -343,13 +349,13 @@ impl CommonGateConfig {
             self.assign_cell(region, *offset, &cs[i], v).unwrap();
         }
         self.enable_selector(region, *offset, &CommonGateConfig::sel())?;
-        self.assign_cell(region, *offset, &CommonGateConfig::lookup_hint(), F::from(limbbound as u64))?;
+        self.assign_cell(region, *offset, &CommonGateConfig::lookup_hint(), F::from(hint))?;
         self.assign_cell(region, *offset, &CommonGateConfig::lookup_ind(), F::from(
-            if limbbound == 0 {0u64} else {1u64}
+            if hint == 0 {0u64} else {1u64}
         ))?;
 
-        if limbbound != 0 {
-            range_check_chip.assign_value_with_range(region, value[0].as_ref().unwrap().value, limbbound)?;
+        if hint != 0 {
+            range_check_chip.assign_value_with_range(region, value[0].as_ref().unwrap().value, hint)?;
         };
 
         *offset = *offset+1;

@@ -11,6 +11,8 @@ use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
 use std::cell::RefMut;
 
+const START_ENCODE:u64 = 1<<32;
+const END_ENCODE:u64 = 2<<32;
 
 use crate::circuits::{
     CommonGateConfig,
@@ -40,7 +42,7 @@ pub struct PoseidonChip<F:FieldExt> {
     config: CommonGateConfig,
     spec: Spec<F, T, RATE>,
     poseidon_state: PoseidonState<F>,
-    round: u32,
+    round: u64,
     _marker: PhantomData<F>
 }
 
@@ -74,11 +76,25 @@ impl<F: FieldExt> PoseidonChip<F> {
         values: &[F; RATE],
         create: bool,
         squeeze: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<Limb<F>, Error> {
         let mut new_state = vec![];
         let create_limb = Limb::new(None, if create {F::one()} else {F::zero()});
+        self.config.assign_witness(
+            region,
+            range_check_chip,
+            offset,
+            [
+                Some(create_limb.clone()),
+                None,
+                None,
+                None,
+                None
+            ],
+            self.round + START_ENCODE// Need to do the lookup check of squeeze
+        )?;
+
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
-            new_state.push(self.config.select(region, range_check_chip, offset, &create_limb, default, value)?);
+            new_state.push(self.config.select(region, range_check_chip, offset, &create_limb, default, value, self.round)?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
         let parts = values.clone().map(|x| {Some(Limb::new(None, x.clone()))});
@@ -110,7 +126,7 @@ impl<F: FieldExt> PoseidonChip<F> {
             &inputs.try_into().unwrap(),
         )?;
         // register the result with squeeze and create indicator
-        self.config.assign_witness(
+        let result = self.config.assign_witness(
             region,
             range_check_chip,
             offset,
@@ -121,20 +137,21 @@ impl<F: FieldExt> PoseidonChip<F> {
                 None,
                 None
             ],
-            1 // Need to do the lookup check of squeeze
-        )?;
-        Ok(())
+            self.round // Need to do the lookup check of squeeze
+        )?[0].clone();
+        Ok(result)
     }
 }
 
 impl<F: FieldExt> PoseidonState<F> {
-    pub fn init(
+    pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
+        *offset = 0;
         let zero = config.assign_constant(region, range_check_chip, offset, &F::zero())?;
         let mut state = [0u32;T].map(|_| zero.clone());
         state[0] = config.assign_constant(region, range_check_chip, offset, &F::from_u128(1u128<<64))?;
@@ -380,41 +397,158 @@ impl<F: FieldExt> PoseidonState<F> {
     }
 }
 
-/*
-impl<F: FieldExt> PoseidonState<F> {
-    pub fn update(
-        &mut self,
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
-        mut inputs: Vec<AssignedValue<F>>,
-    ) {
-        self.absorbing.append(&mut inputs);
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::dev::MockProver;
+    use num_bigint::BigUint;
+    use crate::circuits::range::{
+        RangeCheckConfig,
+        RangeCheckChip,
+    };
+    use crate::value_for_assign;
+    use crate::circuits::CommonGateConfig;
 
-        if self.absorbing.len() < RATE {
-            return;
+    use halo2_proofs::{
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        plonk::{
+            Advice, Circuit, Column, ConstraintSystem, Error
+        },
+    };
+
+    use super::{
+        PoseidonChip,
+        Limb,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChipConfig {
+        limb: Column<Advice>
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChip {
+        config: HelperChipConfig
+    }
+
+    impl Chip<Fr> for HelperChip {
+        type Config = HelperChipConfig;
+        type Loaded = ();
+
+        fn config(&self) -> &Self::Config {
+            &self.config
         }
 
-        let mut values = vec![];
-        values.append(&mut self.absorbing);
+        fn loaded(&self) -> &Self::Loaded {
+            &()
+        }
+    }
 
-        for chunk in values.chunks(RATE) {
-            if chunk.len() < RATE {
-                self.absorbing = chunk.to_vec();
-            } else {
-                self.permute(chip, &chunk, false);
+    impl HelperChip {
+        fn new(config: HelperChipConfig) -> Self {
+            HelperChip{
+                config,
             }
         }
+
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
+            let limb= cs.advice_column();
+            cs.enable_equality(limb);
+            HelperChipConfig {
+                limb,
+            }
+        }
+
+        fn assign_result(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            result: &Fr,
+        ) -> Result<Limb<Fr>, Error> {
+            let c = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb,
+                *offset,
+                || value_for_assign!(result.clone())
+            )?;
+            *offset += 1;
+            Ok(Limb::new(Some(c), result.clone()))
+        }
+
     }
 
-    pub fn squeeze(&mut self, chip: &mut RefMut<'_, dyn BaseChipOps<F>>) -> AssignedValue<F> {
-        assert!(self.absorbing.len() < RATE);
-
-        let mut values = vec![];
-        values.append(&mut self.absorbing);
-
-        self.permute(chip, &values, true);
-
-        self.state.0[1]
+    #[derive(Clone, Debug, Default)]
+    struct TestCircuit {
+        inputs: Vec<Fr>,
+        result: Fr,
     }
 
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        poseidonconfig: CommonGateConfig,
+        helperconfig: HelperChipConfig,
+        rangecheckconfig: RangeCheckConfig,
+    }
+
+    impl Circuit<Fr> for TestCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               poseidonconfig: PoseidonChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let mut poseidon_chip = PoseidonChip::<Fr>::new(config.clone().poseidonconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "assign poseidon test",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+
+                    let mut offset = 0;
+                    poseidon_chip.poseidon_state.initialize(&config.poseidonconfig, &mut region, &mut range_chip, &mut offset)?;
+                    let hash = poseidon_chip.assign_permute(
+                        &mut region,
+                        &mut range_chip,
+                        &mut offset,
+                        &self.inputs.clone().try_into().unwrap(),
+                        true,
+                        true
+                    )?;
+                    let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    region.constrain_equal(
+                        hash.cell.unwrap().cell(),
+                        result.cell.unwrap().cell()
+                    )?;
+                    Ok(())
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+
+    #[test]
+    fn test_poseidon_circuit_00() {
+        let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
+        let result = Fr::one();
+        let test_circuit = TestCircuit {inputs, result};
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
 }
-*/

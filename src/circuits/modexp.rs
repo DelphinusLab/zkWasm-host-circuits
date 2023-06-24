@@ -103,7 +103,7 @@ impl<F: FieldExt> ModExpChip<F> {
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: Number<F>,
-        limbbound: usize,
+        limbbound: u64,
     ) -> Result<Number<F>, Error> {
         let mut limbs = vec![];
         for i in 0..4 {

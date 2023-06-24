@@ -127,7 +127,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         &mut self,
         region: &mut Region<F>,
         value: F,
-        sz: usize,
+        sz: u64,
     ) -> Result<(), Error> {
         let mut limbs = vec![];
         let mut bn = field_to_bn(&value);

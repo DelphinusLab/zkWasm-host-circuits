@@ -203,7 +203,7 @@ impl<F: FieldExt> PoseidonState<F> {
                 None,
                 None,
                 Some(x4.clone()),
-                Some(Limb::new(None, x4.value * x.value)),
+                Some(Limb::new(None, x4.value * x.value + constant)),
                 None,
             ],
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, Some(constant)],
@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn test_poseidon_circuit_00() {
-        let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
+        let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
         let result = Fr::one();
         let test_circuit = TestCircuit {inputs, result};
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();

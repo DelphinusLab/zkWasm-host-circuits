@@ -399,13 +399,13 @@ impl CommonGateConfig {
         for chunk in operands.chunks(4) {
             let result = chunk.iter().fold(acc, |acc, &(l,v)| acc + l.value * v);
             if inputs.len() <= 3 { // solve it in oneline
+                let result = result + constant.map_or(F::zero(), |x| x);
                 let mut limbs = chunk.iter().map(|&(l, _v)| Some(l.clone())).collect::<Vec<Option<Limb<_>>>>();
                 let mut coeffs = chunk.iter().map(|&(_l, v)| Some(v.clone())).collect::<Vec<Option<F>>>();
-                limbs.resize_with(3, | | None);
-                coeffs.resize_with(3, | | None);
-                limbs.append(&mut vec![Some(Limb::new(None, result)), None, None]);
-                coeffs.append(&mut vec![Some(-F::one()), if firstline {Some(F::one())} else {None}, constant]);
-                acc = result;
+                limbs.resize_with(3, || None);
+                coeffs.resize_with(3, || None);
+                limbs.append(&mut vec![Some(Limb::new(None, result)), Some(Limb::new(None, acc)), None]);
+                coeffs.append(&mut vec![Some(-F::one()), if firstline {None} else {Some(F::one())}, None, None, None, constant]);
                 let l = self.assign_line(
                     region,
                     range_check_chip,
@@ -420,8 +420,8 @@ impl CommonGateConfig {
                 let mut coeffs = chunk.iter().map(|&(_l, v)| Some(v.clone())).collect::<Vec<Option<F>>>();
                 limbs.resize_with(4, | | None);
                 coeffs.resize_with(4, | | None);
-                limbs.append(&mut vec![None, Some(Limb::new(None, result)), None]);
-                coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None]);
+                limbs.append(&mut vec![Some(Limb::new(None, acc)), Some(Limb::new(None, result))]);
+                coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None, None, None]);
                 self.assign_line(
                     region,
                     range_check_chip,
@@ -431,8 +431,20 @@ impl CommonGateConfig {
                     0
                 )?;
             }
+            acc = result;
             firstline = false;
         }
-        Ok(r.unwrap())
+        Ok(r.map_or({
+            let result = acc + constant.map_or(F::zero(), |x| x);
+            // collect the last acc as result
+            self.assign_line(
+                    region,
+                    range_check_chip,
+                    offset,
+                    [Some(Limb::new(None, result)), None, None, None, Some(Limb::new(None, acc)), None],
+                    [Some(-F::one()), None, None, None, Some(F::one()), None, None, None, constant],
+                    0
+            )?[0].clone()
+        }, |x| x))
     }
 }

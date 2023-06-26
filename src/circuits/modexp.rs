@@ -414,11 +414,6 @@ impl<F: FieldExt> ModExpChip<F> {
         let mod_216_rhs = self.mod_power216_mul(region, range_check_chip, offset, &quotient, &modulus)?;
         let mod_216_rem = self.mod_power216(region, range_check_chip, offset, &rem)?;
 
-        // println!("mod_216_lhs    = 0x{}", field_to_bn(&mod_216_lhs.clone().value).to_str_radix(16));
-        // println!("mod_216_rhs    = 0x{}", field_to_bn(&mod_216_rhs.clone().value).to_str_radix(16));
-        // println!("mod_216_rem    = 0x{}", field_to_bn(&mod_216_rem.clone().value).to_str_radix(16));
-        // println!("");
-
         self.mod_power216_zero(
             region,
             range_check_chip,
@@ -950,47 +945,23 @@ mod tests_2 {
                 |mut region| {
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
-
+                    let bn_rem = self.a.clone()  % (BigUint::from(1u128 << 108) - BigUint::from(1u128));
                     let a = helperchip.assign_base(&mut region, &mut offset, &self.a)?;
- 
-                    // calculate addition of all limbs.
-                    let bn_lm0 = &self.a & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
-                    let bn_lm1 = BigUint::from(&self.a >> 108) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
-                    let bn_lm2 = BigUint::from(&self.a >> 216) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
-                    let bn_res = bn_lm0 + bn_lm1 + bn_lm2;
-
-                    println!("bn_res = 0x{}", bn_res.to_str_radix(16));
-        
-                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
-
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
                     let rem = modexpchip.mod_power108m1(&mut region, &mut range_chip, &mut offset, &a )?;
-
-           
-                    // mod_power108m1() should produce the mathematical result for 
-                    //assert_eq!(field_to_bn(&rem[3].value), bn_res);
-
-      
-                    // println!("\nrem is (decimal BigUint):");
-                    // for i in 0..4 {
-                    //     println!("rem[{i}] = {:?} (BigUint)", field_to_bn(&rem[i].value));
-                    // }
+                    println!("bn_res = 0x{}", bn_rem.to_str_radix(16));
                     println!("\nrem is (hex):");
                     for i in 0..4 {
                         println!("rem[{i}] = {:?}", &rem[i].value);
                     }
-
-                    println!("\n------");
                     for i in 0..4 {
                         println!("result is {:?}", &result.limbs[i].value);
                         println!("resultcell is {:?}", &result.limbs[i].cell);
-                        /*
-                        region.constrain_equal(
-                            rem.limbs[i].clone().cell.unwrap().cell(),
-                            result.limbs[i].clone().cell.unwrap().cell()
-                        )?;
-                        */
+                        // region.constrain_equal(
+                        //     rem.limbs[i].clone().cell.unwrap().cell(),
+                        //     result.limbs[i].clone().cell.unwrap().cell()
+                        // )?;
                     }
-
                     Ok(rem)
                 }
             )?;
@@ -1214,8 +1185,6 @@ mod tests_2 {
         }
     }
 
-    //---------------------------------------------------------------------------------------------
-
     fn run_mod_power108m1_circuit() -> Result<(), CircuitError> {
         // test mod_power108m1 for over x bits
         let mut rng = thread_rng();
@@ -1233,7 +1202,6 @@ mod tests_2 {
         // test expected overflow of 1 bit 0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
         let test_circuit = TestModpower108m1Circuit{a} ;
-
         let prover = match MockProver::run(16, &test_circuit, vec![]) {
             Ok(prover_run) => prover_run,
             Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
@@ -1340,7 +1308,7 @@ mod tests_2 {
 
 
     #[test]
-    fn test_mod_power108m1() {
+    fn test_mod_power108m1_only() {
         let output = run_mod_power108m1_circuit().expect("mod_power108m1_circuit failed prover verify");
         println!("proof generation successful!\nresult: {:#?}", output);
     }

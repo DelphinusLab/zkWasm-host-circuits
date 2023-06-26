@@ -37,9 +37,9 @@ use std::marker::PhantomData;
  * 5. op_hint is the counting number for each opcode
  */
 
-customized_circuits!(HashAdaptorConfig, 2, 6, 2, 1,
-   | operand   | opcode   | gindex   | merged_operand | op_hint   | merge_ind | lookup_ind   | start | sel
-   | nil       | opcode_n | gindex_n | nil            | op_hint_n | nil       | lookup_ind_n | nil   | nil
+customized_circuits!(HashAdaptorConfig, 2, 6, 1, 1,
+   | operand   | opcode   | gindex   | merged_operand | merge_hint   | lookup_ind   | start | sel
+   | nil       | opcode_n | gindex_n | nil            | merge_hint_n | lookup_ind_n | nil   | nil
 );
 
 impl LookupAssistConfig for HashAdaptorConfig {
@@ -90,24 +90,21 @@ impl<F: FieldExt> HashAdaptorChip<F> {
         let witness= [0; 6]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 2].map(|_| cs.fixed_column());
+        let fixed = [0; 1].map(|_| cs.fixed_column());
         let selector = [cs.selector()];
 
         let config = HashAdaptorConfig { fixed, selector, witness };
         cs.create_gate("operand feeding point",  |meta| {
             let op = config.get_expr(meta, HashAdaptorConfig::opcode());
             let op_n = config.get_expr(meta, HashAdaptorConfig::opcode_n());
-            let op_hint = config.get_expr(meta, HashAdaptorConfig::op_hint());
-            let op_hint_n = config.get_expr(meta, HashAdaptorConfig::op_hint_n());
+            let merge_hint = config.get_expr(meta, HashAdaptorConfig::merge_hint());
+            let merge_hint_n = config.get_expr(meta, HashAdaptorConfig::merge_hint_n());
             let sel = config.get_expr(meta, HashAdaptorConfig::sel());
-            // op_hint inc in a pattern of 0,1,2,3 in the push block
             vec![
-                sel.clone() * (op_n.clone() - op.clone()) * op_hint.clone(),  // op_hint is zero every time opcode is switched
-                sel.clone() * op_hint.clone() * (op_hint.clone() - constant_from!(1)) * (op_hint.clone() - constant_from!(2)) * op_hint_n.clone(),
+                sel.clone() * (op_n.clone() - op.clone()) * merge_hint.clone(),  // op_hint is zero every time opcode is switched
                 sel * (op.clone() - constant_from!(PoseidonNew))
-                    * (op.clone() - constant_from!(PoseidonFinalize))
-                    * (op_hint.clone() - constant_from!(3))
-                    * (op_hint_n - op_hint - constant_from!(1)),
+                    * (merge_hint.clone() - constant_from!(3))
+                    * (merge_hint_n - merge_hint - constant_from!(1)),
             ]
         });
 
@@ -179,7 +176,7 @@ impl<F: FieldExt> HashAdaptorChip<F> {
                 self.config.assign_cell(
                     region,
                     self.offset,
-                    &HashAdaptorConfig::op_hint(),
+                    &HashAdaptorConfig::merge_hint(),
                     F::zero()
                 )?;
                 self.config.assign_cell(
@@ -201,7 +198,7 @@ impl<F: FieldExt> HashAdaptorChip<F> {
                 self.config.assign_cell(
                     region,
                     self.offset,
-                    &HashAdaptorConfig::op_hint(),
+                    &HashAdaptorConfig::merge_hint(),
                     F::from(self.context.1 as u64)
                 )?;
                 self.config.assign_cell(
@@ -223,7 +220,7 @@ impl<F: FieldExt> HashAdaptorChip<F> {
                 self.config.assign_cell(
                     region,
                     self.offset,
-                    &HashAdaptorConfig::op_hint(),
+                    &HashAdaptorConfig::merge_hint(),
                     F::from(self.context.1 as u64)
                 )?;
                 self.config.assign_cell(
@@ -246,5 +243,110 @@ impl<F: FieldExt> HashAdaptorChip<F> {
         };
         Ok(())
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::dev::MockProver;
+    use crate::adaptor::hashadaptor::{
+        HashAdaptorConfig,
+        HashAdaptorChip,
+    };
+    use crate::value_for_assign;
+    use crate::circuits::CommonGateConfig;
+    use crate::host::{
+        ExternalHostCallEntryTable,
+        ExternalHostCallEntry,
+    };
+
+    use crate::host::ForeignInst;
+    use crate::host::ForeignInst::{
+        PoseidonNew,
+        PoseidonPush,
+        PoseidonFinalize,
+    };
+
+
+
+    use halo2_proofs::{
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        plonk::{
+            Advice, Circuit, Column, ConstraintSystem, Error
+        },
+    };
+
+    #[derive(Debug, Default)]
+    struct TestCircuit {
+        table: ExternalHostCallEntryTable,
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        hashadaptorconfig: HashAdaptorConfig,
+    }
+
+    impl Circuit<Fr> for TestCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let hashadaptorconfig = HashAdaptorChip::<Fr>::configure(meta);
+            Self::Config {
+               hashadaptorconfig,
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let mut adaptorchip = HashAdaptorChip::<Fr>::new(config.clone().hashadaptorconfig);
+            layouter.assign_region(
+                || "assign poseidon test",
+                |mut region| {
+                    adaptorchip.initialize(&mut region)?;
+                    Ok(())
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+    fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
+        vec![ExternalHostCallEntry {
+            op: ForeignInst::PoseidonNew as usize,
+            value: if restart {1u64} else {0u64},
+            is_ret: false,
+        }]
+
+    }
+
+    fn hash_to_host_call_table(inputs: Vec<Fr>) -> ExternalHostCallEntryTable {
+        let mut r = vec![];
+        for (i, chunk) in inputs.chunks(8).enumerate() {
+            r.push(hash_cont(i==0));
+            for f in chunk.iter() {
+                r.push(crate::adaptor::fr_to_args(*f, 4, 64, PoseidonPush));
+            }
+        }
+        r.push(crate::adaptor::fr_to_args(Fr::one(), 4, 64, PoseidonFinalize));
+        ExternalHostCallEntryTable(r.into_iter().flatten().collect())
+    }
+
+
+    #[test]
+    fn test_poseidon_adapor_circuit_00() {
+        let mut hasher = crate::host::poseidon::gen_hasher();
+        let result = hasher.squeeze();
+        let table = hash_to_host_call_table(vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()]);
+        let test_circuit = TestCircuit {table};
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
 }

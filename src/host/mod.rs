@@ -8,7 +8,7 @@ pub mod poseidon;
 use serde::{Deserialize, Serialize};
 use halo2_proofs::arithmetic::FieldExt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ExternalHostCallEntryTable(pub Vec<ExternalHostCallEntry>);
 
 #[derive(Serialize, Deserialize, Debug)]

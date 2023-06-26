@@ -428,7 +428,7 @@ impl CommonGateConfig {
                     coeffs.try_into().unwrap(),
                     0
                 )?;
-                r = Some(l.last().unwrap().clone());
+                r = Some(l.get(l.len() - 2).unwrap().clone());
             } else {
                 let mut limbs = chunk.iter().map(|&(l, _v)| Some(l.clone())).collect::<Vec<Option<Limb<_>>>>();
                 let mut coeffs = chunk.iter().map(|&(_l, v)| Some(v.clone())).collect::<Vec<Option<F>>>();
@@ -448,7 +448,7 @@ impl CommonGateConfig {
             acc = result;
             firstline = false;
         }
-        Ok(r.map_or({
+        Ok(r.unwrap_or_else(|| {
             let result = acc + constant.map_or(F::zero(), |x| x);
             // collect the last acc as result
             self.assign_line(
@@ -458,7 +458,7 @@ impl CommonGateConfig {
                     [Some(Limb::new(None, result)), None, None, None, Some(Limb::new(None, acc)), None],
                     [Some(-F::one()), None, None, None, Some(F::one()), None, None, None, constant],
                     0
-            )?[0].clone()
-        }, |x| x))
+            ).unwrap().into_iter().next().unwrap()
+        }))
     }
 }

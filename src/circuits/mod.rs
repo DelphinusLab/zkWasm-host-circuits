@@ -243,6 +243,33 @@ impl CommonGateConfig {
         /* todo
          * constraint all the limbs to be either 1 or 0
          */
+
+        // apply eqn: (val * val) - val = 0,
+        // by: (ws[1] * ws[2] * cs[7]) + (ws[0] * cs[0]) = 0,
+        for i in 0..(limbs.len()) {
+            let lm = limbs[i].clone();
+            let _l = self.assign_line(
+                region,
+                range_check_chip,
+                offset,
+                [
+                    Some(lm.clone()),
+                    Some(lm.clone()),
+                    Some(lm),
+                    None,              
+                    None,
+                    None,
+                ],
+                [
+                    Some(-F::one()), None, None, None, None, None,
+                    None,
+                    Some(F::one()),
+                    None,
+                ],
+                0  //what is limbbound
+            )?;
+        }
+
         Ok(())
     }
 

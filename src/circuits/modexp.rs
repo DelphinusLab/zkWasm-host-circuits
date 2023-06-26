@@ -413,6 +413,12 @@ impl<F: FieldExt> ModExpChip<F> {
         let mod_216_lhs = self.mod_power216_mul(region, range_check_chip, offset, lhs, rhs)?;
         let mod_216_rhs = self.mod_power216_mul(region, range_check_chip, offset, &quotient, &modulus)?;
         let mod_216_rem = self.mod_power216(region, range_check_chip, offset, &rem)?;
+
+        // println!("mod_216_lhs    = 0x{}", field_to_bn(&mod_216_lhs.clone().value).to_str_radix(16));
+        // println!("mod_216_rhs    = 0x{}", field_to_bn(&mod_216_rhs.clone().value).to_str_radix(16));
+        // println!("mod_216_rem    = 0x{}", field_to_bn(&mod_216_rem.clone().value).to_str_radix(16));
+        // println!("");
+
         self.mod_power216_zero(
             region,
             range_check_chip,
@@ -433,32 +439,57 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
+    /// Selects result based on the condition exp_bit = '1' or '0' \
+    /// 
+    /// # Arguments 
+    /// 
+    /// * `cond` - the exp_bit as a Limb in F, is only 0x1 or 0x0
+    /// * `base` - the value of the base as a Number<F>
+    /// * `one`  - the value of 1 as a Number<F>
+    /// 
+    /// # Constraint 
+    /// 
+    ///     (w[1] * w[2] * c[7]) + (w[0] * w[3] * c[6]) + (w[4] * c[4]) + (w[3] * c[3]) = 0
+    ///     (cond * base * 1   ) + (cond * base * -1  ) + (res * 1    ) + (one * -1   ) = 0
+    /// 
+    /// where: \
+    ///         res = base,   if exp_bit = '1' \
+    ///         res = one,    if exp_bit = '0' \
+    /// 
+    /// # Example
+    /// ```
+    /// let select(region, offset, &cond, &base, &one);
+    /// ```
+    /// 
     pub fn select(
         &self,
         region: &mut Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         cond: &Limb<F>,
-        one: &Number<F>,
         base: &Number<F>,
+        one: &Number<F>,
     ) -> Result <Number<F>, Error> {
-        //c * base + (1-c) * one
-        let result = if cond.value == F::zero() {one.clone()} else {base.clone()};
+        let w4_val = if cond.value == F::one() { base.clone() } else { one.clone() };
         let mut limbs = vec![];
         for i in 0..4 {
             let l = self.config.assign_line(region, range_check_chip, offset,
                 [
-                    Some(base.limbs[i].clone()),
-                    Some(one.limbs[i].clone()),
                     Some(cond.clone()),
                     Some(cond.clone()),
-                    Some(result.limbs[i].clone()),
+                    Some(base.limbs[i].clone()),    
+                    Some(one.limbs[i].clone()),     
+                    Some(w4_val.limbs[i].clone()),  
                     None,
                 ],
-                [None, Some(F::one()), None, None, Some(-F::one()), None, Some(F::one()), Some(-F::one()), None],
-                0,
+                [
+                    None, None, None, Some(-F::one()), Some(F::one()), 
+                    None, Some(F::one()), Some(-F::one()), None
+                ],
+                0 // check this value is correct for select
             )?;
             limbs.push(l[4].clone());
+
         }
         Ok(Number { limbs: limbs.try_into().unwrap() })
     }
@@ -478,10 +509,10 @@ impl<F: FieldExt> ModExpChip<F> {
         self.config.decompose_limb(region, range_check_chip, offset, &exp.limbs[0], &mut limbs, 108)?;
         let mut acc = self.assign_constant(region, range_check_chip, offset, Number::from_bn(&BigUint::from(1 as u128)), 0)?;
         let one = acc.clone();
-        for limb in limbs {
-            let v = self.select(region, range_check_chip, offset, &limb, &one, base)?;
+        for limb in limbs.iter() {
             acc = self.mod_mult(region, range_check_chip, offset, &acc, &acc, modulus)?;
-            acc = self.mod_mult(region, range_check_chip, offset, &acc, &v, modulus)?;
+            let sval = self.select(region, range_check_chip, offset, &limb, &base, &one)?;
+            acc = self.mod_mult(region, range_check_chip, offset, &acc, &sval, modulus)?;
         }
         Ok(acc)
     }
@@ -706,4 +737,637 @@ mod tests {
     }
 }
 
+
+
+#[cfg(test)]
+mod tests_2 {
+    use halo2_proofs::{pairing::bn256::Fr, arithmetic::FieldExt};
+    use halo2_proofs::dev::MockProver;
+    use num_bigint::{BigUint, ToBigInt, ToBigUint};
+
+    use crate::circuits::range::{
+        RangeCheckConfig,
+        RangeCheckChip,
+    };
+    use crate::value_for_assign;
+    use crate::circuits::CommonGateConfig;
+
+    use halo2_proofs::{
+        circuit::{Cell, Chip, Layouter, Region, AssignedCell, SimpleFloorPlanner},
+        plonk::{
+            Fixed, Advice, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Instance,
+            Selector,
+        },
+    };
+
+    use rand::{thread_rng, Rng};
+    use num_bigint::RandomBits;
+    const LIMB_WIDTH: usize = 108;
+
+    use super::{
+        ModExpChip,
+        Number,
+        Limb,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChipConfig {
+        limb: Column<Advice>
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChip {
+        config: HelperChipConfig
+    }
+
+    impl Chip<Fr> for HelperChip {
+        type Config = HelperChipConfig;
+        type Loaded = ();
+
+        fn config(&self) -> &Self::Config {
+            &self.config
+        }
+
+        fn loaded(&self) -> &Self::Loaded {
+            &()
+        }
+    }
+
+    impl HelperChip {
+        fn new(config: HelperChipConfig) -> Self {
+            HelperChip{
+                config,
+            }
+        }
+
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
+            let limb= cs.advice_column();
+            cs.enable_equality(limb);
+            HelperChipConfig {
+                limb,
+            }
+        }
+
+        fn assign_base(
+            &self,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
+            base: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(base))
+        }
+
+        fn assign_modulus(
+            &self,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
+            modulus: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(modulus))
+        }
+
+        fn assign_exp(
+            &self,
+            _region: &mut Region<Fr>,
+            _offset: &mut usize,
+            exponent: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            Ok(Number::from_bn(exponent))
+        }
+
+        fn assign_results(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            result: &BigUint,
+        ) -> Result<Number<Fr>, Error> {
+            let n = Number::from_bn(result);
+            let mut cells = vec![];
+            for i in 0..4 {
+                let c = region.assign_advice(
+                    || format!("assign input"),
+                    self.config.limb,
+                    *offset + i,
+                    || value_for_assign!(n.limbs[i].value)
+                )?;
+                cells.push(Some(c));
+                *offset = *offset + 1;
+            }
+            let n = Number {
+                limbs: [
+                    Limb::new(cells[0].clone(), n.limbs[0].value),
+                    Limb::new(cells[1].clone(), n.limbs[1].value),
+                    Limb::new(cells[2].clone(), n.limbs[2].value),
+                    Limb::new(cells[3].clone(), n.limbs[3].value),
+                ]
+            };
+            Ok(n)
+        }
+
+    }
+
+    //------------------------------------------------------------
+    use std::fmt;
+    use halo2_proofs::{
+        dev::{
+            VerifyFailure, 
+            FailureLocation,
+        },
+        plonk::Any,
+    };
+    
+    pub enum CircuitError {
+        /// Thrown when `MockProver::run` fails to prove the circuit.
+        ProverError(Error),
+        /// Thrown when verification fails.
+        VerifierError(Vec<VerifyFailure>),
+        /// Thrown when no operation has been specified.
+        NoOperation,
+    }
+    
+    impl fmt::Debug for CircuitError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                CircuitError::ProverError(prover_error) => {
+                    write!(f, "prover error in circuit: {}", prover_error)
+                }
+                CircuitError::VerifierError(verifier_error) => {
+                    write!(f, "verifier error in circuit: {:#?}", verifier_error)
+                }
+                CircuitError::NoOperation => {
+                    write!(f, "no operation is set (this should never happen.")
+                }
+            }
+        }
+    }
+    //------------------------------------------------------------
+
+    #[derive(Clone, Debug, Default)]
+    struct TestDecomposeLimbCircuit {
+        l: BigUint,
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        modexpconfig: CommonGateConfig,
+        helperconfig: HelperChipConfig,
+        rangecheckconfig: RangeCheckConfig,
+    }
+
+
+    #[derive(Clone, Debug, Default)]
+    struct TestModpower108m1Circuit {
+        a: BigUint,
+    }
+
+    impl Circuit<Fr> for TestModpower108m1Circuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "mod_power108m1",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+                    let mut offset = 0;
+
+                    let a = helperchip.assign_base(&mut region, &mut offset, &self.a)?;
+ 
+                    // calculate addition of all limbs.
+                    let bn_lm0 = &self.a & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                    let bn_lm1 = BigUint::from(&self.a >> 108) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                    let bn_lm2 = BigUint::from(&self.a >> 216) & (BigUint::from(1u128 << 108) - BigUint::from(1u128));
+                    let bn_res = bn_lm0 + bn_lm1 + bn_lm2;
+
+                    println!("bn_res = 0x{}", bn_res.to_str_radix(16));
+        
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_res)?;
+
+                    let rem = modexpchip.mod_power108m1(&mut region, &mut range_chip, &mut offset, &a )?;
+
+           
+                    // mod_power108m1() should produce the mathematical result for 
+                    //assert_eq!(field_to_bn(&rem[3].value), bn_res);
+
+      
+                    // println!("\nrem is (decimal BigUint):");
+                    // for i in 0..4 {
+                    //     println!("rem[{i}] = {:?} (BigUint)", field_to_bn(&rem[i].value));
+                    // }
+                    println!("\nrem is (hex):");
+                    for i in 0..4 {
+                        println!("rem[{i}] = {:?}", &rem[i].value);
+                    }
+
+                    println!("\n------");
+                    for i in 0..4 {
+                        println!("result is {:?}", &result.limbs[i].value);
+                        println!("resultcell is {:?}", &result.limbs[i].cell);
+                        /*
+                        region.constrain_equal(
+                            rem.limbs[i].clone().cell.unwrap().cell(),
+                            result.limbs[i].clone().cell.unwrap().cell()
+                        )?;
+                        */
+                    }
+
+                    Ok(rem)
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestModpower108m1mulCircuit {
+        a: BigUint,
+        b: BigUint,
+        modulus: BigUint,
+    }
+
+    impl Circuit<Fr> for TestModpower108m1mulCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+        
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "mod_power108m1_mul",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+                    let mut offset = 0;
+                    let bn_rem = self.a.clone() * self.b.clone() % self.modulus.clone();
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                    let lhs  = helperchip.assign_modulus(&mut region, &mut offset, &self.a)?;
+                    let rhs  = helperchip.assign_base(&mut region, &mut offset, &self.b)?;
+                    let res = modexpchip.mod_power108m1_mul(&mut region, &mut range_chip,&mut offset, &lhs, &rhs )?;     
+                    println!("\nbn_rem    = {:?}", bn_rem);
+                    println!("result is = {:?}", res.value);
+                    Ok(res)
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestModPower216MulCircuit {
+        l: BigUint,
+        r: BigUint,
+        modulus: BigUint,
+    }
+
+    impl Circuit<Fr> for TestModPower216MulCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+        
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "test circuit mod_power216_mul",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+                    let mut offset = 0;
+                    let bn_rem = self.l.clone() * self.r.clone() % self.modulus.clone();
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                    let lhs  = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
+                    let rhs  = helperchip.assign_base(&mut region, &mut offset, &self.r)?;
+                    let res = modexpchip.mod_power216_mul(&mut region, &mut range_chip,&mut offset, &lhs, &rhs)?;     
+                    println!("\nbn_rem \t= {}", bn_rem.to_str_radix(16));
+                    println!("res \t= {:?}", res.value);
+                    Ok(res)
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+
+    #[derive(Clone, Debug, Default)]
+    struct TestModMultCircuit {
+        l: BigUint,
+        r: BigUint,
+        modulus: BigUint,
+    }
+
+    impl Circuit<Fr> for TestModMultCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+        
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "test circuit mod_mult",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+                    let mut offset = 0;
+                    let bn_rem = self.l.clone() * self.r.clone() % self.modulus.clone();
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                    let modulus  = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+                    let lhs  = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
+                    let rhs  = helperchip.assign_base(&mut region, &mut offset, &self.r)?;
+                    let res = modexpchip.mod_mult(&mut region, &mut range_chip,&mut offset, &lhs, &rhs, &modulus)?;     
+                    println!("\nbn_rem    = {:?}", bn_rem);
+                    for i in 0..4 {
+                        println!("res = {:?}", &res.limbs[i].value);
+                    }
+                    Ok(res)
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestModExpCircuit {
+        base: BigUint,
+        exp: BigUint,
+        modulus: BigUint,
+    }
+
+    impl Circuit<Fr> for TestModExpCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+            Self::Config {
+               modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+               helperconfig: HelperChip::configure(meta),
+               rangecheckconfig,
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+            layouter.assign_region(
+                || "assign mod exp",
+                |mut region| {
+                    range_chip.initialize(&mut region)?;
+                    let mut offset = 0;
+                    let base = helperchip.assign_base(&mut region, &mut offset, &self.base)?;
+                    let exp = helperchip.assign_exp(&mut region, &mut offset, &self.exp)?;
+                    let modulus = helperchip.assign_modulus(&mut region, &mut offset, &self.modulus)?;
+                    let bn_rem = self.base.clone().modpow(&self.exp, &self.modulus);
+                    let result = helperchip.assign_results(&mut region, &mut offset, &bn_rem)?;
+                    let rem = modexpchip.mod_exp(&mut region, &mut range_chip, &mut offset, &base, &exp, &modulus)?;
+                    for i in 0..4 {
+                        println!("rem is {:?}, \t result is {:?}", &rem.limbs[i].value, &result.limbs[i].value);
+                        println!("remcell is \t{:?}", &rem.limbs[i].cell);
+                        println!("resultcell is \t {:?}", &result.limbs[i].cell);
+                        region.constrain_equal(
+                            rem.limbs[i].clone().cell.unwrap().cell(),
+                            result.limbs[i].clone().cell.unwrap().cell()
+                        )?;
+                    }
+                    Ok(())
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+    //---------------------------------------------------------------------------------------------
+
+    fn run_mod_power108m1_circuit() -> Result<(), CircuitError> {
+        // test mod_power108m1 for over x bits
+        let mut rng = thread_rng();
+        let bit_len = (LIMB_WIDTH + LIMB_WIDTH + 108) as u64;
+        let mut b = BigUint::default();
+        while b.bits() != bit_len {
+            b = rng.sample(RandomBits::new(bit_len));
+        }
+        let a = b;
+        println!("bit_len = {}", bit_len);
+        println!("a = 0x{}", a.to_str_radix(16));
+
+        let a = BigUint::parse_bytes(b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap();  
+        // test expected overflow of 1 bit 0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+        let test_circuit = TestModpower108m1Circuit{a} ;
+
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+        //assert_eq!(prover.verify(), Ok(()));
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+
+        Ok(())
+    }
+
+    fn run_mod_power108m1_mul_circuit() -> Result<(), CircuitError> {
+
+        let a = BigUint::parse_bytes(b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16).unwrap() 
+            * BigUint::parse_bytes(b"2", 16).unwrap() + BigUint::parse_bytes(b"1", 16).unwrap();  
+        // test expected overflow of 1 bit 0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        let b = BigUint::from(1u128);
+        let modulus = BigUint::parse_bytes(b"fffffffffffffffffffffffffff", 16).unwrap();
+        let test_circuit = TestModpower108m1mulCircuit{a, b, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+        Ok(())
+    }
+
+    fn run_mod_power216_mul_circuit() -> Result<(), CircuitError> {
+
+        let l = BigUint::from(2454u128);
+        let r = BigUint::from(1u128);
+        let modulus = BigUint::from(1u128<<108) * BigUint::from(1u128<<108);
+        let test_circuit = TestModPower216MulCircuit{l, r, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+
+        let l = BigUint::parse_bytes(b"fffffffffffffffffffffffffff", 16).unwrap();
+        let r = BigUint::from(1u128);
+        let modulus = BigUint::from(1u128<<108) * BigUint::from(1u128<<108);
+        let test_circuit = TestModPower216MulCircuit{l, r, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+
+        Ok(())
+    }
+
+    fn run_mod_mult_circuit() -> Result<(), CircuitError> {
+
+        let l = BigUint::from(2454u128);
+        let r = BigUint::from(1u128);
+        let modulus = BigUint::from(18u128);
+        let test_circuit = TestModMultCircuit{l, r, modulus} ;
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+        Ok(())
+    }
+
+    fn run_modexp_circuit() -> Result<(), CircuitError> {
+
+        let base = BigUint::from(5u128); 
+        let exp = BigUint::from(22u128);
+        let modulus = BigUint::from(37u128);
+        let test_circuit = TestModExpCircuit {base, exp, modulus} ;
+
+        let prover = match MockProver::run(16, &test_circuit, vec![]) {
+            Ok(prover_run) => prover_run,
+            Err(prover_error) => return Err(CircuitError::ProverError(prover_error)),
+        };
+    
+        match prover.verify() {
+            Ok(_) => (),
+            Err(verifier_error) => return Err(CircuitError::VerifierError(verifier_error)),
+        };
+
+        Ok(())
+
+
+    }
+
+
+
+
+    #[test]
+    fn test_mod_power108m1() {
+        let output = run_mod_power108m1_circuit().expect("mod_power108m1_circuit failed prover verify");
+        println!("proof generation successful!\nresult: {:#?}", output);
+    }
+
+    #[test]
+    fn test_mod_power108m1_mul() {
+        let output = run_mod_power108m1_mul_circuit().expect("mod_power108m1_mul failed prover verify");
+        println!("proof generation successful!\nresult: {:#?}", output);
+    }
+
+    #[test]
+    fn test_mod_power216_mul() {
+        let output = run_mod_power216_mul_circuit().expect("run_mod_mult_circuit failed prover verify"); 
+        println!("proof generation successful!\nresult: {:#?}", output);
+    }
+
+    #[test]
+    fn test_mod_mult() {
+        let output = run_mod_mult_circuit().expect("run_mod_mult_circuit failed prover verify");
+        println!("proof generation successful!\nresult: {:#?}", output);
+    }
+
+    #[test]
+    fn test_modexp() {
+        let output = run_modexp_circuit().expect("run_modexp_circuit failed prover verify");    //--> pass
+        println!("proof generation successful!\nresult: {:#?}", output);
+    }
+
+}
 

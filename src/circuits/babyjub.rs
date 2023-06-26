@@ -1,12 +1,11 @@
 use crate::utils::{
     field_to_bn,
     bn_to_field,
-    field_to_u64,
 };
 
 use crate::circuits::{
     CommonGateConfig,
-    Limb, babyjub, 
+    Limb, 
 };
 
 use crate::circuits::range::{

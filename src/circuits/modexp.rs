@@ -129,7 +129,6 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(Number {limbs: limbs.try_into().unwrap()})
     }
 
-
     pub fn assign_number (
         &self,
         _region: &mut Region<F>,
@@ -181,7 +180,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 None,
                 None,
             ],
-            [None, None, None, Some(-F::one()), None, None, None, None, Some(F::one())],
+            [None, None, None, Some(-F::one()), None, None, None, Some(F::one()), None],
             0,
         )?;
         Ok(l[2].clone())
@@ -265,7 +264,7 @@ impl<F: FieldExt> ModExpChip<F> {
             [Some(F::from_u128((1u128<<108)-1)), None, None, Some(F::one()), None, None, None, Some(-F::one()), None],
             10,
         )?;
-        Ok(l[3].clone())
+        Ok(l[3].clone()) // 108 bits
     }
 
     pub fn mod_power216_mul (
@@ -363,7 +362,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 None
             ],
             [Some(-F::from_u128(c)), Some(signs[0]), Some(signs[1]), Some(signs[2]), None, None, None, None, Some(F::from_u128(c*16u128))],
-            10 // check rcell range
+            10 
 
         )?;
         Ok(())
@@ -377,11 +376,9 @@ impl<F: FieldExt> ModExpChip<F> {
        limbs: Vec<Limb<F>>,
        signs: Vec<F>,
     ) -> Result<(), Error> {
-        //let c = field_to_bn(&F::from_u128(1u128<<108)).mul(BigUint::from(1u128<<108)); // 216 bits  
-        //let v = bn_to_field(&(c.mul(BigUint::from(2u128)))) + limbs[0].value*signs[0] + limbs[1].value *signs[1] + limbs[2].value*signs[2];
          
         let c = F::from_u128(1u128<<108) * F::from_u128(1u128<<109); // 217 bits    
-        let v = c * F::from_u128(2u128) + limbs[0].value*signs[0] + limbs[1].value *signs[1] + limbs[2].value*signs[2]; // 218 bits
+        let v = c * F::from_u128(2u128) + limbs[0].value*signs[0] + limbs[1].value *signs[1] + limbs[2].value*signs[2]; // 218 bits = 217 +- 217 +- 216
         let q = field_to_bn(&v).div(field_to_bn(&c));
         self.config.assign_line(
             region,
@@ -396,7 +393,7 @@ impl<F: FieldExt> ModExpChip<F> {
                 None
             ],
             [Some(-c), Some(signs[0]), Some(signs[1]), Some(signs[2]), None, None, None, None, Some(c*F::from_u128(2u128))],
-            1 // check rcell range
+            1
         )?;
        
         Ok(())

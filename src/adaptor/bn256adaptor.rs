@@ -1,7 +1,7 @@
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region},
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
+    plonk::{ConstraintSystem, Error, Fixed},
 };
 
 pub const BN256FQ_SIZE: usize = 5;
@@ -14,8 +14,7 @@ use crate::circuits::bn256::{
     Bn256ChipConfig,
 };
 
-
-use crate::circuits::HostOpSelector;
+use crate::circuits::{HostOpSelector, HostOpConfig};
 
 use crate::host::ForeignInst;
 
@@ -35,11 +34,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        filtered_operands: Column<Advice>,
-        filtered_opcodes: Column<Advice>,
-        filtered_index: Column<Advice>,
-        merged_operands: Column<Advice>,
-        indicator: Column<Fixed>,
+        config: &HostOpConfig,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::Bn254PairG1 as u64),
@@ -64,26 +59,9 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         let mut toggle: i32 = -1;
         for opcode in shared_opcodes {
             if opcodes.contains(opcode) {
-                region.assign_advice(
-                    || "picked operands",
-                    filtered_operands,
-                    picked_offset,
-                    || Ok(shared_operands[offset]),
-                )?;
-
-                region.assign_advice(
-                    || "picked opcodes",
-                    filtered_opcodes,
-                    picked_offset,
-                    || Ok(opcode.clone()),
-                )?;
-
-                region.assign_advice(
-                    || "picked index",
-                    filtered_index,
-                    picked_offset,
-                    || Ok(shared_index[offset]),
-                )?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_operand(), shared_operands[offset])?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_opcode(), opcode.clone())?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_index(), shared_index[offset])?;
 
                 let value = if toggle >= 0 {
                     shared_operands[offset]
@@ -93,13 +71,9 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 } else {
                     shared_operands[offset].clone()
                 };
-                let opcell = region.assign_advice(
-                    || "picked merged operands",
-                    merged_operands,
-                    picked_offset,
-                    || Ok(value),
-                )?;
 
+
+                let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
                 let value = if merge_next(picked_offset) {
                     toggle = offset as i32;
                     Fr::from(1u64 << 54)
@@ -108,7 +82,8 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                     toggle = -1;
                     Fr::zero()
                 };
-                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
+
+                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), value)?;
                 picked_offset += 1;
             };
             offset += 1;
@@ -146,11 +121,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        filtered_operands: Column<Advice>,
-        filtered_opcodes: Column<Advice>,
-        filtered_index: Column<Advice>,
-        merged_operands: Column<Advice>,
-        indicator: Column<Fixed>,
+        config: &HostOpConfig,
     ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::Bn254SumG1 as u64),
@@ -168,26 +139,9 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         let mut toggle: i32 = -1;
         for opcode in shared_opcodes {
             if opcodes.contains(opcode) {
-                region.assign_advice(
-                    || "picked operands",
-                    filtered_operands,
-                    picked_offset,
-                    || Ok(shared_operands[offset]),
-                )?;
-
-                region.assign_advice(
-                    || "picked opcodes",
-                    filtered_opcodes,
-                    picked_offset,
-                    || Ok(opcode.clone()),
-                )?;
-
-                region.assign_advice(
-                    || "picked index",
-                    filtered_index,
-                    picked_offset,
-                    || Ok(shared_index[offset]),
-                )?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_operand(), shared_operands[offset])?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_opcode(), opcode.clone())?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_index(), shared_index[offset])?;
 
                 let value = if toggle >= 0 {
                     shared_operands[offset]
@@ -197,12 +151,9 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                 } else {
                     shared_operands[offset].clone()
                 };
-                let opcell = region.assign_advice(
-                    || "picked merged operands",
-                    merged_operands,
-                    picked_offset,
-                    || Ok(value),
-                )?;
+
+
+                let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
 
                 let value = if merge_next(picked_offset) {
                     toggle = offset as i32;
@@ -212,7 +163,8 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                     toggle = -1;
                     Fr::zero()
                 };
-                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
+
+                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), value)?;
                 picked_offset += 1;
             };
             offset += 1;

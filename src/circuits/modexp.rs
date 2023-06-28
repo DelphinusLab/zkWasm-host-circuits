@@ -246,8 +246,8 @@ impl<F: FieldExt> ModExpChip<F> {
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
         let bn_modulus = BigUint::from((1u128<<108)-1);
-        let [_, _, _, ml] = self.mod_power108m1(region, range_check_chip, offset, lhs)?; // ml has at most 109 bits
-        let [_, _, _, mr] = self.mod_power108m1(region, range_check_chip, offset, rhs)?; // mr has at most 109 bits
+        let [_, _, _, ml] = self.mod_power108m1(region, range_check_chip, offset, lhs)?; // ml has at most 110 bits
+        let [_, _, _, mr] = self.mod_power108m1(region, range_check_chip, offset, rhs)?; // mr has at most 110 bits
         let v = ml.value * mr.value; // at most 220 bits
         let bn_q = field_to_bn(&v).div(bn_modulus.clone()); // at most 112 bits
         let bn_r = field_to_bn(&v) - bn_q.clone() * bn_modulus; // at most 108 bits

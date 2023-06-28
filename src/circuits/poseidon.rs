@@ -5,11 +5,10 @@ use crate::host::poseidon::RATE;
 use crate::host::poseidon::R_F;
 use crate::host::poseidon::R_P;
 use crate::host::poseidon::T;
-use halo2_proofs::arithmetic::CurveAffine;
 use halo2_proofs::arithmetic::FieldExt;
 use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
-use std::cell::RefMut;
+use crate::circuits::LookupAssistConfig;
 
 const START_ENCODE:u64 = 1<<32;
 const END_ENCODE:u64 = 2<<32;
@@ -17,11 +16,6 @@ const END_ENCODE:u64 = 2<<32;
 use crate::circuits::{
     CommonGateConfig,
     Limb,
-};
-
-use crate::adaptor::hashadaptor::{
-    HashAdaptorConfig,
-    HashAdaptorChip,
 };
 
 use std::marker::PhantomData;
@@ -49,7 +43,7 @@ pub struct PoseidonChip<F:FieldExt> {
 }
 
 impl<F: FieldExt> PoseidonChip<F> {
-    pub fn new(config: CommonGateConfig) -> Self {
+    pub fn construct(config: CommonGateConfig) -> Self {
         let state = [0u32;T].map(|_| Limb::new(None, F::zero()));
         let state = PoseidonState {
             default: state.clone(),
@@ -66,14 +60,13 @@ impl<F: FieldExt> PoseidonChip<F> {
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, hash_adaptor_config: &HashAdaptorConfig) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, hash_adaptor_config)
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &())
     }
 
     pub fn assign_permute(
         &mut self,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         values: &[F; RATE],
         create: bool,
@@ -83,7 +76,7 @@ impl<F: FieldExt> PoseidonChip<F> {
         let create_limb = Limb::new(None, if create {F::one()} else {F::zero()});
         self.config.assign_witness(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             [
                 Some(create_limb.clone()),
@@ -96,7 +89,7 @@ impl<F: FieldExt> PoseidonChip<F> {
         )?;
 
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
-            new_state.push(self.config.select(region, hash_adaptor_chip, offset, &create_limb, default, value, self.round)?);
+            new_state.push(self.config.select(region, &mut (), offset, &create_limb, default, value, self.round)?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
         let parts = values.clone().map(|x| {Some(Limb::new(None, x.clone()))});
@@ -107,14 +100,14 @@ impl<F: FieldExt> PoseidonChip<F> {
         part1.push(None);
         let mut inputs = self.config.assign_witness(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             part0.try_into().unwrap(),
             0,
         )?;
         inputs.append(&mut self.config.assign_witness(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             part1.try_into().unwrap(),
             0,
@@ -123,14 +116,13 @@ impl<F: FieldExt> PoseidonChip<F> {
             &self.config,
             &self.spec,
             region,
-            hash_adaptor_chip,
             offset,
             &inputs.try_into().unwrap(),
         )?;
         // register the result with squeeze and create indicator
         let result = self.config.assign_witness(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             [
                 Some(self.poseidon_state.state[1].clone()),
@@ -150,19 +142,18 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         *offset = 0;
-        let zero = config.assign_constant(region, hash_adaptor_chip, offset, &F::zero())?;
+        let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
         let mut state = [0u32;T].map(|_| zero.clone());
-        state[0] = config.assign_constant(region, hash_adaptor_chip, offset, &F::from_u128(1u128<<64))?;
+        state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128<<64))?;
         self.default = state.clone();
         self.state = state;
         self.prefix = vec![
-                config.assign_constant(region, hash_adaptor_chip, offset, &F::from(PREFIX_CHALLENGE))?,
-                config.assign_constant(region, hash_adaptor_chip, offset, &F::from(PREFIX_POINT))?,
-                config.assign_constant(region, hash_adaptor_chip, offset, &F::from(PREFIX_SCALAR))?,
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_CHALLENGE))?,
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_POINT))?,
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_SCALAR))?,
             ];
         Ok(())
     }
@@ -170,12 +161,11 @@ impl<F: FieldExt> PoseidonState<F> {
     fn x_power5_with_constant(
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         x: &Limb<F>,
         constant: F,
     ) -> Result<Limb<F>, Error> {
-        let xx = config.assign_line(region, hash_adaptor_chip, offset,
+        let xx = config.assign_line(region, &mut (), offset,
             [
                 Some(x.clone()),
                 None,
@@ -187,7 +177,7 @@ impl<F: FieldExt> PoseidonState<F> {
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
             0,
         )?[2].clone();
-        let x4 = config.assign_line(region, hash_adaptor_chip, offset,
+        let x4 = config.assign_line(region, &mut (), offset,
             [
                 Some(xx.clone()),
                 None,
@@ -199,7 +189,7 @@ impl<F: FieldExt> PoseidonState<F> {
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
             0,
         )?[2].clone();
-        let x5 = config.assign_line(region, hash_adaptor_chip, offset,
+        let x5 = config.assign_line(region, &mut (), offset,
             [
                 Some(x.clone()),
                 None,
@@ -218,12 +208,11 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         constants: &[F; T]
     ) -> Result<(), Error> {
         for (x, constant) in self.state.iter_mut().zip(constants.iter()) {
-            *x = Self::x_power5_with_constant(config, region, hash_adaptor_chip, offset, x, *constant)?;
+            *x = Self::x_power5_with_constant(config, region, offset, x, *constant)?;
         }
         Ok(())
     }
@@ -232,14 +221,12 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         constant: &F
     ) -> Result<(), Error> {
         self.state[0] = Self::x_power5_with_constant(
             config,
             region,
-            hash_adaptor_chip,
             offset,
             &self.state[0],
             constant.clone()
@@ -252,7 +239,6 @@ impl<F: FieldExt> PoseidonState<F> {
         config: &CommonGateConfig,
         spec: &Spec<F, T, RATE>,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
     ) -> Result<(), Error> {
@@ -260,31 +246,31 @@ impl<F: FieldExt> PoseidonState<F> {
         let mds = &spec.mds_matrices().mds().rows();
 
         let constants = &spec.constants().start();
-        self.absorb_with_pre_constants(config, region, hash_adaptor_chip, offset, inputs, &constants[0])?;
+        self.absorb_with_pre_constants(config, region, offset, inputs, &constants[0])?;
 
         for constants in constants.iter().skip(1).take(r_f - 1) {
-            self.sbox_full(config, region, hash_adaptor_chip, offset, constants)?;
-            self.apply_mds(config, region, hash_adaptor_chip, offset, mds)?;
+            self.sbox_full(config, region, offset, constants)?;
+            self.apply_mds(config, region, offset, mds)?;
         }
 
         let pre_sparse_mds = &spec.mds_matrices().pre_sparse_mds().rows();
-        self.sbox_full(config, region, hash_adaptor_chip, offset,constants.last().unwrap())?;
-        self.apply_mds(config, region, hash_adaptor_chip, offset, &pre_sparse_mds)?;
+        self.sbox_full(config, region, offset,constants.last().unwrap())?;
+        self.apply_mds(config, region, offset, &pre_sparse_mds)?;
 
         let sparse_matrices = &spec.mds_matrices().sparse_matrices();
         let constants = &spec.constants().partial();
         for (constant, sparse_mds) in constants.iter().zip(sparse_matrices.iter()) {
-            self.sbox_part(config, region, hash_adaptor_chip, offset, constant)?;
-            self.apply_sparse_mds(config, region, hash_adaptor_chip, offset, sparse_mds)?;
+            self.sbox_part(config, region, offset, constant)?;
+            self.apply_sparse_mds(config, region, offset, sparse_mds)?;
         }
 
         let constants = &spec.constants().end();
         for constants in constants.iter() {
-            self.sbox_full(config, region, hash_adaptor_chip, offset, constants)?;
-            self.apply_mds(config, region, hash_adaptor_chip, offset, mds)?;
+            self.sbox_full(config, region, offset, constants)?;
+            self.apply_mds(config, region, offset, mds)?;
         }
-        self.sbox_full(config, region, hash_adaptor_chip, offset, &[F::zero(); T])?;
-        self.apply_mds(config, region, hash_adaptor_chip, offset, mds)?;
+        self.sbox_full(config, region, offset, &[F::zero(); T])?;
+        self.apply_mds(config, region, offset, mds)?;
         Ok(())
     }
 
@@ -292,7 +278,6 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
         pre_constants: &[F; T],
@@ -300,7 +285,7 @@ impl<F: FieldExt> PoseidonState<F> {
         let s0 = vec![(&self.state[0], F::one())];
         self.state[0] = config.sum_with_constant(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             s0, Some(pre_constants[0].clone())
         )?;
@@ -314,7 +299,7 @@ impl<F: FieldExt> PoseidonState<F> {
         {
             *x = config.sum_with_constant(
                 region,
-                hash_adaptor_chip,
+                &mut (),
                 offset,
                 vec![(x, F::one()), (input, F::one())],
                 Some(*constant)
@@ -327,7 +312,6 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         mds: &[[F; T]; T]
     ) -> Result<(), Error> {
@@ -343,7 +327,7 @@ impl<F: FieldExt> PoseidonState<F> {
 
                 config.sum_with_constant(
                     region,
-                    hash_adaptor_chip,
+                    &mut (),
                     offset,
                     a,
                     None).unwrap()
@@ -358,7 +342,6 @@ impl<F: FieldExt> PoseidonState<F> {
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        hash_adaptor_chip: &mut HashAdaptorChip<F>,
         offset: &mut usize,
         mds: &SparseMDSMatrix<F, T, RATE>,
     ) -> Result<(), Error> {
@@ -371,7 +354,7 @@ impl<F: FieldExt> PoseidonState<F> {
 
         let sum = config.sum_with_constant(
             region,
-            hash_adaptor_chip,
+            &mut (),
             offset,
             a,
             None
@@ -383,7 +366,7 @@ impl<F: FieldExt> PoseidonState<F> {
             let c = &self.state[0];
             let sum = config.sum_with_constant(
                     region,
-                    hash_adaptor_chip,
+                    &mut (),
                     offset,
                     vec![(c, *e), (&x, F::one())],
                     None
@@ -403,10 +386,6 @@ impl<F: FieldExt> PoseidonState<F> {
 mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
-    use crate::adaptor::hashadaptor::{
-        HashAdaptorConfig,
-        HashAdaptorChip,
-    };
     use crate::value_for_assign;
     use crate::circuits::CommonGateConfig;
 
@@ -488,7 +467,6 @@ mod tests {
     struct TestConfig {
         poseidonconfig: CommonGateConfig,
         helperconfig: HelperChipConfig,
-        hashadaptorconfig: HashAdaptorConfig,
     }
 
     impl Circuit<Fr> for TestCircuit {
@@ -500,11 +478,9 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-            let hashadaptorconfig = HashAdaptorChip::<Fr>::configure(meta);
             Self::Config {
-               poseidonconfig: PoseidonChip::<Fr>::configure(meta, &hashadaptorconfig),
+               poseidonconfig: PoseidonChip::<Fr>::configure(meta),
                helperconfig: HelperChip::configure(meta),
-               hashadaptorconfig,
             }
         }
 
@@ -513,19 +489,15 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let mut poseidonchip = PoseidonChip::<Fr>::new(config.clone().poseidonconfig);
+            let mut poseidonchip = PoseidonChip::<Fr>::construct(config.clone().poseidonconfig);
             let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut adaptorchip = HashAdaptorChip::<Fr>::new(config.clone().hashadaptorconfig);
             layouter.assign_region(
                 || "assign poseidon test",
                 |mut region| {
-                    adaptorchip.initialize(&mut region)?;
-
                     let mut offset = 0;
-                    poseidonchip.poseidon_state.initialize(&config.poseidonconfig, &mut region, &mut adaptorchip, &mut offset)?;
+                    poseidonchip.poseidon_state.initialize(&config.poseidonconfig, &mut region, &mut offset)?;
                     let hash = poseidonchip.assign_permute(
                         &mut region,
-                        &mut adaptorchip,
                         &mut offset,
                         &self.inputs.clone().try_into().unwrap(),
                         true,

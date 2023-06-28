@@ -64,6 +64,14 @@ macro_rules! customized_circuits_expand {
         }
 
         impl $name {
+            pub fn new(witness: [Column<Advice>; $adv], fixed: [Column<Fixed>; $fix], selector: [Selector; $sel]) -> Self {
+                $name {
+                    witness,
+                    fixed,
+                    selector,
+                }
+            }
+
             pub fn get_expr<F:FieldExt>(&self, meta: &mut VirtualCells<F>, gate_cell: GateCell) -> Expression<F> {
                 let cell = gate_cell.cell;
                 //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);

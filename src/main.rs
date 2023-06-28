@@ -36,15 +36,12 @@ use std::{
 use crate::circuits::{
     bls::Bls381PairChip, bls::Bls381SumChip, bn256::Bn256PairChip, bn256::Bn256SumChip,
     HostOpSelector,
+    HostOpChip,
+    HostOpConfig,
 };
 
 use crate::utils::GateCell;
 use crate::utils::params::{HostCircuitInfo, Prover};
-
-customized_circuits!(HostOpConfig, 2, 7, 1, 0,
-   | shared_operand | shared_opcode | shared_index | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator
-   | nil            | nil           | nil          | filtered_operand_n | nil              | nil            | merged_op_n | nil
-);
 
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bn256::Bn256;
@@ -68,120 +65,6 @@ enum OpType {
     POSEDONHASH,
 }
 
-struct HostOpChip<F: FieldExt, S: HostOpSelector> {
-    config: HostOpConfig,
-    selector_chip_config: S::Config,
-    _marker: PhantomData<(F, S)>,
-}
-
-impl<F: FieldExt, S: HostOpSelector> Chip<F> for HostOpChip<F, S> {
-    type Config = HostOpConfig;
-    type Loaded = ();
-
-    fn config(&self) -> &Self::Config {
-        &self.config
-    }
-
-    fn loaded(&self) -> &Self::Loaded {
-        &()
-    }
-}
-
-impl<S: HostOpSelector> HostOpChip<Fr, S> {
-    fn construct(config: <Self as Chip<Fr>>::Config, selector_chip_config: S::Config) -> Self {
-        Self {
-            config,
-            selector_chip_config,
-            _marker: PhantomData,
-        }
-    }
-
-    fn configure(
-        cs: &mut ConstraintSystem<Fr>,
-    ) -> <Self as Chip<Fr>>::Config {
-        let witness= [0; 7]
-                .map(|_| cs.advice_column());
-        witness.map(|x| cs.enable_equality(x));
-        let fixed = [cs.fixed_column()];
-        let selector =[];
-
-        let config = HostOpConfig { fixed, selector, witness };
-
-
-        cs.lookup_any("filter-shared-ops", |meta| {
-            let sopc = config.get_expr(meta, HostOpConfig::shared_opcode());
-            let soper = config.get_expr(meta, HostOpConfig::shared_operand());
-            let sidx = config.get_expr(meta, HostOpConfig::shared_index());
-            let fopc= config.get_expr(meta, HostOpConfig::filtered_opcode());
-            let foper = config.get_expr(meta, HostOpConfig::filtered_operand());
-            let fidx = config.get_expr(meta, HostOpConfig::filtered_index());
-            vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
-        });
-
-        cs.create_gate("merge operands in filtered columns", |meta| {
-            let merged_op_n = config.get_expr(meta, HostOpConfig::merged_op_n());
-            let cur_op = config.get_expr(meta, HostOpConfig::filtered_operand());
-            let next_op = config.get_expr(meta, HostOpConfig::filtered_operand_n());
-            let indicator = config.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op_n - (next_op * indicator + cur_op))]
-        });
-
-        config
-    }
-
-    fn assign(
-        &self,
-        layouter: &mut impl Layouter<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
-        let mut arg_cells = None;
-        layouter.assign_region(
-            || "filter operands and opcodes",
-            |mut region| {
-                println!("asign_region");
-                let mut offset = 0;
-                for opcode in shared_opcodes {
-                    println!("opcode is {:?}", opcode);
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_opcode(),
-                        opcode.clone()
-                    )?;
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_operand(),
-                        shared_operands[offset],
-                    )?;
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_index(),
-                        shared_index[offset],
-                    )?;
-                    offset += 1;
-                }
-                arg_cells = Some(S::assign(
-                    &mut region,
-                    shared_operands,
-                    shared_opcodes,
-                    shared_index,
-                    self.config.get_advice_column(HostOpConfig::filtered_operand()),
-                    self.config.get_advice_column(HostOpConfig::filtered_opcode()),
-                    self.config.get_advice_column(HostOpConfig::filtered_index()),
-                    self.config.get_advice_column(HostOpConfig::merged_op()),
-                    self.config.get_fixed_column(HostOpConfig::indicator()),
-                )?);
-                println!("offset is {:?}", offset);
-                Ok(())
-            },
-        )?;
-        Ok(arg_cells.unwrap())
-    }
-}
 
 #[derive(Clone)]
 struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {

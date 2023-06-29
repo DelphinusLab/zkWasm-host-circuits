@@ -96,9 +96,9 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        let a = arg_cells[0..9].into_iter().map(|x| x.get_the_cell()).collect();
-        let b = arg_cells[9..26].into_iter().map(|x| x.get_the_cell()).collect();
-        let ab = arg_cells[26..74].into_iter().map(|x| x.get_the_cell()).collect();
+        let a = arg_cells[0..9].to_vec();
+        let b = arg_cells[9..26].to_vec();
+        let ab = arg_cells[26..74].to_vec();
         self.load_bls381_pair_circuit(&a, &b, &ab, layouter)?;
         Ok(())
     }
@@ -176,8 +176,8 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         let len = arg_cells.len();
-        let args = arg_cells[0..len - 9].into_iter().map(|x| x.get_the_cell()).collect();
-        let ret = arg_cells[len - 9..len].into_iter().map(|x| x.get_the_cell()).collect();
+        let args = arg_cells[0..len - 9].to_vec();
+        let ret = arg_cells[len - 9..len].to_vec();
         self.load_bls381_sum_circuit(&args, &ret, layouter)?;
         Ok(())
     }

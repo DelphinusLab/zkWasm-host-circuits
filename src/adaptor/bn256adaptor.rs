@@ -96,9 +96,9 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        let a = arg_cells[0..7].into_iter().map(|x| x.get_the_cell()).collect();
-        let b = arg_cells[7..20].into_iter().map(|x| x.get_the_cell()).collect();
-        let ab = arg_cells[20..56].into_iter().map(|x| x.get_the_cell()).collect();
+        let a = arg_cells[0..7].to_vec();
+        let b = arg_cells[7..20].to_vec();
+        let ab = arg_cells[20..56].to_vec();
         self.load_bn256_pair_circuit(&a, &b, &ab, layouter)?;
         Ok(())
     }
@@ -179,8 +179,8 @@ impl HostOpSelector for Bn256SumChip<Fr> {
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         let len = arg_cells.len();
-        let args = arg_cells[0..len - 7].into_iter().map(|x| x.get_the_cell()).collect();
-        let ret = arg_cells[len - 7..len].into_iter().map(|x| x.get_the_cell()).collect();
+        let args = arg_cells[0..len - 7].to_vec();
+        let ret = arg_cells[len - 7..len].to_vec();
         self.load_bn256_sum_circuit(&args, &ret, layouter)?;
         Ok(())
     }

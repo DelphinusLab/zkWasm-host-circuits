@@ -15,7 +15,7 @@ use crate::circuits::bls::{
     Bls381ChipConfig,
 };
 
-use crate::circuits::{HostOpSelector, HostOpConfig};
+use crate::circuits::{HostOpSelector, HostOpConfig, Limb};
 
 use crate::host::ForeignInst;
 
@@ -36,7 +36,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::BlspairG1 as u64),
             Fr::from(ForeignInst::BlspairG2 as u64),
@@ -74,16 +74,16 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
                 let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
 
-                let value = if merge_next(picked_offset) {
+                let ind= if merge_next(picked_offset) {
                     toggle = offset as i32;
                     Fr::from(1u64 << 54)
                 } else {
-                    arg_cells.append(&mut vec![opcell]);
+                    arg_cells.append(&mut vec![Limb::new(Some(opcell), value)]);
                     toggle = -1;
                     Fr::zero()
                 };
 
-                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), value)?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), ind)?;
                 picked_offset += 1;
             };
             offset += 1;
@@ -91,14 +91,14 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         Ok(arg_cells)
     }
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        let a = arg_cells[0..9].to_vec();
-        let b = arg_cells[9..26].to_vec();
-        let ab = arg_cells[26..74].to_vec();
+        let a = arg_cells[0..9].into_iter().map(|x| x.get_the_cell()).collect();
+        let b = arg_cells[9..26].into_iter().map(|x| x.get_the_cell()).collect();
+        let ab = arg_cells[26..74].into_iter().map(|x| x.get_the_cell()).collect();
         self.load_bls381_pair_circuit(&a, &b, &ab, layouter)?;
         Ok(())
     }
@@ -122,7 +122,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::BlsSumG1 as u64),
             Fr::from(ForeignInst::BlsSumResult as u64),
@@ -153,15 +153,15 @@ impl HostOpSelector for Bls381SumChip<Fr> {
 
                 let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
 
-                let value = if merge_next(picked_offset) {
+                let ind = if merge_next(picked_offset) {
                     toggle = offset as i32;
                     Fr::from(1u64 << 54)
                 } else {
-                    arg_cells.append(&mut vec![opcell]);
+                    arg_cells.append(&mut vec![Limb::new(Some(opcell), value)]);
                     toggle = -1;
                     Fr::zero()
                 };
-                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), value)?;
+                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), ind)?;
                 picked_offset += 1;
             };
             offset += 1;
@@ -170,14 +170,14 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     }
 
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         let len = arg_cells.len();
-        let args = arg_cells[0..len - 9].to_vec();
-        let ret = arg_cells[len - 9..len].to_vec();
+        let args = arg_cells[0..len - 9].into_iter().map(|x| x.get_the_cell()).collect();
+        let ret = arg_cells[len - 9..len].into_iter().map(|x| x.get_the_cell()).collect();
         self.load_bls381_sum_circuit(&args, &ret, layouter)?;
         Ok(())
     }

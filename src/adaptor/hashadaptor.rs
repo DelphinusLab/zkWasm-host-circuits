@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::{VirtualCells, Error, Expression};
 use halo2_proofs::pairing::bn256::Fr;
@@ -77,7 +78,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::PoseidonNew as u64),
             Fr::from(ForeignInst::PoseidonPush as u64),
@@ -86,7 +87,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
 
         let entries = shared_operands.iter().zip(shared_opcodes).zip(shared_index);
 
-        let selected_entries = entries.filter(|((operand, opcode), index)| {
+        let selected_entries = entries.filter(|((_operand, opcode), _index)| {
             opcodes.contains(opcode)
         }).collect::<Vec<_>>();
 
@@ -94,40 +95,61 @@ impl HostOpSelector for PoseidonChip<Fr> {
 
         let mut r = vec![];
 
+        // TODO: Change 8 to RATE ?
         for group in selected_entries.chunks(1+8*4+4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            r.push(assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-               *operand, Fr::zero())?);
+            let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
+               *operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), *operand));
 
             let operands = group.iter().skip(1).collect::<Vec<_>>().chunks(4);
             let mut reducer = Reduce::new(vec![
                 ReduceRule::Field(Fr::zero(), 64),
             ]);
-            let mut indicator = Fr::from_u128(1u128 << 64);
+            let indicator = Fr::from_u128(1u128 << 64);
             for &((operand, opcode), index) in group.into_iter().skip(1) {
                 reducer.reduce(operand.get_lower_128() as u64);
                 if reducer.cursor == 0 {
                     //reducer.reset(0);
-                    r.push(assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                                         reducer.rules[0].field_value().unwrap(), Fr::zero())?);
+                    let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
+                                         reducer.rules[0].field_value().unwrap(), Fr::zero())?;
+                    r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
                 } else {
-                    r.push(assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                                         reducer.rules[0].field_value().unwrap(), indicator.clone())?);
+                    let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
+                                         reducer.rules[0].field_value().unwrap(), indicator.clone())?;
+                    r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
                 }
             }
         }
-        Ok(vec![])
+        Ok(r)
     }
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let a = arg_cells[0..9].to_vec();
-        let b = arg_cells[9..26].to_vec();
-        let ab = arg_cells[26..74].to_vec();
+        layouter.assign_region(
+            || "poseidon hash region",
+            |mut region| {
+                let mut offset = 0;
+                let timer = start_timer!(|| "assign");
+                for arg_group in arg_cells.chunks_exact(10).into_iter() {
+                    let args = arg_group.into_iter().map(|x| x.clone());
+                    let args = args.collect::<Vec<_>>();
+                    self.assign_permute(
+                        &mut region,
+                        &mut offset,
+                        &args[1..9].to_vec().try_into().unwrap(),
+                        &args[0],
+                        &args[9],
+                    )?;
+                }
+                end_timer!(timer);
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 }

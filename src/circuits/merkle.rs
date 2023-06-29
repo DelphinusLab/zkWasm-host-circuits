@@ -21,7 +21,7 @@ use halo2_proofs::pairing::bn256::Fr;
 
 use crate::host::merkle::{MerkleTree, MerkleProof};
 use crate::host::kvpair::MongoMerkle;
-use crate::circuits::HostOpConfig;
+use crate::circuits::{Limb, HostOpConfig};
 
 
 /* Given a merkel tree eg1 with height=3:
@@ -221,7 +221,7 @@ impl super::HostOpSelector for MerkleChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             //Fr::from(BN256OP::BN256ADD as u64),
             //Fr::from(BN256OP::BN256SUM as u64),
@@ -230,8 +230,8 @@ impl super::HostOpSelector for MerkleChip<Fr> {
     }
 
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         todo!();

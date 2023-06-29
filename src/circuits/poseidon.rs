@@ -68,31 +68,16 @@ impl<F: FieldExt> PoseidonChip<F> {
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
-        values: &[F; RATE],
-        create: bool,
-        squeeze: bool,
-    ) -> Result<Limb<F>, Error> {
+        values: &[Limb<F>; RATE],
+        reset: &Limb<F>,
+        result: &Limb<F>,
+    ) -> Result<(), Error> {
         let mut new_state = vec![];
-        let create_limb = Limb::new(None, if create {F::one()} else {F::zero()});
-        self.config.assign_witness(
-            region,
-            &mut (),
-            offset,
-            [
-                Some(create_limb.clone()),
-                None,
-                None,
-                None,
-                None
-            ],
-            self.round + START_ENCODE// Need to do the lookup check of squeeze
-        )?;
-
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
-            new_state.push(self.config.select(region, &mut (), offset, &create_limb, default, value, self.round)?);
+            new_state.push(self.config.select(region, &mut (), offset, &reset, default, value, self.round)?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
-        let parts = values.clone().map(|x| {Some(Limb::new(None, x.clone()))});
+        let parts = values.clone().map(|x| {Some(x)});
         let parts = parts.chunks(4).collect::<Vec<_>>();
         let mut part0 = parts[0].to_vec();
         let mut part1 = parts[1].to_vec();
@@ -119,21 +104,12 @@ impl<F: FieldExt> PoseidonChip<F> {
             offset,
             &inputs.try_into().unwrap(),
         )?;
-        // register the result with squeeze and create indicator
-        let result = self.config.assign_witness(
-            region,
-            &mut (),
-            offset,
-            [
-                Some(self.poseidon_state.state[1].clone()),
-                Some(Limb::new(None, if squeeze {F::one()} else {F::zero()})),
-                Some(create_limb),
-                None,
-                None
-            ],
-            self.round // Need to do the lookup check of squeeze
-        )?[0].clone();
-        Ok(result)
+        assert!(self.poseidon_state.state[1].value == result.value);
+        region.constrain_equal(
+            result.cell.as_ref().unwrap().cell(),
+            self.poseidon_state.state[1].cell.as_ref().unwrap().cell()
+        )?;
+        Ok(())
     }
 }
 
@@ -388,6 +364,7 @@ mod tests {
     use halo2_proofs::dev::MockProver;
     use crate::value_for_assign;
     use crate::circuits::CommonGateConfig;
+    use crate::host::poseidon::RATE;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
@@ -438,6 +415,44 @@ mod tests {
                 limb,
             }
         }
+
+        fn assign_reset(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            reset: bool,
+        ) -> Result<Limb<Fr>, Error> {
+            let v = if reset {Fr::one()} else {Fr::zero()};
+            let c = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb,
+                *offset,
+                || value_for_assign!(v)
+            )?;
+            *offset += 1;
+            Ok(Limb::new(Some(c), v))
+        }
+
+
+        fn assign_inputs(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            inputs: &[Fr; RATE],
+        ) -> Result<[Limb<Fr>; RATE], Error> {
+            let r = inputs.map(|x| {
+                let c = region.assign_advice(
+                    || format!("assign input"),
+                    self.config.limb,
+                    *offset,
+                    || value_for_assign!(x.clone())
+                ).unwrap();
+                *offset += 1;
+                Limb::new(Some(c), x.clone())
+            });
+            Ok(r)
+        }
+
 
         fn assign_result(
             &self,
@@ -495,20 +510,17 @@ mod tests {
                 || "assign poseidon test",
                 |mut region| {
                     let mut offset = 0;
+                    let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    let inputs = helperchip.assign_inputs(&mut region, &mut offset, &self.inputs.clone().try_into().unwrap())?;
+                    let reset = helperchip.assign_reset(&mut region, &mut offset, true)?;
+                    offset = 0;
                     poseidonchip.poseidon_state.initialize(&config.poseidonconfig, &mut region, &mut offset)?;
-                    let hash = poseidonchip.assign_permute(
+                    poseidonchip.assign_permute(
                         &mut region,
                         &mut offset,
-                        &self.inputs.clone().try_into().unwrap(),
-                        true,
-                        true
-                    )?;
-                    offset = 0;
-                    let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
-                    println!("result is {:?}, descired is {:?}", hash.value, result.value);
-                    region.constrain_equal(
-                        hash.cell.unwrap().cell(),
-                        result.cell.unwrap().cell()
+                        &inputs,
+                        &reset,
+                        &result
                     )?;
                     Ok(())
                 }

@@ -52,10 +52,10 @@ pub trait HostOpSelector {
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error>;
+    ) -> Result<Vec<Limb<Fr>>, Error>;
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error>;
 }
@@ -128,7 +128,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let mut arg_cells = None;
         layouter.assign_region(
             || "filter operands and opcodes",
@@ -187,13 +187,16 @@ customized_circuits!(CommonGateConfig, 2, 5, 11, 1,
 
 #[derive(Clone, Debug)]
 pub struct Limb<F: FieldExt> {
-    cell: Option<AssignedCell<F, F>>,
-    value: F
+    pub cell: Option<AssignedCell<F, F>>,
+    pub value: F
 }
 
 impl<F: FieldExt> Limb<F> {
     pub fn new(cell: Option<AssignedCell<F, F>>, value: F) -> Self {
         Limb { cell, value }
+    }
+    pub fn get_the_cell(&self) -> AssignedCell<F,F> {
+        self.cell.as_ref().unwrap().clone()
     }
 }
 

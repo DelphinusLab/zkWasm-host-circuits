@@ -122,8 +122,8 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             &self.shared_opcodes,
             &self.shared_index,
         )?;
-        all_arg_cells.retain(|x| x.value().is_some());
-        let selector_chip = S::construct(config.selectconfig);
+        //all_arg_cells.retain(|x| x.value().is_some());
+        let mut selector_chip = S::construct(config.selectconfig);
         println!("arg cell num is: {:?}", all_arg_cells.len());
         selector_chip.synthesize(&all_arg_cells, &mut layouter)?;
         Ok(())

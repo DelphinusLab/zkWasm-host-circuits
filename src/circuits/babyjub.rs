@@ -446,30 +446,6 @@ mod tests {
         // which we assign to the advice column in the circuit
         // then we constrain that to be equal to a correct result 
 
-        // fn get_p3(
-        //     &self,
-        //     region: &mut Region<Fr>,
-        //     offset: &mut usize,
-        //     value_x: &mut PosFr,
-        //     value_y: &mut PosFr,
-        // ) -> Result<(Limb<F>, Limb<F>), Error> {
-        //     let cell_1 = region.assign_instance(
-        //         || format!("p1 x"),
-        //         self.config.known_x,
-        //         *offset,
-        //         || value_x,
-        //         0
-        //     )?;
-        //     let cell_2 = region.assign_instance(
-        //         || format!("p1 y"),
-        //         self.config.known_y,
-        //         *offset,
-        //         || value_y,
-        //         0
-        //     )?;
-        //     Ok( (Limb::new(Some(cell_1).clone(), value_x), Limb::new(Some(cell_2).clone(), value_y)))
-        // }
-
     }
 
     #[derive(Clone, Debug, Default)]
@@ -526,7 +502,7 @@ mod tests {
                 let p2 = helperchip.assign_p2(&mut region, &mut offset, self.p2_x, self.p2_y)?;
                 let p3 = babyjubchip.add(&mut region, &mut range_chip, &mut offset, & p1, &p2)?;
                 let (x,y) = helperchip.assign_addition_result(&mut region, &mut offset, & p3)?;
-                let (fixed_x, fixed_y) = helperchip.get_p3(&mut region, &mut offset, self.known_x, self.known_y)?;
+                let (fixed_x, fixed_y) = helperchip.assign_known_val(&mut region, &mut offset, self.known_x, self.known_y)?;
                 region.constrain_equal(x.clone().cell.unwrap().cell(), fixed_x.clone().cell.unwrap().cell())?;
                 region.constrain_equal(y.clone().cell.unwrap().cell(), fixed_y.clone().cell.unwrap().cell())?;
                 Ok(())
@@ -536,43 +512,44 @@ mod tests {
 
     #[test]
     fn test_circuit() {
-        /// not sure how to put value in
-        let p1_x =  Pfr::from_str(
-            "16540640123574156134436876038791482806971768689494387082833631921987005038935",
-        )
-        .unwrap();
-        let p1_y = Pfr::from_str(
-            "20819045374670962167435360035096875258406992893633759881276124905556507972311",
-        )
-        .unwrap(); 
+        todo!()
+        // not sure how to put value in
+        // let p1_x =  Pfr::from_str(
+        //     "16540640123574156134436876038791482806971768689494387082833631921987005038935",
+        // )
+        // .unwrap();
+        // let p1_y = Pfr::from_str(
+        //     "20819045374670962167435360035096875258406992893633759881276124905556507972311",
+        // )
+        // .unwrap(); 
 
-        let p2_x =  Pfr::from_str(
-            "16540640123574156134436876038791482806971768689494387082833631921987005038935",
-        )
-        .unwrap();
-        let p2_y = Pfr::from_str(
-            "20819045374670962167435360035096875258406992893633759881276124905556507972311",
-        )
-        .unwrap();
+        // let p2_x =  Pfr::from_str(
+        //     "16540640123574156134436876038791482806971768689494387082833631921987005038935",
+        // )
+        // .unwrap();
+        // let p2_y = Pfr::from_str(
+        //     "20819045374670962167435360035096875258406992893633759881276124905556507972311",
+        // )
+        // .unwrap();
 
 
-        let known_x =  Pfr::from_str(
-            "17777552123799933955779906779655732241715742912184938656739573121738514868268",
-        )
-        .unwrap();
-        let known_y = Pfr::from_str(
-            "2626589144620713026669568689430873010625803728049924121243784502389097019475",
-        )
-        .unwrap();
+        // let known_x =  Pfr::from_str(
+        //     "17777552123799933955779906779655732241715742912184938656739573121738514868268",
+        // )
+        // .unwrap();
+        // let known_y = Pfr::from_str(
+        //     "2626589144620713026669568689430873010625803728049924121243784502389097019475",
+        // )
+        // .unwrap();
 
-        let test_circuit = TestCircuit {
-            p1_x,
-            p1_y,
-            p2_x,
-            p2_y,
-            known_x, 
-            known_y} ;
-        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
+        // let test_circuit = TestCircuit {
+        //     p1_x,
+        //     p1_y,
+        //     p2_x,
+        //     p2_y,
+        //     known_x, 
+        //     known_y} ;
+        // let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        // assert_eq!(prover.verify(), Ok(()));
     }
 }

@@ -19,7 +19,7 @@ use crate::{
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{AssignedCell, Chip, Layouter, SimpleFloorPlanner, Region},
+    circuit::{Layouter, SimpleFloorPlanner, Region},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector, Expression, VirtualCells},
     poly::Rotation,
 };
@@ -34,13 +34,14 @@ use std::{
 };
 
 use crate::circuits::{
-    bls::Bls381PairChip, bls::Bls381SumChip, bn256::Bn256PairChip, bn256::Bn256SumChip,
+    bls::Bls381PairChip, bls::Bls381SumChip,
+    bn256::Bn256PairChip, bn256::Bn256SumChip,
+    poseidon::PoseidonChip,
     HostOpSelector,
     HostOpChip,
     HostOpConfig,
 };
 
-use crate::utils::GateCell;
 use crate::utils::params::{HostCircuitInfo, Prover};
 
 use halo2_proofs::pairing::bn256::Fr;
@@ -226,7 +227,13 @@ fn main() {
             Box::new(HostCircuitInfo::new(bn256sum_circuit, "opname.into()".to_string(), vec![vec![]]))
         }
         OpType::POSEDONHASH => {
-            todo!()
+            let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData,
+            };
+            Box::new(HostCircuitInfo::new(poseidon_circuit, "opname.into()".to_string(), vec![vec![]]))
         }
     };
 

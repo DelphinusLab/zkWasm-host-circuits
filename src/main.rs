@@ -130,6 +130,19 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     }
 }
 
+fn output_folder<'a>() -> Arg<'a> {
+    arg!(-o --output<OUTPUT_FOLDER>... "output file folder that contains all setup and proof results")
+        .max_values(1)
+        .value_parser(value_parser!(PathBuf))
+}
+
+fn parse_output_folder(matches: &ArgMatches) -> PathBuf {
+    matches
+        .get_one::<PathBuf>("output")
+        .expect("input file is required")
+        .clone()
+}
+
 fn input_file<'a>() -> Arg<'a> {
     arg!(-i --input<INPUT_FILES>... "Input file that contains all host function call")
         .max_values(1)
@@ -158,10 +171,14 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
 
 #[allow(clippy::many_single_char_names)]
 fn main() {
-    let clap_app = App::new("hostcircuit").arg(input_file()).arg(opname());
+    let clap_app = App::new("hostcircuit")
+        .arg(input_file())
+        .arg(output_folder())
+        .arg(opname());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
+    let cache_folder = parse_output_folder(&matches);
     let opname = parse_opname(&matches);
 
     let file = File::open(input_file).expect("File does not exist");
@@ -189,7 +206,7 @@ fn main() {
 
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
-    let circuit_info: Box<dyn Prover::<Bn256>> = match opname {
+    match opname {
         OpType::BLS381PAIR => {
             let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
                 shared_operands,
@@ -197,7 +214,9 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            Box::new(HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![vec![]]))
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> = HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![vec![]]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::BLS381SUM => {
             let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
@@ -206,7 +225,9 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            Box::new(HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![vec![]]))
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> = HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![vec![]]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::BN256PAIR => {
             let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
@@ -215,7 +236,9 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            Box::new(HostCircuitInfo::new(bn256pair_circuit, "opname.into()".to_string(), vec![vec![]]))
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> = HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![vec![]]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::BN256SUM => {
             let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
@@ -224,7 +247,9 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            Box::new(HostCircuitInfo::new(bn256sum_circuit, "opname.into()".to_string(), vec![vec![]]))
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> = HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![vec![]]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::POSEIDONHASH => {
             let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr>> {
@@ -233,10 +258,12 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            Box::new(HostCircuitInfo::new(poseidon_circuit, "opname.into()".to_string(), vec![vec![]]))
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![vec![]]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
     };
 
-    circuit_info.mock_proof(k);
+    //circuit_info.mock_proof(k);
     println!("Mock Verify Pass.");
 }

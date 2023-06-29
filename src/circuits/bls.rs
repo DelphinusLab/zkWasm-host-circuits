@@ -333,7 +333,6 @@ impl Bls381PairChip<Fr> {
     }
 }
 
-
 pub struct Bls381SumChip<N: FieldExt> {
     config: Bls381ChipConfig,
     base_chip: BaseChip<N>,

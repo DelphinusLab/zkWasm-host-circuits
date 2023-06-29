@@ -35,8 +35,8 @@ pub struct PoseidonState<F: FieldExt> {
 }
 
 pub struct PoseidonChip<F:FieldExt> {
-    config: CommonGateConfig,
-    spec: Spec<F, T, RATE>,
+    pub config: CommonGateConfig,
+    pub spec: Spec<F, T, RATE>,
     poseidon_state: PoseidonState<F>,
     round: u64,
     _marker: PhantomData<F>
@@ -60,6 +60,15 @@ impl<F: FieldExt> PoseidonChip<F> {
         }
     }
 
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.poseidon_state.initialize(config, region, offset)
+    }
+
     pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &())
     }
@@ -72,6 +81,9 @@ impl<F: FieldExt> PoseidonChip<F> {
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
+        println!("offset is: {:?}", offset);
+        println!("reset is: {:?}", reset.value);
+        println!("input values: {:?}", values.iter().map(|x| x.value).collect::<Vec<_>>());
         let mut new_state = vec![];
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
             new_state.push(self.config.select(region, &mut (), offset, &reset, default, value, self.round)?);
@@ -104,6 +116,7 @@ impl<F: FieldExt> PoseidonChip<F> {
             offset,
             &inputs.try_into().unwrap(),
         )?;
+        println!("expect {:?}, get {:?}", result.value, self.poseidon_state.state[1].value);
         assert!(self.poseidon_state.state[1].value == result.value);
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
@@ -536,6 +549,7 @@ mod tests {
         let result = hasher.squeeze();
         let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
         let test_circuit = TestCircuit {inputs, result};
+        println!("result is {:?}", result);
         let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }

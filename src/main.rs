@@ -63,7 +63,7 @@ enum OpType {
     BLS381SUM,
     BN256PAIR,
     BN256SUM,
-    POSEDONHASH,
+    POSEIDONHASH,
 }
 
 
@@ -116,7 +116,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let host_op_chip = HostOpChip::<Fr, S>::construct(config.hostconfig.clone(), config.selectconfig.clone());
-        let mut all_arg_cells = host_op_chip.assign(
+        let all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
             &self.shared_opcodes,
@@ -226,7 +226,7 @@ fn main() {
             };
             Box::new(HostCircuitInfo::new(bn256sum_circuit, "opname.into()".to_string(), vec![vec![]]))
         }
-        OpType::POSEDONHASH => {
+        OpType::POSEIDONHASH => {
             let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr>> {
                 shared_operands,
                 shared_opcodes,

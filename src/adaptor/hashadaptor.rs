@@ -119,10 +119,11 @@ impl HostOpSelector for PoseidonChip<Fr> {
                 } else {
                     let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
                                          reducer.rules[0].field_value().unwrap(), indicator.clone())?;
-                    r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
+                    //r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
                 }
             }
         }
+        println!("reducer value {:?}", r.iter().map(|x| x.value).collect::<Vec<_>>());
         Ok(r)
     }
     fn synthesize(
@@ -130,11 +131,14 @@ impl HostOpSelector for PoseidonChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
+        println!("arg value {:?}", arg_cells.iter().map(|x| x.value).collect::<Vec<_>>());
         layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
                 let mut offset = 0;
                 let timer = start_timer!(|| "assign");
+                let config = self.config.clone();
+                self.initialize(&config, &mut region, &mut offset)?;
                 for arg_group in arg_cells.chunks_exact(10).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
@@ -162,8 +166,8 @@ mod tests {
         ExternalHostCallEntryTable,
         ExternalHostCallEntry,
     };
+    use std::fs::File;
 
-    use crate::host::ForeignInst;
     use crate::host::ForeignInst::{
         PoseidonNew,
         PoseidonPush,
@@ -172,33 +176,33 @@ mod tests {
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
-            op: ForeignInst::PoseidonNew as usize,
+            op: PoseidonNew as usize,
             value: if restart {1u64} else {0u64},
             is_ret: false,
         }]
 
     }
 
-    fn hash_to_host_call_table(inputs: Vec<Fr>) -> ExternalHostCallEntryTable {
+    fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntryTable {
         let mut r = vec![];
-        for (i, chunk) in inputs.chunks(8).enumerate() {
-            r.push(hash_cont(i==0));
-            for f in chunk.iter() {
+        r.push(hash_cont(true));
+        for f in inputs.iter() {
                 r.push(crate::adaptor::fr_to_args(*f, 4, 64, PoseidonPush));
-            }
         }
-        r.push(crate::adaptor::fr_to_args(Fr::one(), 4, 64, PoseidonFinalize));
+        r.push(crate::adaptor::fr_to_args(result, 4, 64, PoseidonFinalize));
         ExternalHostCallEntryTable(r.into_iter().flatten().collect())
     }
 
 
     #[test]
-    fn test_poseidon_adapor_circuit_00() {
+    fn generate_poseidon_input() {
         let mut hasher = crate::host::poseidon::gen_hasher();
         let result = hasher.squeeze();
-        let table = hash_to_host_call_table(vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()]);
-        //let test_circuit = TestCircuit {table};
-        //let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
-        //assert_eq!(prover.verify(), Ok(()));
+        let table = hash_to_host_call_table(
+            [Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()],
+            result
+        );
+        let file = File::create("poseidontest.json").expect("can not create file");
+        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
     }
 }

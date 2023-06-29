@@ -255,27 +255,23 @@ impl<F: FieldExt> BabyJubChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::pairing::bn256::Fr;
-    use babyjubjub_rs::*;
-    use ff::*;
-    use futures::future::Inspect;
     use poseidon_rs::Poseidon;
-    pub type PosFr = poseidon_rs::Fr; // alias
-    
+    use std::str::FromStr;
+    pub type Pfr = poseidon_rs::Fr; // alias
+    use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::dev::MockProver;
     use num_bigint::BigUint;
-    use halo2_proofs::circuit::layouter;
     use crate::circuits::range::{
         RangeCheckConfig,
         RangeCheckChip,
     };
     use crate::value_for_assign;
-    use crate::circuits::{CommonGateConfig, Layouter, SimpleFloorPlanner};
+    use crate::circuits::CommonGateConfig;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
         plonk::{
-            Advice, Circuit, Column, Instance, ConstraintSystem, Error
+            Advice, Instance, Circuit, Column, ConstraintSystem, Error
         },
     };
 
@@ -285,19 +281,19 @@ mod tests {
         Limb,
     };
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
         ret_x: Column<Advice>,
         ret_y: Column<Advice>,
-        p1_x: Column<Instance>,
-        p1_y: Column<Instance>,
-        p2_x: Column<Instance>,
-        p2_y: Column<Instance>,
-        known_x: Column<Instance>,
-        known_y: Column<Instance>, 
+        p1_x: Column<Advice>,
+        p1_y: Column<Advice>,
+        p2_x: Column<Advice>,
+        p2_y: Column<Advice>,
+        known_x: Column<Advice>,
+        known_y: Column<Advice>,
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct HelperChip {
         config: HelperChipConfig
     }
@@ -323,13 +319,14 @@ mod tests {
         }
 
         fn configure(cs: &mut ConstraintSystem<Fr>,
-            p1_x: Column<Instance>,
-            p1_y: Column<Instance>,
-            p2_x: Column<Instance>,
-            p2_y: Column<Instance>,
-            known_x: Column<Instance>,
-            known_y: Column<Instance>,
+            
         ) -> HelperChipConfig {
+            let p1_x = cs.advice_column();
+            let p1_y = cs.advice_column();
+            let p2_x = cs.advice_column();
+            let p2_y= cs.advice_column();
+            let known_x = cs.advice_column();
+            let known_y= cs.advice_column();
             let ret_x= cs.advice_column();
             let ret_y= cs.advice_column();
 
@@ -349,130 +346,144 @@ mod tests {
             }
         }
 
-
-        fn assign_point_to_col(
+        fn assign_p1(
             &self,
             region: &mut Region<Fr>,
             offset: &mut usize,
-            p: Point<Fr>,
-        ) -> Result<Number<Fr>, Error> {
-            layouter.assign_region(
-                || "na",
-                |mut region| {
-                    self.config.s.enable(&mut region, 0)?;
-                    let x = region.assign_advice(
-                        || "ret_x",
-                        self.config.ret_x,
-                        0, // rotation
-                        p.x.value,
-                    )?;
-                    
-                    let y = region.assign_advice(
-                        || "ret_y",
-                        self.config.ret_y,
-                        0, 
-                        p.y.value,
-                    )?;
-    
-                    Ok((x, y))
-                },
-            )
-        }
-
-        fn assign_p1(&self,
-            region: &mut Region<Fr>,
-            offset: &mut usize,
-            value_x: &mut PosFr,
-            value_y: &mut PosFr,
+            x_val: Fr,
+            y_val: Fr,
         ) -> Result<Point<Fr>, Error> {
-            let cell_1 = region.assign_advice(
-                || format!("p1 x"),
+            let x = region.assign_advice(
+                || "p1 x",
                 self.config.p1_x,
-                *offset,
-                || value_x
+                *offset, // rotation
+                || value_for_assign!(x_val),
             )?;
-            let cell_2 = region.assign_advice(
-                || format!("p1 y"),
+            
+            let y = region.assign_advice(
+                || "p1 y",
                 self.config.p1_y,
-                *offset,
-                || value_y
+                *offset, 
+                ||value_for_assign!(y_val),
             )?;
-            Ok(Point { x: Limb::new(Some(cell_1).clone(), value_x), y: Limb::new(Some(cell_2).clone(), value_y)})
+
+            Ok(Point {x: Limb::new(Some(x), x_val), y: Limb::new(Some(y), y_val)})
         }
 
-        fn assign_p2(&self,
-            region: &mut Region<Fr>,
-            offset: &mut usize,
-            value_x: &mut PosFr,
-            value_y: &mut PosFr,
-        ) -> Result<Point<Fr>, Error> {
-            let cell_1 = region.assign_advice(
-                || format!("p1 x"),
-                self.config.p2_x,
-                *offset,
-                || value_x
-            )?;
-            let cell_2 = region.assign_advice(
-                || format!("p1 y"),
-                self.config.p2_y,
-                *offset,
-                || value_yn 
-            )?;
-            Ok(Point { x: Limb::new(Some(cell_1).clone(), value_x), y: Limb::new(Some(cell_2).clone(), value_y)})
-        }
-
-        fn get_p3(
+        fn assign_p2(
             &self,
             region: &mut Region<Fr>,
             offset: &mut usize,
-            value_x: &mut PosFr,
-            value_y: &mut PosFr,
-        ) -> Result<(Limb<F>, Limb<F>), Error> {
-            let cell_1 = region.assign_instance(
-                || format!("p1 x"),
-                self.config.known_x,
-                *offset,
-                || value_x,
-                0
+            x_val: Fr,
+            y_val: Fr,
+        ) -> Result<Point<Fr>, Error> {
+            let x = region.assign_advice(
+                || "p2 x",
+                self.config.p2_x,
+                *offset, // rotation
+                || value_for_assign!(x_val),
             )?;
-            let cell_2 = region.assign_instance(
-                || format!("p1 y"),
-                self.config.known_y,
-                *offset,
-                || value_y,
-                0
+            
+            let y = region.assign_advice(
+                || "p2 y",
+                self.config.p2_y,
+                *offset, 
+                ||value_for_assign!(y_val),
             )?;
-            Ok( (Limb::new(Some(cell_1).clone(), value_x), Limb::new(Some(cell_2).clone(), value_y)))
+
+            Ok(Point {x: Limb::new(Some(x), x_val), y: Limb::new(Some(y), y_val)})
         }
 
+
+        fn assign_addition_result(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            p: &Point<Fr>,
+        ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
+            let x = region.assign_advice(
+                || "ret_x",
+                self.config.ret_x,
+                *offset, // rotation
+                || value_for_assign!(p.x.value),
+            )?;
+            
+            let y = region.assign_advice(
+                || "ret_y",
+                self.config.ret_y,
+                *offset, 
+                ||value_for_assign!(p.y.value),
+            )?;
+
+            Ok((Limb::new(Some(x), p.x.value), Limb::new(Some(y), p.y.value)))
+        }
+
+        fn assign_known_val(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            x_val: Fr,
+            y_val: Fr,
+        ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
+            let x = region.assign_advice(
+                || "p1 x",
+                self.config.known_x,
+                *offset, // rotation
+                || value_for_assign!(x_val),
+            )?;
+            
+            let y = region.assign_advice(
+                || "p1 y",
+                self.config.known_y,
+                *offset, 
+                ||value_for_assign!(y_val),
+            )?;
+
+            Ok((Limb::new(Some(x), x_val), Limb::new(Some(y), y_val)))
+        }
+        
+        // we have two points in the circuit and we add them up and get the third point
+        // which we assign to the advice column in the circuit
+        // then we constrain that to be equal to a correct result 
+
+        // fn get_p3(
+        //     &self,
+        //     region: &mut Region<Fr>,
+        //     offset: &mut usize,
+        //     value_x: &mut PosFr,
+        //     value_y: &mut PosFr,
+        // ) -> Result<(Limb<F>, Limb<F>), Error> {
+        //     let cell_1 = region.assign_instance(
+        //         || format!("p1 x"),
+        //         self.config.known_x,
+        //         *offset,
+        //         || value_x,
+        //         0
+        //     )?;
+        //     let cell_2 = region.assign_instance(
+        //         || format!("p1 y"),
+        //         self.config.known_y,
+        //         *offset,
+        //         || value_y,
+        //         0
+        //     )?;
+        //     Ok( (Limb::new(Some(cell_1).clone(), value_x), Limb::new(Some(cell_2).clone(), value_y)))
+        // }
+
     }
 
+    #[derive(Clone, Debug, Default)]
     struct TestCircuit {
-        known_x: PosFr,
-        known_y: PosFr,
-        exp: BigUint,
-        modulus: BigUint,
-    }
+        p1_x: Fr,
+        p1_y: Fr,
+        p2_x: Fr,
+        p2_y: Fr,
+        known_x: Fr,
+        known_y: Fr, 
 
+    }
+    
     #[derive(Clone, Debug)]
-    struct TestConfig {
-        babyjubconfig: CommonGateConfig,
-        helperconfig: HelperChipConfig,
-        rangecheckconfig: RangeCheckConfig,
-    }
-
-
-
-    struct TestCircuit {
-        p1_x: PosFr,
-        p1_y: PosFr,
-        p2_x: PosFr,
-        p2_y: PosFr,
-        known_x: PosFr,
-        known_y: PosFr, 
-
-    }
-
     struct TestConfig {
         babyjubconfig: CommonGateConfig,
         helperconfig: HelperChipConfig,
@@ -488,15 +499,11 @@ mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<Fr>,
-            p1_x: Column<Instance>,
-            p1_y: Column<Instance>,
-            p2_x: Column<Instance>,
-            p2_y: Column<Instance>,
         ) -> Self::Config {
             let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             Self::Config {
                 babyjubconfig: BabyJubChip::<Fr>::configure(meta, &rangecheckconfig),
-                helperconfig: HelperChip::configure(meta, p1_x, p1_y, p2_x, p2_y),
+                helperconfig: HelperChip::configure(meta),
                 rangecheckconfig,
             }
         }
@@ -515,14 +522,13 @@ mod tests {
                 range_chip.initialize(&mut region)?;
                 let mut offset = 0;
                 // point 1
-                let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
+                let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p2_x, self.p2_y)?;
                 let p2 = helperchip.assign_p2(&mut region, &mut offset, self.p2_x, self.p2_y)?;
                 let p3 = babyjubchip.add(&mut region, &mut range_chip, &mut offset, & p1, &p2)?;
-                let (x,y) = helperchip.assign_point_to_col(&mut region, &mut offset, & p3);
+                let (x,y) = helperchip.assign_addition_result(&mut region, &mut offset, & p3)?;
                 let (fixed_x, fixed_y) = helperchip.get_p3(&mut region, &mut offset, self.known_x, self.known_y)?;
                 region.constrain_equal(x.clone().cell.unwrap().cell(), fixed_x.clone().cell.unwrap().cell())?;
                 region.constrain_equal(y.clone().cell.unwrap().cell(), fixed_y.clone().cell.unwrap().cell())?;
-
                 Ok(())
             })
         }
@@ -530,30 +536,31 @@ mod tests {
 
     #[test]
     fn test_circuit() {
-        let p1_x =  PosFr::from_str(
+        /// not sure how to put value in
+        let p1_x =  Pfr::from_str(
             "16540640123574156134436876038791482806971768689494387082833631921987005038935",
         )
         .unwrap();
-        let p1_y = PosFr::from_str(
+        let p1_y = Pfr::from_str(
             "20819045374670962167435360035096875258406992893633759881276124905556507972311",
         )
         .unwrap(); 
 
-        let p2_x =  PosFr::from_str(
+        let p2_x =  Pfr::from_str(
             "16540640123574156134436876038791482806971768689494387082833631921987005038935",
         )
         .unwrap();
-        let p2_y = PosFr::from_str(
+        let p2_y = Pfr::from_str(
             "20819045374670962167435360035096875258406992893633759881276124905556507972311",
         )
         .unwrap();
 
 
-        let known_x =  PosFr::from_str(
+        let known_x =  Pfr::from_str(
             "17777552123799933955779906779655732241715742912184938656739573121738514868268",
         )
         .unwrap();
-        let known_y = PosFr::from_str(
+        let known_y = Pfr::from_str(
             "2626589144620713026669568689430873010625803728049924121243784502389097019475",
         )
         .unwrap();

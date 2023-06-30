@@ -214,7 +214,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> = HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![vec![]]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> = HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -225,7 +225,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> = HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![vec![]]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> = HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -236,7 +236,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> = HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![vec![]]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> = HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -247,7 +247,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> = HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![vec![]]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> = HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -258,7 +258,7 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![vec![]]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }

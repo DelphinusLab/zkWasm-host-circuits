@@ -205,6 +205,8 @@ impl<F: FieldExt> BabyJubChip<F> {
         let iden_ele = Point{x: Limb::new(None, F::zero()), y: Limb::new(None, F::one())};
         // constrain it by adding to itself must still be itself
         let iden_ele_plus_iden_ele = self.add(region, range_check_chip, offset, &mut iden_ele.clone(), &mut iden_ele.clone())?;   
+        // I try to constrain that e +e = e so that it must be identity point
+        // Im not sure if this is necessary
         let e_x = self.config.assign_line(region, range_check_chip, offset,
             [
                 None,
@@ -498,7 +500,7 @@ mod tests {
                 range_chip.initialize(&mut region)?;
                 let mut offset = 0;
                 // point 1
-                let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p2_x, self.p2_y)?;
+                let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
                 let p2 = helperchip.assign_p2(&mut region, &mut offset, self.p2_x, self.p2_y)?;
                 let p3 = babyjubchip.add(&mut region, &mut range_chip, &mut offset, & p1, &p2)?;
                 let (x,y) = helperchip.assign_addition_result(&mut region, &mut offset, & p3)?;
@@ -512,44 +514,54 @@ mod tests {
 
     #[test]
     fn test_circuit() {
-        todo!()
-        // not sure how to put value in
-        // let p1_x =  Pfr::from_str(
-        //     "16540640123574156134436876038791482806971768689494387082833631921987005038935",
-        // )
-        // .unwrap();
-        // let p1_y = Pfr::from_str(
-        //     "20819045374670962167435360035096875258406992893633759881276124905556507972311",
-        // )
-        // .unwrap(); 
+        let p1_x =  Fr::from_raw(
+            [0x0de0b6b3a7640000,
+            0xc48b104f04900100,
+            0x1a64e9041709a8b3,
+            0x628a7dae9ba4b1e0]
+        );
+        let p1_y = Fr::from_raw(
+            [0x0a8c6e8170c01000,
+            0x5b0cde19e5f4f50a,
+            0x0f1538c00a002500,
+            0x5ba2c0db80bff0c0]
+        ); 
 
-        // let p2_x =  Pfr::from_str(
-        //     "16540640123574156134436876038791482806971768689494387082833631921987005038935",
-        // )
-        // .unwrap();
-        // let p2_y = Pfr::from_str(
-        //     "20819045374670962167435360035096875258406992893633759881276124905556507972311",
-        // )
-        // .unwrap();
+        let p2_x =  Fr::from_raw(
+            [0x5319749e6cfc025c,
+            0x8899c43fa6e5589e,
+            0x0b4fe466a0649411,
+            0x2352c7aef937bddc]
+        );
+        let p2_y = Fr::from_raw(
+            [0x2b548aeec5285dd7,
+            0x68de7ca7bb0c30ab,
+            0x4f2aee6a9f2a9575,
+            0x1889e3c23b9a1f2f]
+        );
 
 
-        // let known_x =  Pfr::from_str(
-        //     "17777552123799933955779906779655732241715742912184938656739573121738514868268",
-        // )
-        // .unwrap();
-        // let known_y = Pfr::from_str(
-        //     "2626589144620713026669568689430873010625803728049924121243784502389097019475",
-        // )
-        // .unwrap();
+        let known_x =  Fr::from_raw(
+            [0x6e27e1a95a909dcc,
+            0x0c30904d23abaa40,
+            0x235cc4e377f91c5f,
+            0x13edc339108d63b1]
+        );
+        let known_y = Fr::from_raw(
+            [0xb2fe7e032775d019,
+            0x07f1c9ae4d655f5b,
+            0xf9d66a74be03f788,
+            0x6d81e00a734c3bb1]
+        );
 
-        // let test_circuit = TestCircuit {
-        //     p1_x,
-        //     p1_y,
-        //     p2_x,
-        //     p2_y,
-        //     known_x, 
-        //     known_y} ;
-        // let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        // assert_eq!(prover.verify(), Ok(()));
+        let test_circuit = TestCircuit {
+            p1_x,
+            p1_y,
+            p2_x,
+            p2_y,
+            known_x, 
+            known_y} ;
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
     }
 }

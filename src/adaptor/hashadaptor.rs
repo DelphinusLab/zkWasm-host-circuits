@@ -86,50 +86,30 @@ impl HostOpSelector for PoseidonChip<Fr> {
             Fr::from(ForeignInst::PoseidonFinalize as u64),
         ];
 
-        let entries = shared_operands.iter().zip(shared_opcodes).zip(shared_index);
+        let entries = shared_operands.clone().into_iter().zip(shared_opcodes.clone()).zip(shared_index.clone());
 
         let selected_entries = entries.filter(|((_operand, opcode), _index)| {
             opcodes.contains(opcode)
-        }).collect::<Vec<_>>();
+        }).collect::<Vec<((Fr, Fr), Fr)>>();
 
         let mut offset = 0;
 
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
-        for group in selected_entries.chunks(1+8*4+4) {
+        for group in selected_entries.chunks_exact(1+8*4+4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-               *operand, Fr::zero())?;
-            r.push(Limb::new(Some(cell), *operand));
+            let cell = assign_one_line(region, config, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), operand));
 
-            let mut reducer = Reduce::new(vec![
-                ReduceRule::Field(Fr::zero(), 64),
-            ]);
-            for &((operand, opcode), index) in group.into_iter().skip(1) {
-                reducer.reduce(operand.get_lower_128() as u64);
-                let indicator = if reducer.cursor == 0 {
-                    Fr::zero()
-                } else {
-                    vec![0;reducer.cursor].iter().fold(Fr::one(), |acc, _x| {
-                        println!("acc");
-                        acc * Fr::from_u128(1u128 << 64)
-                    })
-                };
-                println!("reducer value is {:?}, ind is {:?} cursor {}", reducer.rules[0].field_value(), indicator, reducer.cursor);
-                if reducer.cursor == 0 {
-                    let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                        reducer.rules[0].field_value().unwrap(), indicator.clone())?;
-                    r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
-                } else {
-                    assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                        reducer.rules[0].field_value().unwrap(), indicator.clone())?;
-                }
+            for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
+                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64))?;
+                r.push(limb);
             }
         }
-        println!("reducer value {:?}", r.iter().map(|x| x.value).collect::<Vec<_>>());
         Ok(r)
     }
     fn synthesize(

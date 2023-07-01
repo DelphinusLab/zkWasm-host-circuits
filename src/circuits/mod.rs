@@ -40,6 +40,67 @@ customized_circuits!(HostOpConfig, 2, 7, 1, 0,
    | nil            | nil           | nil          | filtered_operand_n | nil              | nil            | merged_op_n | nil
 );
 
+impl HostOpConfig {
+    pub fn configure(
+        &self,
+        cs: &mut ConstraintSystem<Fr>,
+    ) {
+        cs.lookup_any("filter-shared-ops", |meta| {
+            let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
+            let soper = self.get_expr(meta, HostOpConfig::shared_operand());
+            let sidx = self.get_expr(meta, HostOpConfig::shared_index());
+            let fopc= self.get_expr(meta, HostOpConfig::filtered_opcode());
+            let foper = self.get_expr(meta, HostOpConfig::filtered_operand());
+            let fidx = self.get_expr(meta, HostOpConfig::filtered_index());
+            vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
+        });
+
+        cs.create_gate("merge operands in filtered columns", |meta| {
+            let merged_op = self.get_expr(meta, HostOpConfig::merged_op());
+            let merged_op_n = self.get_expr(meta, HostOpConfig::merged_op_n());
+            let cur_op = self.get_expr(meta, HostOpConfig::filtered_operand());
+            let indicator = self.get_expr(meta, HostOpConfig::indicator());
+            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
+        });
+    }
+
+    pub fn assign_merged_operands(
+        &self,
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+        values: Vec<&((Fr, Fr), Fr)>,
+        indicator: Fr,
+    ) -> Result<Limb<Fr>, Error> {
+        let mut rev = values.clone();
+        let len = values.len();
+        rev.reverse();
+        let mut merged_ops = vec![];
+        let mut merged_acc = Fr::zero();
+        for c in rev.iter() {
+            merged_acc = c.0.0 + merged_acc * indicator;
+            merged_ops.push(merged_acc);
+        };
+        merged_ops.reverse();
+        let mut ret = None;
+        for (i, (((operand, opcode), index), merged_op)) in values.into_iter().zip(merged_ops).enumerate() {
+            self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), *operand)?;
+            self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
+            self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
+            let limb = self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merged_op)?;
+            if i == len-1 {
+                self.assign_cell(region, *offset, &HostOpConfig::indicator(), Fr::zero())?;
+            } else {
+                self.assign_cell(region, *offset, &HostOpConfig::indicator(), indicator)?;
+                if i == 0 {
+                    ret = Some(Limb::new(Some(limb), merged_op));
+                }
+            }
+            *offset += 1;
+        }
+        Ok(ret.unwrap())
+    }
+}
+
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
     fn configure(
@@ -99,26 +160,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         let selector =[];
 
         let config = HostOpConfig::new(witness, fixed, selector);
-
-
-        cs.lookup_any("filter-shared-ops", |meta| {
-            let sopc = config.get_expr(meta, HostOpConfig::shared_opcode());
-            let soper = config.get_expr(meta, HostOpConfig::shared_operand());
-            let sidx = config.get_expr(meta, HostOpConfig::shared_index());
-            let fopc= config.get_expr(meta, HostOpConfig::filtered_opcode());
-            let foper = config.get_expr(meta, HostOpConfig::filtered_operand());
-            let fidx = config.get_expr(meta, HostOpConfig::filtered_index());
-            vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
-        });
-
-        cs.create_gate("merge operands in filtered columns", |meta| {
-            let merged_op_n = config.get_expr(meta, HostOpConfig::merged_op_n());
-            let cur_op = config.get_expr(meta, HostOpConfig::filtered_operand());
-            let next_op = config.get_expr(meta, HostOpConfig::filtered_operand_n());
-            let indicator = config.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op_n - (next_op * indicator + cur_op))]
-        });
-
+        config.configure(cs);
         config
     }
 

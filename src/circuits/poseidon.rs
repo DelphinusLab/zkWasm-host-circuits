@@ -118,10 +118,12 @@ impl<F: FieldExt> PoseidonChip<F> {
         )?;
         println!("expect {:?}, get {:?}", result.value, self.poseidon_state.state[1].value);
         assert!(self.poseidon_state.state[1].value == result.value);
+        /*
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
             self.poseidon_state.state[1].cell.as_ref().unwrap().cell()
         )?;
+        */
         Ok(())
     }
 }

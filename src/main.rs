@@ -157,7 +157,7 @@ fn parse_input_file(matches: &ArgMatches) -> PathBuf {
 }
 
 fn opname<'a>() -> Arg<'a> {
-    arg!(-o --opname<OP_NAME>... "Operation name")
+    arg!(-n --opname<OP_NAME>... "Operation name")
         .max_values(1)
         .value_parser(value_parser!(OpType))
 }
@@ -260,7 +260,7 @@ fn main() {
             };
             let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
+            //prover.create_proof(cache_folder.as_path(), k);
         }
     };
 

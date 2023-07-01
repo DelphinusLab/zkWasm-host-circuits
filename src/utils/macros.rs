@@ -137,7 +137,7 @@ macro_rules! customized_circuits_expand {
                 //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
                 if cell[0] == 0 { // advice
                     region.assign_advice(
-                        || format!("assign cell"),
+                        || gate_cell.name.clone(),
                         self.witness[cell[1]],
                         start_offset + cell[2],
                         || Ok(value)

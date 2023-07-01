@@ -4,7 +4,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::{VirtualCells, Error, Expression};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::circuit::{Chip, Region, AssignedCell, Layouter};
+use halo2_proofs::circuit::{Region, AssignedCell, Layouter};
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::PoseidonNew;
 use crate::host::{Reduce, ReduceRule};
@@ -56,6 +56,7 @@ fn assign_one_line(
     config.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
     config.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
     config.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
+    *offset +=1;
     Ok(r)
 }
 
@@ -104,22 +105,27 @@ impl HostOpSelector for PoseidonChip<Fr> {
                *operand, Fr::zero())?;
             r.push(Limb::new(Some(cell), *operand));
 
-            let operands = group.iter().skip(1).collect::<Vec<_>>().chunks(4);
             let mut reducer = Reduce::new(vec![
                 ReduceRule::Field(Fr::zero(), 64),
             ]);
-            let indicator = Fr::from_u128(1u128 << 64);
             for &((operand, opcode), index) in group.into_iter().skip(1) {
                 reducer.reduce(operand.get_lower_128() as u64);
+                let indicator = if reducer.cursor == 0 {
+                    Fr::zero()
+                } else {
+                    vec![0;reducer.cursor].iter().fold(Fr::one(), |acc, _x| {
+                        println!("acc");
+                        acc * Fr::from_u128(1u128 << 64)
+                    })
+                };
+                println!("reducer value is {:?}, ind is {:?} cursor {}", reducer.rules[0].field_value(), indicator, reducer.cursor);
                 if reducer.cursor == 0 {
-                    //reducer.reset(0);
                     let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                                         reducer.rules[0].field_value().unwrap(), Fr::zero())?;
+                        reducer.rules[0].field_value().unwrap(), indicator.clone())?;
                     r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
                 } else {
-                    let cell = assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
-                                         reducer.rules[0].field_value().unwrap(), indicator.clone())?;
-                    //r.push(Limb::new(Some(cell), reducer.rules[0].field_value().unwrap()));
+                    assign_one_line(region, config, &mut offset, *operand, *opcode, *index,
+                        reducer.rules[0].field_value().unwrap(), indicator.clone())?;
                 }
             }
         }

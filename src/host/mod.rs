@@ -4,6 +4,7 @@ pub mod merkle;
 pub mod rmd160;
 pub mod kvpair;
 pub mod poseidon;
+pub mod jubjub;
 
 use serde::{Deserialize, Serialize};
 use halo2_proofs::arithmetic::FieldExt;
@@ -42,6 +43,8 @@ pub enum ForeignInst {
     PoseidonNew,
     PoseidonPush,
     PoseidonFinalize,
+    JubjubSumG1,
+    JubjubSumResult,
 
 }
 

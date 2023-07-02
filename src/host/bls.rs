@@ -1,12 +1,3 @@
-#[derive(Copy, Clone)]
-pub enum ForeignInst {
-    BlspairG1 = 1,
-    BlspairG2,
-    BlspairG3,
-    BlsSumG1,
-    BlsSumResult,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};

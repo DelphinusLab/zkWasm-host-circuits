@@ -1683,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "poseidon"
 version = "0.2.0"
-source = "git+https://github.com/lanbones/poseidon#20d881c2125199749055f305d73d514084b65e02"
+source = "git+https://github.com/lanbones/poseidon#ade94877c8285cc251107418c5effbce36684aa4"
 dependencies = [
  "halo2_proofs",
  "subtle",

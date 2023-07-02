@@ -25,6 +25,7 @@ use halo2_proofs::{
 use std::marker::PhantomData;
 use num_bigint::BigUint;
 
+
 pub struct ModExpChip<F:FieldExt> {
     config: CommonGateConfig,
     _marker: PhantomData<F>
@@ -103,7 +104,7 @@ impl<F: FieldExt> ModExpChip<F> {
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: Number<F>,
-        limbbound: usize,
+        limbbound: u64,
     ) -> Result<Number<F>, Error> {
         let mut limbs = vec![];
         for i in 0..4 {
@@ -245,8 +246,8 @@ impl<F: FieldExt> ModExpChip<F> {
        rhs: &Number<F>,
     ) -> Result<Limb<F>, Error> {
         let bn_modulus = BigUint::from((1u128<<108)-1);
-        let [_, _, _, ml] = self.mod_power108m1(region, range_check_chip, offset, lhs)?; // ml has at most 109 bits
-        let [_, _, _, mr] = self.mod_power108m1(region, range_check_chip, offset, rhs)?; // mr has at most 109 bits
+        let [_, _, _, ml] = self.mod_power108m1(region, range_check_chip, offset, lhs)?; // ml has at most 110 bits
+        let [_, _, _, mr] = self.mod_power108m1(region, range_check_chip, offset, rhs)?; // mr has at most 110 bits
         let v = ml.value * mr.value; // at most 220 bits
         let bn_q = field_to_bn(&v).div(bn_modulus.clone()); // at most 112 bits
         let bn_r = field_to_bn(&v) - bn_q.clone() * bn_modulus; // at most 108 bits
@@ -497,7 +498,11 @@ mod tests {
         RangeCheckChip,
     };
     use crate::value_for_assign;
-    use crate::circuits::CommonGateConfig;
+    use crate::circuits::{
+        CommonGateConfig,
+        LookupAssistChip,
+        LookupAssistConfig,
+    };
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},

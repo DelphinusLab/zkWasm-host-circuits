@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::{VirtualCells, Error, Expression};
@@ -7,7 +6,6 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Region, AssignedCell, Layouter};
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::PoseidonNew;
-use crate::host::{Reduce, ReduceRule};
 use crate::circuits::{Limb, LookupAssistConfig};
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
@@ -39,25 +37,6 @@ impl<F:FieldExt> LookupAssistChip<F> for () {
     ) -> Result<(), Error> {
         Ok(())
     }
-}
-
-fn assign_one_line(
-    region: &mut Region<Fr>,
-    config: &HostOpConfig,
-    offset: &mut usize,
-    operand: Fr,
-    opcode: Fr,
-    index: Fr,
-    merge: Fr,
-    ind: Fr,
-) -> Result<AssignedCell<Fr, Fr>, Error> {
-    let r = config.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), operand)?;
-    config.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
-    config.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
-    config.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
-    config.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
-    *offset +=1;
-    Ok(r)
 }
 
 impl HostOpSelector for PoseidonChip<Fr> {
@@ -101,7 +80,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let cell = assign_one_line(region, config, &mut offset, operand, opcode, index,
+            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero())?;
             r.push(Limb::new(Some(cell), operand));
 

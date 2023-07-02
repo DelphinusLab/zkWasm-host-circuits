@@ -99,6 +99,27 @@ impl HostOpConfig {
         }
         Ok(ret.unwrap())
     }
+
+    pub fn assign_one_line(
+        &self,
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+        operand: Fr,
+        opcode: Fr,
+        index: Fr,
+        merge: Fr,
+        ind: Fr,
+    ) -> Result<AssignedCell<Fr, Fr>, Error> {
+        let r = self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), operand)?;
+        self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
+        self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
+        self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
+        self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
+        *offset +=1;
+        Ok(r)
+    }
+
+
 }
 
 pub trait HostOpSelector {

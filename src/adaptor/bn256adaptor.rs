@@ -1,5 +1,6 @@
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
+    arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter, Region},
     plonk::{ConstraintSystem, Error, Fixed},
 };
@@ -7,6 +8,10 @@ use halo2_proofs::{
 pub const BN256FQ_SIZE: usize = 5;
 pub const BN256G1_SIZE: usize = 11;
 pub const BN256G2_SIZE: usize = 21;
+pub const BN256GT_SIZE: usize = 60;
+
+const BN256PAIR_SIZE: usize = BN256G1_SIZE + BN256G2_SIZE + BN256GT_SIZE;
+const BN256SUM_SIZE: usize = BN256G1_SIZE * 3;
 
 use crate::circuits::bn256::{
     Bn256PairChip,
@@ -29,6 +34,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
     fn construct(c: Self::Config) -> Self {
         Bn256PairChip::construct(c)
     }
+
     fn assign(
         region: &mut Region<Fr>,
         shared_operands: &Vec<Fr>,
@@ -41,55 +47,88 @@ impl HostOpSelector for Bn256PairChip<Fr> {
             Fr::from(ForeignInst::Bn254PairG2 as u64),
             Fr::from(ForeignInst::Bn254PairG3 as u64),
         ];
-        let mut arg_cells = vec![];
-        /* The 0,2's u54 of every Fq(5 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            let mut r = i % BN256FQ_SIZE;
-            if i >= BN256G1_SIZE - 1 {
-                r += BN256FQ_SIZE - 1;
-            }
-            if i >= BN256G1_SIZE + BN256G2_SIZE - 1 {
-                r += BN256FQ_SIZE - 1;
-            }
-            r %= BN256FQ_SIZE;
-            r % 2 == 0 && r != BN256FQ_SIZE - 1
-        };
+
+        let entries = shared_operands.clone().into_iter().zip(shared_opcodes.clone()).zip(shared_index.clone());
+
+        let selected_entries = entries.filter(|((_operand, opcode), _index)| {
+            opcodes.contains(opcode)
+        }).collect::<Vec<((Fr, Fr), Fr)>>();
+
+        assert!(selected_entries.len() % BN256PAIR_SIZE == 0);
+
         let mut offset = 0;
-        let mut picked_offset = 0;
-        let mut toggle: i32 = -1;
-        for opcode in shared_opcodes {
-            if opcodes.contains(opcode) {
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_operand(), shared_operands[offset])?;
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_opcode(), opcode.clone())?;
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_index(), shared_index[offset])?;
+        let mut r = vec![];
 
-                let value = if toggle >= 0 {
-                    shared_operands[offset]
-                        .clone()
-                        .mul(&Fr::from(1u64 << 54))
-                        .add(&shared_operands[toggle as usize])
-                } else {
-                    shared_operands[offset].clone()
-                };
+        for group in selected_entries.chunks_exact(BN256PAIR_SIZE) {
+            // get g1_x and g1_y: ((1,1) (1,1) 1) * 2
+            for j in 0..2 {
+                for i in 0..2 {
+                    let p_01 = config.assign_merged_operands(
+                        region,
+                        &mut offset,
+                        vec![&group[5*j+2*i], &group[5*j+2*i+1]],
+                        Fr::from_u128(1u128 << 54)
+                    )?;
+                    r.push(p_01);
+                }
+                let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
+                let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
+                   operand, Fr::zero())?;
+                r.push(Limb::new(Some(p_2), operand));
+
+            }
+
+            // whether g1 is zero or not
+            let ((operand, opcode), index) = *group.get(10).clone().unwrap();
+
+            let g1zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(g1zero), operand));
 
 
-                let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
-                let ind = if merge_next(picked_offset) {
-                    toggle = offset as i32;
-                    Fr::from(1u64 << 54)
-                } else {
-                    arg_cells.append(&mut vec![Limb::new(Some(opcell), value)]);
-                    toggle = -1;
-                    Fr::zero()
-                };
+            for j in 0..4 {
+                for i in 0..2 {
+                    let p_01 = config.assign_merged_operands(
+                        region,
+                        &mut offset,
+                        vec![&group[5*j+2*i+11], &group[5*j+2*i+1+11]],
+                        Fr::from_u128(1u128 << 54)
+                    )?;
+                    r.push(p_01);
+                }
+                let ((operand, opcode), index) = *group.get(5*j + 4 + 11).clone().unwrap();
+                let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
+                   operand, Fr::zero())?;
+                r.push(Limb::new(Some(p_2), operand));
 
-                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), ind)?;
-                picked_offset += 1;
-            };
-            offset += 1;
+            }
+
+            // whether g2 is zero or not
+            let ((operand, opcode), index) = *group.get(31).clone().unwrap();
+
+            let g2zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(g2zero), operand));
+
+            for j in 0..12 {
+                for i in 0..2 {
+                    let q = config.assign_merged_operands(
+                        region,
+                        &mut offset,
+                        vec![&group[5*j+2*i+32], &group[5*j+2*i+1+32]],
+                        Fr::from_u128(1u128 << 54)
+                    )?;
+                    r.push(q);
+                }
+                let ((operand, opcode), index) = *group.get(5*j+4+32).clone().unwrap();
+                let q  = config.assign_one_line(region, &mut offset, operand, opcode, index,
+                   operand, Fr::zero())?;
+                r.push(Limb::new(Some(q), operand));
+            }
         }
-        Ok(arg_cells)
+        Ok(r)
     }
+
     fn synthesize(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
@@ -99,6 +138,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         let a = arg_cells[0..7].to_vec();
         let b = arg_cells[7..20].to_vec();
         let ab = arg_cells[20..56].to_vec();
+        println!("ab is: {:?}", ab);
         self.load_bn256_pair_circuit(&a, &b, &ab, layouter)?;
         Ok(())
     }
@@ -127,49 +167,45 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             Fr::from(ForeignInst::Bn254SumG1 as u64),
             Fr::from(ForeignInst::Bn254SumResult as u64),
         ];
-        let mut arg_cells = vec![];
-        /* The 0,2,5,7's u54 of every G1(11 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            let r = i % BN256G1_SIZE;
-            let s = r % BN256FQ_SIZE;
-            s % 2 == 0 && s != BN256FQ_SIZE - 1 && r != BN256G1_SIZE - 1
-        };
+
+        let entries = shared_operands.clone().into_iter().zip(shared_opcodes.clone()).zip(shared_index.clone());
+
+        let selected_entries = entries.filter(|((_operand, opcode), _index)| {
+            opcodes.contains(opcode)
+        }).collect::<Vec<((Fr, Fr), Fr)>>();
+
+        assert!(selected_entries.len() % BN256SUM_SIZE == 0);
+
         let mut offset = 0;
-        let mut picked_offset = 0;
-        let mut toggle: i32 = -1;
-        for opcode in shared_opcodes {
-            if opcodes.contains(opcode) {
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_operand(), shared_operands[offset])?;
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_opcode(), opcode.clone())?;
-                config.assign_cell(region, picked_offset, &HostOpConfig::filtered_index(), shared_index[offset])?;
-
-                let value = if toggle >= 0 {
-                    shared_operands[offset]
-                        .clone()
-                        .mul(&Fr::from(1u64 << 54))
-                        .add(&shared_operands[toggle as usize])
-                } else {
-                    shared_operands[offset].clone()
-                };
+        let mut r = vec![];
 
 
-                let opcell = config.assign_cell(region, picked_offset, &HostOpConfig::merged_op(), value)?;
+        for group in selected_entries.chunks_exact(BN256G1_SIZE) {
+            for j in 0..2 {
+                for i in 0..2 {
+                    let p_01 = config.assign_merged_operands(
+                        region,
+                        &mut offset,
+                        vec![&group[5*j+2*i], &group[5*j+2*i+1]],
+                        Fr::from_u128(1u128 << 54)
+                    )?;
+                    r.push(p_01);
+                }
+                let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
+                let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
+                   operand, Fr::zero())?;
+                r.push(Limb::new(Some(p_2), operand));
 
-                let ind = if merge_next(picked_offset) {
-                    toggle = offset as i32;
-                    Fr::from(1u64 << 54)
-                } else {
-                    arg_cells.append(&mut vec![Limb::new(Some(opcell), value)]);
-                    toggle = -1;
-                    Fr::zero()
-                };
+            }
 
-                config.assign_cell(region, picked_offset, &HostOpConfig::indicator(), ind)?;
-                picked_offset += 1;
-            };
-            offset += 1;
+            // whether g1 is zero or not
+            let ((operand, opcode), index) = *group.get(10).clone().unwrap();
+            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), operand));
         }
-        Ok(arg_cells)
+        println!("r: {:?} with length {}", r, r.len());
+        Ok(r)
     }
 
     fn synthesize(

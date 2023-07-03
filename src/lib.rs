@@ -4,4 +4,5 @@
 pub mod utils;
 pub mod circuits;
 pub mod host;
+pub mod adaptor;
 

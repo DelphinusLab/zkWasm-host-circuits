@@ -1,12 +1,17 @@
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Region},
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
+    plonk::{ConstraintSystem, Error},
 };
+use halo2_proofs::arithmetic::FieldExt;
 
 pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
+pub const BLS381GT_SIZE: usize = 96;
+const BLSPAIR_SIZE: usize = BLS381G1_SIZE + BLS381G2_SIZE + BLS381GT_SIZE;
+const BLSSUM_SIZE: usize = BLS381G1_SIZE * 3;
+
 
 use std::ops::Mul;
 use crate::circuits::bls::{
@@ -15,7 +20,7 @@ use crate::circuits::bls::{
     Bls381ChipConfig,
 };
 
-use crate::circuits::HostOpSelector;
+use crate::circuits::{HostOpSelector, HostOpConfig, Limb};
 
 use crate::host::ForeignInst;
 
@@ -35,89 +40,74 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        filtered_operands: Column<Advice>,
-        filtered_opcodes: Column<Advice>,
-        filtered_index: Column<Advice>,
-        merged_operands: Column<Advice>,
-        indicator: Column<Fixed>,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        config: &HostOpConfig,
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::BlspairG1 as u64),
             Fr::from(ForeignInst::BlspairG2 as u64),
             Fr::from(ForeignInst::BlspairG3 as u64),
         ];
-        let mut arg_cells = vec![];
-        /* The 0,2,4,6's u54 of every Fq(8 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            let mut r = i % BLS381FQ_SIZE;
-            if i >= BLS381G1_SIZE - 1 {
-                r += BLS381FQ_SIZE - 1;
-            }
-            if i >= BLS381G1_SIZE + BLS381G2_SIZE - 1 {
-                r += BLS381FQ_SIZE - 1;
-            }
-            r %= BLS381FQ_SIZE;
-            r % 2 == 0
-        };
+
+
+        let entries = shared_operands.clone().into_iter().zip(shared_opcodes.clone()).zip(shared_index.clone());
+
+        let selected_entries = entries.filter(|((_operand, opcode), _index)| {
+            opcodes.contains(opcode)
+        }).collect::<Vec<((Fr, Fr), Fr)>>();
+
+        assert!(selected_entries.len() % BLSPAIR_SIZE == 0);
+
         let mut offset = 0;
-        let mut picked_offset = 0;
-        let mut toggle: i32 = -1;
-        for opcode in shared_opcodes {
-            if opcodes.contains(opcode) {
-                region.assign_advice(
-                    || "picked operands",
-                    filtered_operands,
-                    picked_offset,
-                    || Ok(shared_operands[offset]),
-                )?;
+        let mut r = vec![];
 
-                region.assign_advice(
-                    || "picked opcodes",
-                    filtered_opcodes,
-                    picked_offset,
-                    || Ok(opcode.clone()),
+        for group in selected_entries.chunks_exact(BLSPAIR_SIZE) {
+            for i in 0..8 {
+                let limb = config.assign_merged_operands(
+                    region,
+                    &mut offset,
+                    vec![&group[2*i], &group[2*i+1]],
+                    Fr::from_u128(1u128 << 54)
                 )?;
+                r.push(limb);
+            }
 
-                region.assign_advice(
-                    || "picked index",
-                    filtered_index,
-                    picked_offset,
-                    || Ok(shared_index[offset]),
+            let ((operand, opcode), index) = *group.get(16).clone().unwrap();
+
+            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), operand));
+
+            for i in 0..16 {
+                let limb = config.assign_merged_operands(
+                    region,
+                    &mut offset,
+                    vec![&group[2*i+17], &group[2*i+1+17]],
+                    Fr::from_u128(1u128 << 54)
                 )?;
+                r.push(limb);
+            }
 
-                let value = if toggle >= 0 {
-                    shared_operands[offset]
-                        .clone()
-                        .mul(&Fr::from(1u64 << 54))
-                        .add(&shared_operands[toggle as usize])
-                } else {
-                    shared_operands[offset].clone()
-                };
-                let opcell = region.assign_advice(
-                    || "picked merged operands",
-                    merged_operands,
-                    picked_offset,
-                    || Ok(value),
+            let ((operand, opcode), index) = *group.get(49).clone().unwrap();
+
+            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), operand));
+
+            for i in 0..48 {
+                let limb = config.assign_merged_operands(
+                    region,
+                    &mut offset,
+                    vec![&group[2*i+50], &group[2*i+1+50]],
+                    Fr::from_u128(1u128 << 54)
                 )?;
-
-                let value = if merge_next(picked_offset) {
-                    toggle = offset as i32;
-                    Fr::from(1u64 << 54)
-                } else {
-                    arg_cells.append(&mut vec![opcell]);
-                    toggle = -1;
-                    Fr::zero()
-                };
-                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
-                picked_offset += 1;
-            };
-            offset += 1;
+                r.push(limb);
+            }
         }
-        Ok(arg_cells)
+        Ok(r)
     }
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
@@ -146,82 +136,46 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        filtered_operands: Column<Advice>,
-        filtered_opcodes: Column<Advice>,
-        filtered_index: Column<Advice>,
-        merged_operands: Column<Advice>,
-        indicator: Column<Fixed>,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        config: &HostOpConfig,
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             Fr::from(ForeignInst::BlsSumG1 as u64),
             Fr::from(ForeignInst::BlsSumResult as u64),
         ];
-        let mut arg_cells = vec![];
-        /* The 0,2,4,6,8,10,12,14's u54 of every G1(17 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            let r = i % BLS381G1_SIZE;
-            r % 2 == 0 && r != BLS381G1_SIZE - 1
-        };
+
+        let entries = shared_operands.clone().into_iter().zip(shared_opcodes.clone()).zip(shared_index.clone());
+
+        let selected_entries = entries.filter(|((_operand, opcode), _index)| {
+            opcodes.contains(opcode)
+        }).collect::<Vec<((Fr, Fr), Fr)>>();
+
+        assert!(selected_entries.len() % BLSSUM_SIZE == 0);
+
         let mut offset = 0;
-        let mut picked_offset = 0;
-        let mut toggle: i32 = -1;
-        for opcode in shared_opcodes {
-            if opcodes.contains(opcode) {
-                region.assign_advice(
-                    || "picked operands",
-                    filtered_operands,
-                    picked_offset,
-                    || Ok(shared_operands[offset]),
-                )?;
+        let mut r = vec![];
 
-                region.assign_advice(
-                    || "picked opcodes",
-                    filtered_opcodes,
-                    picked_offset,
-                    || Ok(opcode.clone()),
+        for group in selected_entries.chunks_exact(BLS381G1_SIZE) {
+            for i in 0..8 {
+                let limb = config.assign_merged_operands(
+                    region,
+                    &mut offset,
+                    vec![&group[2*i], &group[2*i+1]],
+                    Fr::from_u128(1u128 << 54)
                 )?;
-
-                region.assign_advice(
-                    || "picked index",
-                    filtered_index,
-                    picked_offset,
-                    || Ok(shared_index[offset]),
-                )?;
-
-                let value = if toggle >= 0 {
-                    shared_operands[offset]
-                        .clone()
-                        .mul(&Fr::from(1u64 << 54))
-                        .add(&shared_operands[toggle as usize])
-                } else {
-                    shared_operands[offset].clone()
-                };
-                let opcell = region.assign_advice(
-                    || "picked merged operands",
-                    merged_operands,
-                    picked_offset,
-                    || Ok(value),
-                )?;
-
-                let value = if merge_next(picked_offset) {
-                    toggle = offset as i32;
-                    Fr::from(1u64 << 54)
-                } else {
-                    arg_cells.append(&mut vec![opcell]);
-                    toggle = -1;
-                    Fr::zero()
-                };
-                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
-                picked_offset += 1;
-            };
-            offset += 1;
+                r.push(limb);
+            }
+            let ((operand, opcode), index) = *group.get(16).clone().unwrap();
+            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+               operand, Fr::zero())?;
+            r.push(Limb::new(Some(cell), operand));
         }
-        Ok(arg_cells)
+        println!("r: {:?} with length {}", r, r.len());
+        Ok(r)
     }
 
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;

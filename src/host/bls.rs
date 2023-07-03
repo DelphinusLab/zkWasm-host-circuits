@@ -1,12 +1,3 @@
-#[derive(Copy, Clone)]
-pub enum ForeignInst {
-    BlspairG1 = 1,
-    BlspairG2,
-    BlspairG3,
-    BlsSumG1,
-    BlsSumResult,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
@@ -131,10 +122,10 @@ mod tests {
     #[test]
     fn generate_bls_sum_input() {
         let mut inputs = vec![];
-        for _ in 0..10 {
+        for _ in 0..2 {
             inputs.insert(0, G1::random(&mut OsRng).into());
         }
-        let ret = inputs[1..10]
+        let ret = inputs[1..2]
             .into_iter()
             .fold(inputs[0], |acc: G1Affine, x| acc.add(x.clone()).into());
 

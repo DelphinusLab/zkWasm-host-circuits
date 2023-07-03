@@ -66,7 +66,8 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                     region,
                     &mut offset,
                     vec![&group[2*i], &group[2*i+1]],
-                    Fr::from_u128(1u128 << 54)
+                    Fr::from_u128(1u128 << 54),
+                    true
                 )?;
                 r.push(limb);
             }
@@ -74,7 +75,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
 
             let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(cell), operand));
 
             for i in 0..16 {
@@ -82,7 +83,8 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                     region,
                     &mut offset,
                     vec![&group[2*i+17], &group[2*i+1+17]],
-                    Fr::from_u128(1u128 << 54)
+                    Fr::from_u128(1u128 << 54),
+                    true
                 )?;
                 r.push(limb);
             }
@@ -90,7 +92,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
             let ((operand, opcode), index) = *group.get(49).clone().unwrap();
 
             let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(cell), operand));
 
             for i in 0..48 {
@@ -98,7 +100,8 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                     region,
                     &mut offset,
                     vec![&group[2*i+50], &group[2*i+1+50]],
-                    Fr::from_u128(1u128 << 54)
+                    Fr::from_u128(1u128 << 54),
+                    true
                 )?;
                 r.push(limb);
             }
@@ -160,13 +163,14 @@ impl HostOpSelector for Bls381SumChip<Fr> {
                     region,
                     &mut offset,
                     vec![&group[2*i], &group[2*i+1]],
-                    Fr::from_u128(1u128 << 54)
+                    Fr::from_u128(1u128 << 54),
+                    true
                 )?;
                 r.push(limb);
             }
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
             let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(cell), operand));
         }
         println!("r: {:?} with length {}", r, r.len());

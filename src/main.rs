@@ -260,7 +260,7 @@ fn main() {
             };
             let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
-            //prover.create_proof(cache_folder.as_path(), k);
+            prover.create_proof(cache_folder.as_path(), k);
         }
     };
 

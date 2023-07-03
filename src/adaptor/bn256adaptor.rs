@@ -67,13 +67,14 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                         region,
                         &mut offset,
                         vec![&group[5*j+2*i], &group[5*j+2*i+1]],
-                        Fr::from_u128(1u128 << 54)
+                        Fr::from_u128(1u128 << 54),
+                        true
                     )?;
                     r.push(p_01);
                 }
                 let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
-                   operand, Fr::zero())?;
+                   operand, Fr::zero(), true)?;
                 r.push(Limb::new(Some(p_2), operand));
 
             }
@@ -82,7 +83,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
             let ((operand, opcode), index) = *group.get(10).clone().unwrap();
 
             let g1zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(g1zero), operand));
 
 
@@ -92,13 +93,14 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                         region,
                         &mut offset,
                         vec![&group[5*j+2*i+11], &group[5*j+2*i+1+11]],
-                        Fr::from_u128(1u128 << 54)
+                        Fr::from_u128(1u128 << 54),
+                        true
                     )?;
                     r.push(p_01);
                 }
                 let ((operand, opcode), index) = *group.get(5*j + 4 + 11).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
-                   operand, Fr::zero())?;
+                   operand, Fr::zero(), true)?;
                 r.push(Limb::new(Some(p_2), operand));
 
             }
@@ -107,7 +109,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
             let ((operand, opcode), index) = *group.get(31).clone().unwrap();
 
             let g2zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(g2zero), operand));
 
             for j in 0..12 {
@@ -116,13 +118,14 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                         region,
                         &mut offset,
                         vec![&group[5*j+2*i+32], &group[5*j+2*i+1+32]],
-                        Fr::from_u128(1u128 << 54)
+                        Fr::from_u128(1u128 << 54),
+                        true
                     )?;
                     r.push(q);
                 }
                 let ((operand, opcode), index) = *group.get(5*j+4+32).clone().unwrap();
                 let q  = config.assign_one_line(region, &mut offset, operand, opcode, index,
-                   operand, Fr::zero())?;
+                   operand, Fr::zero(), true)?;
                 r.push(Limb::new(Some(q), operand));
             }
         }
@@ -187,13 +190,14 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                         region,
                         &mut offset,
                         vec![&group[5*j+2*i], &group[5*j+2*i+1]],
-                        Fr::from_u128(1u128 << 54)
+                        Fr::from_u128(1u128 << 54),
+                        true,
                     )?;
                     r.push(p_01);
                 }
                 let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
-                   operand, Fr::zero())?;
+                   operand, Fr::zero(), true)?;
                 r.push(Limb::new(Some(p_2), operand));
 
             }
@@ -201,7 +205,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             // whether g1 is zero or not
             let ((operand, opcode), index) = *group.get(10).clone().unwrap();
             let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+               operand, Fr::zero(), true)?;
             r.push(Limb::new(Some(cell), operand));
         }
         println!("r: {:?} with length {}", r, r.len());

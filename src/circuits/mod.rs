@@ -33,26 +33,27 @@ use halo2_proofs::{
     poly::Rotation,
 };
 
+use crate::constant_from;
 
-
-customized_circuits!(HostOpConfig, 2, 7, 1, 0,
-   | shared_operand | shared_opcode | shared_index | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator
-   | nil            | nil           | nil          | filtered_operand_n | nil              | nil            | merged_op_n | nil
+customized_circuits!(HostOpConfig, 2, 8, 1, 0,
+   | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator
+   | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil
 );
 
 impl HostOpConfig {
-    pub fn configure(
+    pub fn configure<F:FieldExt>(
         &self,
-        cs: &mut ConstraintSystem<Fr>,
+        cs: &mut ConstraintSystem<F>,
     ) {
         cs.lookup_any("filter-shared-ops", |meta| {
             let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
             let soper = self.get_expr(meta, HostOpConfig::shared_operand());
             let sidx = self.get_expr(meta, HostOpConfig::shared_index());
+            let enable = self.get_expr(meta, HostOpConfig::enable());
             let fopc= self.get_expr(meta, HostOpConfig::filtered_opcode());
             let foper = self.get_expr(meta, HostOpConfig::filtered_operand());
             let fidx = self.get_expr(meta, HostOpConfig::filtered_index());
-            vec![(fidx, sidx), (foper, soper), (fopc, sopc)]
+            vec![(fidx*enable.clone(), sidx), (foper*enable.clone(), soper), (fopc*enable.clone(), sopc)]
         });
 
         cs.create_gate("merge operands in filtered columns", |meta| {
@@ -62,6 +63,12 @@ impl HostOpConfig {
             let indicator = self.get_expr(meta, HostOpConfig::indicator());
             vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
         });
+
+        cs.create_gate("enable consistant", |meta| {
+            let enable = self.get_expr(meta, HostOpConfig::enable());
+            let enable_n = self.get_expr(meta, HostOpConfig::enable_n());
+            vec![(enable - constant_from!(1 as u64)) * enable_n]
+        });
     }
 
     pub fn assign_merged_operands(
@@ -70,6 +77,7 @@ impl HostOpConfig {
         offset: &mut usize,
         values: Vec<&((Fr, Fr), Fr)>,
         indicator: Fr,
+        enable: bool,
     ) -> Result<Limb<Fr>, Error> {
         let mut rev = values.clone();
         let len = values.len();
@@ -86,6 +94,7 @@ impl HostOpConfig {
             self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), *operand)?;
             self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
             self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
+            self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
             let limb = self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merged_op)?;
             if i == len-1 {
                 self.assign_cell(region, *offset, &HostOpConfig::indicator(), Fr::zero())?;
@@ -109,12 +118,14 @@ impl HostOpConfig {
         index: Fr,
         merge: Fr,
         ind: Fr,
+        enable: bool,
     ) -> Result<AssignedCell<Fr, Fr>, Error> {
         let r = self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), operand)?;
         self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
         self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
         self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
         self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
+        self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
         *offset +=1;
         Ok(r)
     }
@@ -174,7 +185,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
     pub fn configure(
         cs: &mut ConstraintSystem<Fr>,
     ) -> <Self as Chip<Fr>>::Config {
-        let witness= [0; 7]
+        let witness= [0; 8]
                 .map(|_| cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
         let fixed = [cs.fixed_column()];

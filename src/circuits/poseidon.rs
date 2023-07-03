@@ -86,7 +86,7 @@ impl<F: FieldExt> PoseidonChip<F> {
         println!("input values: {:?}", values.iter().map(|x| x.value).collect::<Vec<_>>());
         let mut new_state = vec![];
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
-            new_state.push(self.config.select(region, &mut (), offset, &reset, default, value, self.round)?);
+            new_state.push(self.config.select(region, &mut (), offset, &reset, value, default, self.round)?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
         let parts = values.clone().map(|x| {Some(x)});

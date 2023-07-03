@@ -4,12 +4,21 @@ use halo2_proofs::plonk::{VirtualCells, Error, Expression};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Region, AssignedCell, Layouter};
-use crate::host::ForeignInst;
-use crate::host::ForeignInst::PoseidonNew;
+use crate::host::{
+    ForeignInst,
+    ExternalHostCallEntryTable,
+    ExternalHostCallEntry,
+};
+use crate::host::ForeignInst::{
+    PoseidonNew,
+    PoseidonPush,
+    PoseidonFinalize,
+};
 use crate::circuits::{Limb, LookupAssistConfig};
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
 use crate::circuits::LookupAssistChip;
+use crate::host::poseidon::gen_hasher;
 
 use crate::circuits::{
     HostOpSelector,
@@ -38,6 +47,27 @@ impl<F:FieldExt> LookupAssistChip<F> for () {
         Ok(())
     }
 }
+
+fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
+    vec![ExternalHostCallEntry {
+        op: PoseidonNew as usize,
+        value: if restart {1u64} else {0u64},
+        is_ret: false,
+    }]
+
+}
+
+fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntryTable {
+    let mut r = vec![];
+    r.push(hash_cont(true));
+    for f in inputs.iter() {
+            r.push(crate::adaptor::fr_to_args(*f, 4, 64, PoseidonPush));
+    }
+    r.push(crate::adaptor::fr_to_args(result, 4, 64, PoseidonFinalize));
+    ExternalHostCallEntryTable(r.into_iter().flatten().collect())
+}
+
+
 
 impl HostOpSelector for PoseidonChip<Fr> {
     type Config = CommonGateConfig;
@@ -80,17 +110,51 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
-               operand, Fr::zero())?;
+            let cell = config.assign_one_line(
+                region, &mut offset, operand, opcode, index,
+                operand,
+                Fr::zero(),
+                true
+            )?;
             r.push(Limb::new(Some(cell), operand));
 
             for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
-                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64))?;
+                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
                 r.push(limb);
             }
         }
+
+        let default_table = hash_to_host_call_table([
+                Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()
+            ], gen_hasher().squeeze());
+
+        //let entries = default_table.
+        let default_entries:Vec<((Fr, Fr), Fr)> = default_table.0.into_iter().map(
+            |x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero())
+        ).collect::<Vec<((Fr, Fr), Fr)>>();
+
+        for _ in 0..10 {
+            let ((operand, opcode), index) = default_entries[0].clone();
+            assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
+
+            let cell = config.assign_one_line(
+                region, &mut offset, operand, opcode, index,
+                operand,
+                Fr::zero(),
+                true
+            )?;
+            r.push(Limb::new(Some(cell), operand));
+
+            for subgroup in default_entries.clone().iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
+                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
+                r.push(limb);
+            }
+        }
+
         Ok(r)
     }
+
+
     fn synthesize(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,

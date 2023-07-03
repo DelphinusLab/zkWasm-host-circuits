@@ -141,7 +141,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
-                true
+                false
             )?;
             r.push(Limb::new(Some(cell), operand));
 

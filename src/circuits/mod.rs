@@ -35,9 +35,9 @@ use halo2_proofs::{
 
 use crate::constant_from;
 
-customized_circuits!(HostOpConfig, 2, 8, 1, 0,
-   | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator
-   | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil
+customized_circuits!(HostOpConfig, 2, 8, 2, 0,
+   | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
+   | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
 );
 
 impl HostOpConfig {
@@ -67,7 +67,8 @@ impl HostOpConfig {
         cs.create_gate("enable consistant", |meta| {
             let enable = self.get_expr(meta, HostOpConfig::enable());
             let enable_n = self.get_expr(meta, HostOpConfig::enable_n());
-            vec![(enable - constant_from!(1 as u64)) * enable_n]
+            let sel = self.get_expr(meta, HostOpConfig::sel());
+            vec![(enable - constant_from!(1 as u64)) * enable_n * sel]
         });
     }
 
@@ -95,6 +96,7 @@ impl HostOpConfig {
             self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
             self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
             self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
+            self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
             let limb = self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merged_op)?;
             if i == len-1 {
                 self.assign_cell(region, *offset, &HostOpConfig::indicator(), Fr::zero())?;
@@ -126,11 +128,10 @@ impl HostOpConfig {
         self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
         self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
         self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
+        self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
         *offset +=1;
         Ok(r)
     }
-
-
 }
 
 pub trait HostOpSelector {
@@ -188,7 +189,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         let witness= [0; 8]
                 .map(|_| cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [cs.fixed_column()];
+        let fixed = [cs.fixed_column(), cs.fixed_column()];
         let selector =[];
 
         let config = HostOpConfig::new(witness, fixed, selector);

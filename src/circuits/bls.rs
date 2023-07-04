@@ -395,6 +395,7 @@ impl Bls381SumChip<Fr> {
             ctx.to_point_with_curvature(p)
         });
         let sum_ret = sum_ret.to_point();
+        let sum_ret = ctx.ecc_reduce(&sum_ret);
         ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
         let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
             .unwrap()

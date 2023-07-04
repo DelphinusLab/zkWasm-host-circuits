@@ -452,13 +452,13 @@ impl CommonGateConfig {
             let lm = limbs[i].clone();
             let _l = self.assign_line(
                 region,
-                range_check_chip,
+                lookup_assist_chip,
                 offset,
                 [
                     Some(lm.clone()),
                     Some(lm.clone()),
                     Some(lm),
-                    None,              
+                    None,
                     None,
                     None,
                 ],

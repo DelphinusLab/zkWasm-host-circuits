@@ -67,7 +67,7 @@ fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntry
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-
+const TOTAL_CONSTRUCTIONS:usize = 2048;
 
 impl HostOpSelector for PoseidonChip<Fr> {
     type Config = CommonGateConfig;
@@ -101,8 +101,9 @@ impl HostOpSelector for PoseidonChip<Fr> {
             opcodes.contains(opcode)
         }).collect::<Vec<((Fr, Fr), Fr)>>();
 
-        let mut offset = 0;
+        let total_used_instructions = selected_entries.len()/(1+8*4+4);
 
+        let mut offset = 0;
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
@@ -133,7 +134,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             |x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero())
         ).collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..10 {
+        for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
@@ -160,7 +161,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        println!("arg value {:?}", arg_cells.iter().map(|x| x.value).collect::<Vec<_>>());
+        println!("total args is {}", arg_cells.len());
         layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
@@ -212,26 +213,42 @@ mod tests {
 
     }
 
-    fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntryTable {
+    fn hash_to_host_call_table(inputs: Vec<[Fr; 8]>) -> ExternalHostCallEntryTable {
         let mut r = vec![];
-        r.push(hash_cont(true));
-        for f in inputs.iter() {
+        let mut start = true;
+        let mut hasher = crate::host::poseidon::gen_hasher();
+        for round in inputs.into_iter() {
+            r.push(hash_cont(start));
+            start = false;
+            for f in round.iter() {
                 r.push(crate::adaptor::fr_to_args(*f, 4, 64, PoseidonPush));
+            }
+            let result = hasher.update_exact(&round);
+            r.push(crate::adaptor::fr_to_args(result, 4, 64, PoseidonFinalize));
         }
-        r.push(crate::adaptor::fr_to_args(result, 4, 64, PoseidonFinalize));
         ExternalHostCallEntryTable(r.into_iter().flatten().collect())
     }
 
 
     #[test]
     fn generate_poseidon_input() {
-        let mut hasher = crate::host::poseidon::gen_hasher();
-        let result = hasher.squeeze();
         let table = hash_to_host_call_table(
-            [Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()],
-            result
+            vec![[Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()]],
         );
         let file = File::create("poseidontest.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &table).expect("can not write to file");
     }
+
+    #[test]
+    fn generate_poseidon_input_multi() {
+        let table = hash_to_host_call_table(
+            vec![
+                [Fr::one(); 8],
+                [Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()],
+            ],
+        );
+        let file = File::create("poseidontest_multi.json").expect("can not create file");
+        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+    }
+
 }

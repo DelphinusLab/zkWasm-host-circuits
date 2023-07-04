@@ -8,7 +8,6 @@ use crate::host::poseidon::T;
 use halo2_proofs::arithmetic::FieldExt;
 use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
-use crate::circuits::LookupAssistConfig;
 
 const START_ENCODE:u64 = 1<<32;
 const END_ENCODE:u64 = 2<<32;
@@ -21,10 +20,10 @@ use crate::circuits::{
 use std::marker::PhantomData;
 
 use halo2_proofs::{
-    circuit::{Region, AssignedCell, Layouter},
+    circuit::Region,
     plonk::{
-        Fixed, Advice, Column, ConstraintSystem,
-        Error, Expression, Selector, VirtualCells
+        ConstraintSystem,
+        Error
     },
 };
 
@@ -81,9 +80,6 @@ impl<F: FieldExt> PoseidonChip<F> {
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
-        println!("offset is: {:?}", offset);
-        println!("reset is: {:?}", reset.value);
-        println!("input values: {:?}", values.iter().map(|x| x.value).collect::<Vec<_>>());
         let mut new_state = vec![];
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
             new_state.push(self.config.select(region, &mut (), offset, &reset, value, default, self.round)?);
@@ -116,14 +112,11 @@ impl<F: FieldExt> PoseidonChip<F> {
             offset,
             &inputs.try_into().unwrap(),
         )?;
-        println!("expect {:?}, get {:?}", result.value, self.poseidon_state.state[1].value);
         assert!(self.poseidon_state.state[1].value == result.value);
-        /*
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
             self.poseidon_state.state[1].cell.as_ref().unwrap().cell()
         )?;
-        */
         Ok(())
     }
 }

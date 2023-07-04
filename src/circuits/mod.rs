@@ -255,7 +255,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
  * lookup_hint: lookup information that is usually combined with l0
  * lookup_ind: whether perform lookup at this line
  */
-customized_circuits!(CommonGateConfig, 2, 5, 11, 1,
+customized_circuits!(CommonGateConfig, 2, 5, 12, 0,
    | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | sel
    | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         | nil
 );
@@ -299,8 +299,8 @@ impl CommonGateConfig {
         let witness= [0; 5]
                 .map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 11].map(|_| cs.fixed_column());
-        let selector =[cs.selector()];
+        let fixed = [0; 12].map(|_| cs.fixed_column());
+        let selector =[];
 
         let config = CommonGateConfig { fixed, selector, witness };
 
@@ -360,7 +360,11 @@ impl CommonGateConfig {
         t: &Limb<F>,
         hint: u64,
     ) -> Result<Limb<F>, Error> {
-        let result = if cond.value == F::zero() {f.clone()} else {t.clone()};
+        let result = if cond.value == F::zero() {
+            Limb::new(None, f.value.clone())
+        } else {
+            Limb::new(None, t.value.clone())
+        };
         let l = self.assign_line(region, lookup_assist_chip, offset,
             [
                 Some(t.clone()),
@@ -586,7 +590,7 @@ impl CommonGateConfig {
             let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
             self.assign_cell(region, *offset, &cs[i], v).unwrap();
         }
-        self.enable_selector(region, *offset, &CommonGateConfig::sel())?;
+        self.assign_cell(region, *offset, &CommonGateConfig::sel(), F::one())?;
         self.assign_cell(region, *offset, &CommonGateConfig::lookup_hint(), F::from(hint))?;
         self.assign_cell(region, *offset, &CommonGateConfig::lookup_ind(), F::from(
             if hint == 0 {0u64} else {1u64}
@@ -616,7 +620,7 @@ impl CommonGateConfig {
                     None,
                     None,
                 ],
-                [None, None, None, None, None, None, Some(value.clone()), None, None],
+                [Some(F::one()), None, None, None, None, None, None, None, Some(-value.clone())],
                 0
         )?;
         Ok(l[0].clone())

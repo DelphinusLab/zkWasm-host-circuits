@@ -44,25 +44,28 @@ fn bytes_to_bson(x: &[u8; 32]) -> Bson {
 
 #[derive(Debug)]
 pub struct MongoMerkle {
+    client: Client,
     contract_address: [u8; 32],
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
 }
 
 pub async fn get_collection<T>(
+    client: &Client,
     database: String,
     name: String,
 ) -> Result<mongodb::Collection<T>, mongodb::error::Error> {
-    let client = Client::with_uri_str(MONGODB_URI).await?;
     let database = client.database(database.as_str());
-    Ok(database.collection::<T>(name.as_str()))
+    let collection = database.collection::<T>(name.as_str());
+    Ok(collection)
 }
 
 pub async fn drop_collection<T>(
+    client: &Client,
     database: String,
     name: String,
 ) -> Result<(), mongodb::error::Error> {
-    let collection = get_collection::<MerkleRecord>(database, name).await?;
+    let collection = get_collection::<MerkleRecord>(client, database, name).await?;
     let options = DropCollectionOptions::builder().build();
     collection.drop(options).await
 }
@@ -82,7 +85,7 @@ impl MongoMerkle {
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
+        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname).await?;
         let mut filter = doc! {};
         filter.insert("index", index);
         filter.insert("hash", bytes_to_bson(hash));
@@ -93,7 +96,7 @@ impl MongoMerkle {
     pub async fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).await?;
+        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname).await?;
         let mut filter = doc! {};
         filter.insert("index", record.index);
         filter.insert("hash", bytes_to_bson(&record.hash));
@@ -225,7 +228,9 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
     type Node = MerkleRecord;
 
     fn construct(addr: Self::Id, root: Self::Root) -> Self {
+        let client = executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
         MongoMerkle {
+            client,
             contract_address: addr,
             root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
@@ -377,6 +382,7 @@ mod tests {
         // 1
         let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
+            &mt.client,
             MongoMerkle::get_db_name(),
             mt.get_collection_name(),
         ))
@@ -484,6 +490,7 @@ mod tests {
         // 1
         let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
+            &mt.client,
             MongoMerkle::get_db_name(),
             mt.get_collection_name(),
         ))
@@ -599,6 +606,7 @@ mod tests {
         // 1
         let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
         executor::block_on(drop_collection::<MerkleRecord>(
+            &mt.client,
             MongoMerkle::get_db_name(),
             mt.get_collection_name(),
         ))
@@ -683,26 +691,5 @@ mod tests {
         let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
         assert_eq!(leaf.index, INDEX3);
         assert_eq!(leaf.data, LEAF3_DATA);
-    }
-
-    #[test]
-    fn test_generate_kv_input() {
-        let mut mt = MongoMerkle::construct([0; 32], DEFAULT_HASH_VEC[MongoMerkle::height()]);
-        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(20) - 1).unwrap();
-        leaf.set(&[1u8; 32].to_vec());
-        mt.set_leaf_with_proof(&leaf).unwrap();
-        let root = mt.get_root_hash();
-
-        // get {
-        //     current_root: 4*64 --> bn254    // fr 2^256-C
-        //     index: 1*64
-        //     ret: 4:64     ---> 2 * bn254
-        // }
-        // set {
-        //     current_root: 4*64
-        //     index: 1*64
-        //     data: 4:64
-        // }
-        todo!()
     }
 }

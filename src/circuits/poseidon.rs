@@ -5,238 +5,554 @@ use crate::host::poseidon::RATE;
 use crate::host::poseidon::R_F;
 use crate::host::poseidon::R_P;
 use crate::host::poseidon::T;
-use halo2_proofs::arithmetic::CurveAffine;
 use halo2_proofs::arithmetic::FieldExt;
-use halo2ecc_s::assign::AssignedValue;
-use halo2ecc_s::circuit::base_chip::BaseChipOps;
-use halo2ecc_s::context::NativeScalarEccContext;
-use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
-use std::cell::RefMut;
+use crate::circuits::LookupAssistConfig;
 
-pub struct PoseidonChipRead<C: CurveAffine> {
-    state: PoseidonChipContext<C::ScalarExt>,
-    prefix: Vec<AssignedValue<C::ScalarExt>>,
+const START_ENCODE:u64 = 1<<32;
+const END_ENCODE:u64 = 2<<32;
+
+use crate::circuits::{
+    CommonGateConfig,
+    Limb,
+};
+
+use std::marker::PhantomData;
+
+use halo2_proofs::{
+    circuit::{Region, AssignedCell, Layouter},
+    plonk::{
+        Fixed, Advice, Column, ConstraintSystem,
+        Error, Expression, Selector, VirtualCells
+    },
+};
+
+pub struct PoseidonState<F: FieldExt> {
+    state: [Limb<F>; T],
+    default: [Limb<F>; T],
+    prefix: Vec<Limb<F>>,
 }
 
-impl<C: CurveAffine> PoseidonChipRead<C> {
-    pub fn init(
-        circuit: &mut NativeScalarEccContext<C>,
-    ) -> Self {
-        let state = PoseidonChipContext::new(&mut circuit.base_integer_chip().base_chip());
-        let base_chip = &mut circuit.base_integer_chip().base_chip();
-        Self {
+pub struct PoseidonChip<F:FieldExt> {
+    pub config: CommonGateConfig,
+    pub spec: Spec<F, T, RATE>,
+    poseidon_state: PoseidonState<F>,
+    round: u64,
+    _marker: PhantomData<F>
+}
+
+impl<F: FieldExt> PoseidonChip<F> {
+    pub fn construct(config: CommonGateConfig) -> Self {
+        let state = [0u32;T].map(|_| Limb::new(None, F::zero()));
+        let state = PoseidonState {
+            default: state.clone(),
             state,
-            prefix: vec![
-                base_chip.assign_constant(C::ScalarExt::from(PREFIX_CHALLENGE)),
-                base_chip.assign_constant(C::ScalarExt::from(PREFIX_POINT)),
-                base_chip.assign_constant(C::ScalarExt::from(PREFIX_SCALAR)),
-            ],
-        }
-    }
+            prefix: vec![],
+        };
 
-    pub fn squeeze(
-        &mut self,
-        circuit: &mut NativeScalarEccContext<C>,
-    ) -> AssignedValue<C::ScalarExt> {
-        self.state.update(
-            &mut circuit.base_integer_chip().base_chip(),
-            vec![self.prefix[0]],
-        );
-        self.state
-            .squeeze(&mut circuit.base_integer_chip().base_chip())
-    }
-}
-
-struct PoseidonChipState<F: FieldExt>([AssignedValue<F>; T]);
-
-pub struct PoseidonChipContext<F: FieldExt> {
-    spec: Spec<F, T, RATE>,
-    state: PoseidonChipState<F>,
-    absorbing: Vec<AssignedValue<F>>,
-}
-
-impl<F: FieldExt> PoseidonChipContext<F> {
-    pub fn new(chip: &mut RefMut<'_, dyn BaseChipOps<F>>) -> Self {
-        let zero = chip.assign_constant(F::zero());
-        let mut state = [zero; T];
-        state[0] = chip.assign_constant(F::from_u128(1u128 << 64));
-        Self {
+        PoseidonChip {
+            round: 0,
+            config,
             spec: Spec::new(R_F, R_P),
-            state: PoseidonChipState(state),
-            absorbing: vec![],
+            poseidon_state: state,
+            _marker: PhantomData,
         }
     }
 
-    pub fn update(
+    pub fn initialize(
         &mut self,
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
-        mut inputs: Vec<AssignedValue<F>>,
-    ) {
-        self.absorbing.append(&mut inputs);
-
-        if self.absorbing.len() < RATE {
-            return;
-        }
-
-        let mut values = vec![];
-        values.append(&mut self.absorbing);
-
-        for chunk in values.chunks(RATE) {
-            if chunk.len() < RATE {
-                self.absorbing = chunk.to_vec();
-            } else {
-                self.permute(chip, &chunk, false);
-            }
-        }
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.poseidon_state.initialize(config, region, offset)
     }
 
-    pub fn squeeze(&mut self, chip: &mut RefMut<'_, dyn BaseChipOps<F>>) -> AssignedValue<F> {
-        assert!(self.absorbing.len() < RATE);
-
-        let mut values = vec![];
-        values.append(&mut self.absorbing);
-
-        self.permute(chip, &values, true);
-
-        self.state.0[1]
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &())
     }
 
-    fn permute(
+    pub fn assign_permute(
         &mut self,
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
-        inputs: &[AssignedValue<F>],
-        on_squeeze: bool,
-    ) {
+        region: &mut Region<F>,
+        offset: &mut usize,
+        values: &[Limb<F>; RATE],
+        reset: &Limb<F>,
+        result: &Limb<F>,
+    ) -> Result<(), Error> {
+        println!("offset is: {:?}", offset);
+        println!("reset is: {:?}", reset.value);
+        println!("input values: {:?}", values.iter().map(|x| x.value).collect::<Vec<_>>());
+        let mut new_state = vec![];
+        for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
+            new_state.push(self.config.select(region, &mut (), offset, &reset, default, value, self.round)?);
+        }
+        self.poseidon_state.state = new_state.try_into().unwrap();
+        let parts = values.clone().map(|x| {Some(x)});
+        let parts = parts.chunks(4).collect::<Vec<_>>();
+        let mut part0 = parts[0].to_vec();
+        let mut part1 = parts[1].to_vec();
+        part0.push(None);
+        part1.push(None);
+        let mut inputs = self.config.assign_witness(
+            region,
+            &mut (),
+            offset,
+            part0.try_into().unwrap(),
+            0,
+        )?;
+        inputs.append(&mut self.config.assign_witness(
+            region,
+            &mut (),
+            offset,
+            part1.try_into().unwrap(),
+            0,
+        )?);
+        self.poseidon_state.permute(
+            &self.config,
+            &self.spec,
+            region,
+            offset,
+            &inputs.try_into().unwrap(),
+        )?;
+        println!("expect {:?}, get {:?}", result.value, self.poseidon_state.state[1].value);
+        assert!(self.poseidon_state.state[1].value == result.value);
+        /*
+        region.constrain_equal(
+            result.cell.as_ref().unwrap().cell(),
+            self.poseidon_state.state[1].cell.as_ref().unwrap().cell()
+        )?;
+        */
+        Ok(())
+    }
+}
+
+impl<F: FieldExt> PoseidonState<F> {
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        *offset = 0;
+        let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
+        let mut state = [0u32;T].map(|_| zero.clone());
+        state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128<<64))?;
+        self.default = state.clone();
+        self.state = state;
+        self.prefix = vec![
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_CHALLENGE))?,
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_POINT))?,
+                config.assign_constant(region, &mut (), offset, &F::from(PREFIX_SCALAR))?,
+            ];
+        Ok(())
+    }
+
+    fn x_power5_with_constant(
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        x: &Limb<F>,
+        constant: F,
+    ) -> Result<Limb<F>, Error> {
+        let xx = config.assign_line(region, &mut (), offset,
+            [
+                Some(x.clone()),
+                None,
+                None,
+                Some(x.clone()),
+                Some(Limb::new(None, x.value * x.value)),
+                None,
+            ],
+            [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
+            0,
+        )?[2].clone();
+        let x4 = config.assign_line(region, &mut (), offset,
+            [
+                Some(xx.clone()),
+                None,
+                None,
+                Some(xx.clone()),
+                Some(Limb::new(None, xx.value * xx.value)),
+                None,
+            ],
+            [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
+            0,
+        )?[2].clone();
+        let x5 = config.assign_line(region, &mut (), offset,
+            [
+                Some(x.clone()),
+                None,
+                None,
+                Some(x4.clone()),
+                Some(Limb::new(None, x4.value * x.value + constant)),
+                None,
+            ],
+            [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, Some(constant)],
+            0,
+        )?[2].clone();
+        Ok(x5)
+    }
+
+    fn sbox_full(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        constants: &[F; T]
+    ) -> Result<(), Error> {
+        for (x, constant) in self.state.iter_mut().zip(constants.iter()) {
+            *x = Self::x_power5_with_constant(config, region, offset, x, *constant)?;
+        }
+        Ok(())
+    }
+
+    fn sbox_part(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        constant: &F
+    ) -> Result<(), Error> {
+        self.state[0] = Self::x_power5_with_constant(
+            config,
+            region,
+            offset,
+            &self.state[0],
+            constant.clone()
+        )?;
+        Ok(())
+    }
+
+    pub fn permute(
+        &mut self,
+        config: &CommonGateConfig,
+        spec: &Spec<F, T, RATE>,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        inputs: &[Limb<F>; RATE],
+    ) -> Result<(), Error> {
         let r_f = R_F / 2;
-        let mds = &self.spec.mds_matrices().mds().rows();
+        let mds = &spec.mds_matrices().mds().rows();
 
-        let constants = &self.spec.constants().start();
-        self.state
-            .absorb_with_pre_constants(chip, inputs, &constants[0], on_squeeze);
+        let constants = &spec.constants().start();
+        self.absorb_with_pre_constants(config, region, offset, inputs, &constants[0])?;
 
         for constants in constants.iter().skip(1).take(r_f - 1) {
-            self.state.sbox_full(chip, constants);
-            self.state.apply_mds(chip, mds);
+            self.sbox_full(config, region, offset, constants)?;
+            self.apply_mds(config, region, offset, mds)?;
         }
 
-        let pre_sparse_mds = &self.spec.mds_matrices().pre_sparse_mds().rows();
-        self.state.sbox_full(chip, constants.last().unwrap());
-        self.state.apply_mds(chip, &pre_sparse_mds);
+        let pre_sparse_mds = &spec.mds_matrices().pre_sparse_mds().rows();
+        self.sbox_full(config, region, offset,constants.last().unwrap())?;
+        self.apply_mds(config, region, offset, &pre_sparse_mds)?;
 
-        let sparse_matrices = &self.spec.mds_matrices().sparse_matrices();
-        let constants = &self.spec.constants().partial();
+        let sparse_matrices = &spec.mds_matrices().sparse_matrices();
+        let constants = &spec.constants().partial();
         for (constant, sparse_mds) in constants.iter().zip(sparse_matrices.iter()) {
-            self.state.sbox_part(chip, constant);
-            self.state.apply_sparse_mds(chip, sparse_mds);
+            self.sbox_part(config, region, offset, constant)?;
+            self.apply_sparse_mds(config, region, offset, sparse_mds)?;
         }
 
-        let constants = &self.spec.constants().end();
+        let constants = &spec.constants().end();
         for constants in constants.iter() {
-            self.state.sbox_full(chip, constants);
-            self.state.apply_mds(chip, mds);
+            self.sbox_full(config, region, offset, constants)?;
+            self.apply_mds(config, region, offset, mds)?;
         }
-        self.state.sbox_full(chip, &[F::zero(); T]);
-        self.state.apply_mds(chip, mds);
-    }
-}
-
-impl<F: FieldExt> PoseidonChipState<F> {
-    fn x_power5_with_constant(
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
-        x: &AssignedValue<F>,
-        constant: F,
-    ) -> AssignedValue<F> {
-        let x2 = chip.mul(x, x);
-        let x4 = chip.mul(&x2, &x2);
-        chip.mul_add_constant(&x, &x4, constant)
-    }
-
-    fn sbox_full(&mut self, chip: &mut RefMut<'_, dyn BaseChipOps<F>>, constants: &[F; T]) {
-        for (x, constant) in self.0.iter_mut().zip(constants.iter()) {
-            *x = Self::x_power5_with_constant(chip, x, *constant);
-        }
-    }
-
-    fn sbox_part(&mut self, chip: &mut RefMut<'_, dyn BaseChipOps<F>>, constant: &F) {
-        self.0[0] = Self::x_power5_with_constant(chip, &self.0[0], constant.clone());
+        self.sbox_full(config, region, offset, &[F::zero(); T])?;
+        self.apply_mds(config, region, offset, mds)?;
+        Ok(())
     }
 
     fn absorb_with_pre_constants(
         &mut self,
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
-        inputs: &[AssignedValue<F>],
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        inputs: &[Limb<F>; RATE],
         pre_constants: &[F; T],
-        on_squeeze: bool,
-    ) {
-        assert!(inputs.len() < T);
-        let zero = F::zero();
-        let one = F::one();
-
-        let offset = inputs.len() + 1;
-
-        self.0[0] = chip.add_constant(&self.0[0], pre_constants[0]);
+    ) -> Result <(), Error> {
+        let s0 = vec![(&self.state[0], F::one())];
+        self.state[0] = config.sum_with_constant(
+            region,
+            &mut (),
+            offset,
+            s0, Some(pre_constants[0].clone())
+        )?;
 
         for ((x, constant), input) in self
-            .0
+            .state
             .iter_mut()
             .skip(1)
             .zip(pre_constants.iter().skip(1))
             .zip(inputs.iter())
         {
-            *x = chip.sum_with_constant(vec![(&x, one), (input, one)], Some(*constant));
+            *x = config.sum_with_constant(
+                region,
+                &mut (),
+                offset,
+                vec![(x, F::one()), (input, F::one())],
+                Some(*constant)
+            )?;
         }
-
-        for (i, (x, constant)) in self
-            .0
-            .iter_mut()
-            .skip(offset)
-            .zip(pre_constants.iter().skip(offset))
-            .enumerate()
-        {
-            *x = chip.add_constant(x, *constant + if i == 0 && on_squeeze { one } else { zero });
-        }
+        Ok(())
     }
 
-    fn apply_mds(&mut self, chip: &mut RefMut<'_, dyn BaseChipOps<F>>, mds: &[[F; T]; T]) {
+    fn apply_mds(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        mds: &[[F; T]; T]
+    ) -> Result<(), Error> {
         let res = mds
             .iter()
             .map(|row| {
                 let a = self
-                    .0
+                    .state
                     .iter()
                     .zip(row.iter())
                     .map(|(e, word)| (e, *word))
                     .collect::<Vec<_>>();
 
-                chip.sum_with_constant(a, None)
+                config.sum_with_constant(
+                    region,
+                    &mut (),
+                    offset,
+                    a,
+                    None).unwrap()
             })
             .collect::<Vec<_>>();
 
-        self.0 = res.try_into().unwrap();
+        self.state = res.try_into().unwrap();
+        Ok(())
     }
 
     fn apply_sparse_mds(
         &mut self,
-        chip: &mut RefMut<'_, dyn BaseChipOps<F>>,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
         mds: &SparseMDSMatrix<F, T, RATE>,
-    ) {
+    ) -> Result<(), Error> {
         let a = self
-            .0
+            .state
             .iter()
             .zip(mds.row().iter())
             .map(|(e, word)| (e, *word))
             .collect::<Vec<_>>();
 
-        let mut res = vec![chip.sum_with_constant(a, None)];
+        let sum = config.sum_with_constant(
+            region,
+            &mut (),
+            offset,
+            a,
+            None
+        )?;
 
-        for (e, x) in mds.col_hat().iter().zip(self.0.iter().skip(1)) {
-            res.push(chip.sum_with_constant(vec![(&self.0[0], *e), (&x, F::one())], None));
+        let mut res = vec![sum];
+
+        for (e, x) in mds.col_hat().iter().zip(self.state.iter().skip(1)) {
+            let c = &self.state[0];
+            let sum = config.sum_with_constant(
+                    region,
+                    &mut (),
+                    offset,
+                    vec![(c, *e), (&x, F::one())],
+                    None
+            )?;
+            res.push(sum);
         }
 
-        for (x, new_x) in self.0.iter_mut().zip(res.into_iter()) {
+        for (x, new_x) in self.state.iter_mut().zip(res.into_iter()) {
             *x = new_x
         }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::dev::MockProver;
+    use crate::value_for_assign;
+    use crate::circuits::CommonGateConfig;
+    use crate::host::poseidon::RATE;
+
+    use halo2_proofs::{
+        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        plonk::{
+            Advice, Circuit, Column, ConstraintSystem, Error
+        },
+    };
+
+    use super::{
+        PoseidonChip,
+        Limb,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChipConfig {
+        limb: Column<Advice>
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct HelperChip {
+        config: HelperChipConfig
+    }
+
+    impl Chip<Fr> for HelperChip {
+        type Config = HelperChipConfig;
+        type Loaded = ();
+
+        fn config(&self) -> &Self::Config {
+            &self.config
+        }
+
+        fn loaded(&self) -> &Self::Loaded {
+            &()
+        }
+    }
+
+    impl HelperChip {
+        fn new(config: HelperChipConfig) -> Self {
+            HelperChip{
+                config,
+            }
+        }
+
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
+            let limb= cs.advice_column();
+            cs.enable_equality(limb);
+            HelperChipConfig {
+                limb,
+            }
+        }
+
+        fn assign_reset(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            reset: bool,
+        ) -> Result<Limb<Fr>, Error> {
+            let v = if reset {Fr::one()} else {Fr::zero()};
+            let c = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb,
+                *offset,
+                || value_for_assign!(v)
+            )?;
+            *offset += 1;
+            Ok(Limb::new(Some(c), v))
+        }
+
+
+        fn assign_inputs(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            inputs: &[Fr; RATE],
+        ) -> Result<[Limb<Fr>; RATE], Error> {
+            let r = inputs.map(|x| {
+                let c = region.assign_advice(
+                    || format!("assign input"),
+                    self.config.limb,
+                    *offset,
+                    || value_for_assign!(x.clone())
+                ).unwrap();
+                *offset += 1;
+                Limb::new(Some(c), x.clone())
+            });
+            Ok(r)
+        }
+
+
+        fn assign_result(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            result: &Fr,
+        ) -> Result<Limb<Fr>, Error> {
+            let c = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb,
+                *offset,
+                || value_for_assign!(result.clone())
+            )?;
+            *offset += 1;
+            Ok(Limb::new(Some(c), result.clone()))
+        }
+
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct TestCircuit {
+        inputs: Vec<Fr>,
+        result: Fr,
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestConfig {
+        poseidonconfig: CommonGateConfig,
+        helperconfig: HelperChipConfig,
+    }
+
+    impl Circuit<Fr> for TestCircuit {
+        type Config = TestConfig;
+        type FloorPlanner = SimpleFloorPlanner;
+
+        fn without_witnesses(&self) -> Self {
+            Self::default()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+            Self::Config {
+               poseidonconfig: PoseidonChip::<Fr>::configure(meta),
+               helperconfig: HelperChip::configure(meta),
+            }
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<Fr>,
+        ) -> Result<(), Error> {
+            let mut poseidonchip = PoseidonChip::<Fr>::construct(config.clone().poseidonconfig);
+            let helperchip = HelperChip::new(config.clone().helperconfig);
+            layouter.assign_region(
+                || "assign poseidon test",
+                |mut region| {
+                    let mut offset = 0;
+                    let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    let inputs = helperchip.assign_inputs(&mut region, &mut offset, &self.inputs.clone().try_into().unwrap())?;
+                    let reset = helperchip.assign_reset(&mut region, &mut offset, true)?;
+                    offset = 0;
+                    poseidonchip.poseidon_state.initialize(&config.poseidonconfig, &mut region, &mut offset)?;
+                    poseidonchip.assign_permute(
+                        &mut region,
+                        &mut offset,
+                        &inputs,
+                        &reset,
+                        &result
+                    )?;
+                    Ok(())
+                }
+            )?;
+            Ok(())
+        }
+    }
+
+
+    #[test]
+    fn test_poseidon_circuit_00() {
+        let mut hasher = crate::host::poseidon::gen_hasher();
+        let result = hasher.squeeze();
+        let inputs = vec![Fr::one(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()];
+        let test_circuit = TestCircuit {inputs, result};
+        println!("result is {:?}", result);
+        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
     }
 }

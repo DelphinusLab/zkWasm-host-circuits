@@ -4,11 +4,12 @@ pub mod merkle;
 pub mod rmd160;
 pub mod kvpair;
 pub mod poseidon;
+pub mod jubjub;
 
 use serde::{Deserialize, Serialize};
 use halo2_proofs::arithmetic::FieldExt;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ExternalHostCallEntryTable(pub Vec<ExternalHostCallEntry>);
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -42,6 +43,8 @@ pub enum ForeignInst {
     PoseidonNew,
     PoseidonPush,
     PoseidonFinalize,
+    JubjubSumG1,
+    JubjubSumResult,
 
 }
 
@@ -79,6 +82,21 @@ impl<F: FieldExt> ReduceRule<F> {
             }, // 1 * u64
         }
     }
+
+    fn reset(&mut self) {
+        match self {
+            ReduceRule::Bytes(ref mut x, _) => {
+                x.clear()
+            }, // a * u64
+            ReduceRule::Field(ref mut x, _shift) => {
+                *x = F::zero()
+            }, // 4 * u64
+            ReduceRule::U64(ref mut x) => {
+                *x = 0;
+            }, // 1 * u64
+        }
+    }
+
 
     pub fn field_value(&self) -> Option<F> {
         match self {
@@ -123,9 +141,15 @@ impl<F: FieldExt> Reduce<F> {
 }
 
 impl<F:FieldExt> Reduce<F> {
+    /// take in a u64 value and update all the reduce rule accordingly
     pub fn reduce(&mut self, v: u64) {
         let mut cursor = self.cursor;
         let total = self.total_len();
+        if cursor == 0 {
+            for rule in self.rules.iter_mut() {
+                rule.reset()
+            }
+        }
         for index in 0..self.rules.len() {
             if cursor >= self.rules[index].nb_inputs() {
                 cursor = cursor - self.rules[index].nb_inputs();
@@ -162,6 +186,16 @@ mod tests {
     }
 
     #[test]
+    fn test_reduce_bytes_twice() {
+        let reducerule = ReduceRule::<Fr>::Bytes(vec![], 1);
+        let mut reduce = Reduce { cursor:0, rules: vec![reducerule] };
+        reduce.reduce(1);
+        reduce.reduce(2);
+        assert_eq!(reduce.rules[0].bytes_value().unwrap(), vec![2,0,0,0,0,0,0,0])
+    }
+
+
+    #[test]
     fn test_reduce_u64() {
         let mut get = new_reduce(vec![
                 ReduceRule::U64(0),
@@ -186,5 +220,3 @@ mod tests {
         assert_eq!(get.rules[0].field_value().unwrap(), Fr::from_u128((1u128<<64)+1));
     }
 }
-
-

@@ -21,6 +21,7 @@ use halo2_proofs::pairing::bn256::Fr;
 
 use crate::host::merkle::{MerkleTree, MerkleProof};
 use crate::host::kvpair::MongoMerkle;
+use crate::circuits::{Limb, HostOpConfig};
 
 
 /* Given a merkel tree eg1 with height=3:
@@ -219,81 +220,18 @@ impl super::HostOpSelector for MerkleChip<Fr> {
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
-        filtered_operands: Column<Advice>,
-        filtered_opcodes: Column<Advice>,
-        filtered_index: Column<Advice>,
-        merged_operands: Column<Advice>,
-        indicator: Column<Fixed>,
-    ) -> Result<Vec<AssignedCell<Fr, Fr>>, Error> {
+        config: &HostOpConfig,
+    ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
             //Fr::from(BN256OP::BN256ADD as u64),
             //Fr::from(BN256OP::BN256SUM as u64),
         ];
-        let mut arg_cells = vec![];
-        /* The 0,2,5,7's u54 of every G1(11 * u54) return true, others false  */
-        let merge_next = |i: usize| {
-            todo!();
-        };
-        let mut offset = 0;
-        let mut picked_offset = 0;
-        let mut toggle: i32 = -1;
-        for opcode in shared_opcodes {
-            if opcodes.contains(opcode) {
-                region.assign_advice(
-                    || "picked operands",
-                    filtered_operands,
-                    picked_offset,
-                    || Ok(shared_operands[offset]),
-                )?;
-
-                region.assign_advice(
-                    || "picked opcodes",
-                    filtered_opcodes,
-                    picked_offset,
-                    || Ok(opcode.clone()),
-                )?;
-
-                region.assign_advice(
-                    || "picked index",
-                    filtered_index,
-                    picked_offset,
-                    || Ok(shared_index[offset]),
-                )?;
-
-                let value = if toggle >= 0 {
-                    shared_operands[offset]
-                        .clone()
-                        .mul(&Fr::from(1u64 << 32).square())
-                        .add(&shared_operands[toggle as usize])
-                } else {
-                    shared_operands[offset].clone()
-                };
-                let opcell = region.assign_advice(
-                    || "picked merged operands",
-                    merged_operands,
-                    picked_offset,
-                    || Ok(value),
-                )?;
-
-                let value = if merge_next(picked_offset) {
-                    toggle = offset as i32;
-                    Fr::from(1u64 << 54)
-                } else {
-                    arg_cells.append(&mut vec![opcell]);
-                    toggle = -1;
-                    Fr::zero()
-                };
-                region.assign_fixed(|| "indicator", indicator, picked_offset, || Ok(value))?;
-                picked_offset += 1;
-            };
-            offset += 1;
-        }
-        Ok(arg_cells)
+        todo!();
     }
 
     fn synthesize(
-        &self,
-        arg_cells: &Vec<AssignedCell<Fr, Fr>>,
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         todo!();

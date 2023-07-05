@@ -395,6 +395,12 @@ impl Bn256SumChip<Fr> {
         let sum_ret = sum_ret.to_point();
         let sum_ret = ctx.ecc_reduce(&sum_ret);
         ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.z.0);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[0]);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[1]);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[2]);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[0]);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[1]);
+        ctx.0.ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[2]);
         let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
             .unwrap()
             .into_inner()

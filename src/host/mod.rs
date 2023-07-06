@@ -43,7 +43,8 @@ pub enum ForeignInst {
     PoseidonNew,
     PoseidonPush,
     PoseidonFinalize,
-    JubjubSumG1,
+    JubjubSumNew,
+    JubjubSumPush,
     JubjubSumResult,
 
 }

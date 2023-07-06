@@ -154,10 +154,10 @@ mod tests {
 
     fn babysum_to_args(x: Point, y: Point, z:Point) -> Vec<ExternalHostCallEntry> {
         let mut ret = vec![
-            babyarg_to_args(&x.x, ForeignInst::JubjubSumG1),
-            babyarg_to_args(&x.y, ForeignInst::JubjubSumG1),
-            babyarg_to_args(&y.x, ForeignInst::JubjubSumG1),
-            babyarg_to_args(&y.y, ForeignInst::JubjubSumG1),
+            babyarg_to_args(&x.x, ForeignInst::JubjubSumPush),
+            babyarg_to_args(&x.y, ForeignInst::JubjubSumPush),
+            babyarg_to_args(&y.x, ForeignInst::JubjubSumPush),
+            babyarg_to_args(&y.y, ForeignInst::JubjubSumPush),
             babyarg_to_args(&z.x, ForeignInst::JubjubSumResult),
             babyarg_to_args(&z.y, ForeignInst::JubjubSumResult)
         ]
@@ -167,7 +167,15 @@ mod tests {
         ret
     }
 
+    struct JubjubSumContext {
+        acc: Point,
+        operand: Point,
+        coeff: [u64; 4],
+    }
 
+    fn generate_entries_single_round(context: &mut JubjubSumContext)  -> Vec<ExternalHostCallEntry> {
+        todo!()
+    }
 
     #[test]
     fn generate_jubjub_sum_input() {

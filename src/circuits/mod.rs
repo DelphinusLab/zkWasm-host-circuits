@@ -6,6 +6,7 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod babyjub;
+// pub mod bubblesort;
 
 
 use std::marker::PhantomData;

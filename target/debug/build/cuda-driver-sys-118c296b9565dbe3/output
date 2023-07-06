@@ -1,0 +1,3 @@
+cargo:rustc-link-lib=dylib=cuda
+cargo:rerun-if-changed=build.rs
+cargo:rerun-if-env-changed=CUDA_LIBRARY_PATH

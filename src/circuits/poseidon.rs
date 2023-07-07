@@ -9,9 +9,6 @@ use halo2_proofs::arithmetic::FieldExt;
 use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
 
-const START_ENCODE:u64 = 1<<32;
-const END_ENCODE:u64 = 2<<32;
-
 use crate::circuits::{
     CommonGateConfig,
     Limb,

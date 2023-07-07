@@ -1,11 +1,11 @@
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{AssignedCell, Layouter, Region},
-    plonk::{ConstraintSystem, Error, Fixed},
+    circuit::{Layouter, Region},
+    plonk::{ConstraintSystem, Error},
 };
 
-pub const BN256FQ_SIZE: usize = 5;
+//pub const BN256FQ_SIZE: usize = 5;
 pub const BN256G1_SIZE: usize = 11;
 pub const BN256G2_SIZE: usize = 21;
 pub const BN256GT_SIZE: usize = 60;
@@ -19,7 +19,8 @@ use crate::circuits::bn256::{
     Bn256ChipConfig,
 };
 
-use crate::circuits::{HostOpSelector, HostOpConfig, Limb};
+use crate::circuits::host::{HostOpSelector, HostOpConfig};
+use crate::utils::Limb;
 
 use crate::host::ForeignInst;
 
@@ -75,7 +76,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
                    operand, Fr::zero(), true)?;
-                r.push(Limb::new(Some(p_2), operand));
+                r.push(p_2);
 
             }
 
@@ -84,7 +85,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let g1zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(g1zero), operand));
+            r.push(g1zero);
 
 
             for j in 0..4 {
@@ -101,7 +102,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5*j + 4 + 11).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
                    operand, Fr::zero(), true)?;
-                r.push(Limb::new(Some(p_2), operand));
+                r.push(p_2);
 
             }
 
@@ -110,7 +111,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let g2zero = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(g2zero), operand));
+            r.push(g2zero);
 
             for j in 0..12 {
                 for i in 0..2 {
@@ -126,7 +127,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5*j+4+32).clone().unwrap();
                 let q  = config.assign_one_line(region, &mut offset, operand, opcode, index,
                    operand, Fr::zero(), true)?;
-                r.push(Limb::new(Some(q), operand));
+                r.push(q);
             }
         }
         Ok(r)
@@ -198,15 +199,15 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5*j + 4).clone().unwrap();
                 let p_2 = config.assign_one_line(region, &mut offset, operand, opcode, index,
                    operand, Fr::zero(), true)?;
-                r.push(Limb::new(Some(p_2), operand));
+                r.push(p_2);
 
             }
 
             // whether g1 is zero or not
             let ((operand, opcode), index) = *group.get(10).clone().unwrap();
-            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
         }
         println!("r: {:?} with length {}", r, r.len());
         Ok(r)

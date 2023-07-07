@@ -132,27 +132,42 @@ macro_rules! customized_circuits_expand {
                 start_offset: usize,
                 gate_cell: &GateCell,
                 value: F,
-            ) -> Result<AssignedCell<F, F>, Error> {
+            ) -> Result<Limb<F>, Error> {
                 let cell = gate_cell.cell;
                 //println!("Assign Cell at {} {} {:?}", start_offset, gate_cell.name, value);
                 if cell[0] == 0 { // advice
-                    region.assign_advice(
+                    let c = region.assign_advice(
                         || gate_cell.name.clone(),
                         self.witness[cell[1]],
                         start_offset + cell[2],
                         || Ok(value)
-                    )
+                    )?;
+                    Ok(Limb::new(Some(c), value))
                 } else if cell[0] == 1 { // fix
-                    region.assign_fixed(
+                    let c = region.assign_fixed(
                         || format!("assign cell"),
                         self.fixed[cell[1]],
                         start_offset + cell[2],
                         || Ok(value)
-                    )
+                    )?;
+                    Ok(Limb::new(Some(c), value))
                 } else { // selector
                     unreachable!()
                 }
             }
+
+            pub fn bind_cell<F:FieldExt>(
+                &self,
+                region: &mut Region<F>,
+                start_offset: usize,
+                cell: &GateCell,
+                value: &Limb<F>,
+            ) -> Result<Limb<F>, Error> {
+                let limb = self.assign_cell(region, start_offset, cell, value.value.clone())?;
+                value.cell.as_ref().map(|value| region.constrain_equal(limb.get_the_cell().cell(), value.cell()));
+                Ok(limb)
+            }
+
 
             pub fn enable_selector<F:FieldExt>(
                 &self,
@@ -216,6 +231,7 @@ mod tests {
     use crate::table_item;
     use crate::item_count;
     use crate::utils::GateCell;
+    use crate::utils::Limb;
     use halo2_proofs::arithmetic::FieldExt;
     use halo2_proofs::plonk::{
         Fixed, Column, Advice,
@@ -223,7 +239,7 @@ mod tests {
         Error,
     };
     use halo2_proofs::poly::Rotation;
-    use halo2_proofs::circuit::{Region, AssignedCell};
+    use halo2_proofs::circuit::{Region};
 
     customized_circuits!(TestConfig, 2, 2, 1, 1,
         | wc  | b2 | c2 |  d2

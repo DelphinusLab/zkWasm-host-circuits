@@ -21,7 +21,7 @@ use halo2_proofs::pairing::bn256::Fr;
 
 use crate::host::merkle::{MerkleTree, MerkleProof};
 use crate::host::kvpair::MongoMerkle;
-use crate::circuits::{Limb, HostOpConfig};
+use crate::circuits::{Limb, host::HostOpConfig};
 
 
 /* Given a merkel tree eg1 with height=3:
@@ -203,7 +203,7 @@ impl<F: FieldExt> MerkleChip<F> {
     }
 }
 
-impl super::HostOpSelector for MerkleChip<Fr> {
+impl crate::circuits::host::HostOpSelector for MerkleChip<Fr> {
     type Config = MerkleConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,

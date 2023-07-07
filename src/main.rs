@@ -19,9 +19,8 @@ use crate::{
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Layouter, SimpleFloorPlanner, Region},
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Selector, Expression, VirtualCells},
-    poly::Rotation,
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{Circuit, ConstraintSystem, Error},
 };
 
 
@@ -37,9 +36,11 @@ use crate::circuits::{
     bls::Bls381PairChip, bls::Bls381SumChip,
     bn256::Bn256PairChip, bn256::Bn256SumChip,
     poseidon::PoseidonChip,
-    HostOpSelector,
-    HostOpChip,
-    HostOpConfig,
+    host::{
+        HostOpSelector,
+        HostOpChip,
+        HostOpConfig,
+    }
 };
 
 use crate::utils::params::{HostCircuitInfo, Prover};

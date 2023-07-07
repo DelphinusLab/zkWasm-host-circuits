@@ -3,7 +3,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::{VirtualCells, Error, Expression};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::circuit::{Region, AssignedCell, Layouter};
+use halo2_proofs::circuit::{Region, Layouter};
 use crate::host::{
     ForeignInst,
     ExternalHostCallEntryTable,
@@ -14,16 +14,18 @@ use crate::host::ForeignInst::{
     PoseidonPush,
     PoseidonFinalize,
 };
-use crate::circuits::{Limb, LookupAssistConfig};
+use crate::circuits::LookupAssistConfig;
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
 use crate::circuits::LookupAssistChip;
 use crate::host::poseidon::gen_hasher;
 
-use crate::circuits::{
+use crate::circuits::host::{
     HostOpSelector,
     HostOpConfig,
 };
+
+use crate::utils::Limb;
 
 impl LookupAssistConfig for () {
     /// register a column (col) to be range checked by limb size (sz)
@@ -111,13 +113,13 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let cell = config.assign_one_line(
+            let limb = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
                 true
             )?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
 
             for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
                 let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
@@ -138,13 +140,13 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let cell = config.assign_one_line(
+            let limb = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
                 false
             )?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
 
             for subgroup in default_entries.clone().iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
                 let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;

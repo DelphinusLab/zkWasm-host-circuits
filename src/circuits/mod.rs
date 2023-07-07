@@ -6,11 +6,11 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod babyjub;
+pub mod host;
 
 
-use std::marker::PhantomData;
-use halo2_proofs::pairing::bn256::Fr;
 use crate::utils::{
+    Limb,
     GateCell,
     field_to_bn,
 };
@@ -25,229 +25,13 @@ use crate::{
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Region, AssignedCell, Layouter, Chip},
+    circuit::{Region, AssignedCell},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells
     },
     poly::Rotation,
 };
-
-use crate::constant_from;
-
-customized_circuits!(HostOpConfig, 2, 8, 2, 0,
-   | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
-   | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
-);
-
-impl HostOpConfig {
-    pub fn configure<F:FieldExt>(
-        &self,
-        cs: &mut ConstraintSystem<F>,
-    ) {
-        cs.lookup_any("filter-shared-ops", |meta| {
-            let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
-            let soper = self.get_expr(meta, HostOpConfig::shared_operand());
-            let sidx = self.get_expr(meta, HostOpConfig::shared_index());
-            let enable = self.get_expr(meta, HostOpConfig::enable());
-            let fopc= self.get_expr(meta, HostOpConfig::filtered_opcode());
-            let foper = self.get_expr(meta, HostOpConfig::filtered_operand());
-            let fidx = self.get_expr(meta, HostOpConfig::filtered_index());
-            vec![(fidx*enable.clone(), sidx), (foper*enable.clone(), soper), (fopc*enable.clone(), sopc)]
-        });
-
-        cs.create_gate("merge operands in filtered columns", |meta| {
-            let merged_op = self.get_expr(meta, HostOpConfig::merged_op());
-            let merged_op_n = self.get_expr(meta, HostOpConfig::merged_op_n());
-            let cur_op = self.get_expr(meta, HostOpConfig::filtered_operand());
-            let indicator = self.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
-        });
-
-        cs.create_gate("enable consistant", |meta| {
-            let enable = self.get_expr(meta, HostOpConfig::enable());
-            let enable_n = self.get_expr(meta, HostOpConfig::enable_n());
-            let sel = self.get_expr(meta, HostOpConfig::sel());
-            vec![(enable - constant_from!(1 as u64)) * enable_n * sel]
-        });
-    }
-
-    pub fn assign_merged_operands(
-        &self,
-        region: &mut Region<Fr>,
-        offset: &mut usize,
-        values: Vec<&((Fr, Fr), Fr)>,
-        indicator: Fr,
-        enable: bool,
-    ) -> Result<Limb<Fr>, Error> {
-        let mut rev = values.clone();
-        let len = values.len();
-        rev.reverse();
-        let mut merged_ops = vec![];
-        let mut merged_acc = Fr::zero();
-        for c in rev.iter() {
-            merged_acc = c.0.0 + merged_acc * indicator;
-            merged_ops.push(merged_acc);
-        };
-        merged_ops.reverse();
-        let mut ret = None;
-        for (i, (((operand, opcode), index), merged_op)) in values.into_iter().zip(merged_ops).enumerate() {
-            self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), *operand)?;
-            self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
-            self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
-            self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
-            self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
-            let limb = self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merged_op)?;
-            if i == len-1 {
-                self.assign_cell(region, *offset, &HostOpConfig::indicator(), Fr::zero())?;
-            } else {
-                self.assign_cell(region, *offset, &HostOpConfig::indicator(), indicator)?;
-                if i == 0 {
-                    ret = Some(Limb::new(Some(limb), merged_op));
-                }
-            }
-            *offset += 1;
-        }
-        Ok(ret.unwrap())
-    }
-
-    pub fn assign_one_line(
-        &self,
-        region: &mut Region<Fr>,
-        offset: &mut usize,
-        operand: Fr,
-        opcode: Fr,
-        index: Fr,
-        merge: Fr,
-        ind: Fr,
-        enable: bool,
-    ) -> Result<AssignedCell<Fr, Fr>, Error> {
-        let r = self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), operand)?;
-        self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
-        self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
-        self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
-        self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
-        self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
-        self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
-        *offset +=1;
-        Ok(r)
-    }
-}
-
-pub trait HostOpSelector {
-    type Config: Clone + std::fmt::Debug;
-    fn configure(
-        meta: &mut ConstraintSystem<Fr>,
-    ) -> Self::Config;
-    fn construct(c: Self::Config) -> Self;
-    fn assign(
-        region: &mut Region<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-        config: &HostOpConfig,
-    ) -> Result<Vec<Limb<Fr>>, Error>;
-    fn synthesize(
-        &mut self,
-        arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
-    ) -> Result<(), Error>;
-}
-
-
-pub struct HostOpChip<F: FieldExt, S: HostOpSelector> {
-    config: HostOpConfig,
-    selector_chip_config: S::Config,
-    _marker: PhantomData<(F, S)>,
-}
-
-impl<F: FieldExt, S: HostOpSelector> Chip<F> for HostOpChip<F, S> {
-    type Config = HostOpConfig;
-    type Loaded = ();
-
-    fn config(&self) -> &Self::Config {
-        &self.config
-    }
-
-    fn loaded(&self) -> &Self::Loaded {
-        &()
-    }
-}
-
-impl<S: HostOpSelector> HostOpChip<Fr, S> {
-    pub fn construct(config: <Self as Chip<Fr>>::Config, selector_chip_config: S::Config) -> Self {
-        Self {
-            config,
-            selector_chip_config,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn configure(
-        cs: &mut ConstraintSystem<Fr>,
-    ) -> <Self as Chip<Fr>>::Config {
-        let witness= [0; 8]
-                .map(|_| cs.advice_column());
-        witness.map(|x| cs.enable_equality(x));
-        let fixed = [cs.fixed_column(), cs.fixed_column()];
-        let selector =[];
-
-        let config = HostOpConfig::new(witness, fixed, selector);
-        config.configure(cs);
-        config
-    }
-
-    pub fn assign(
-        &self,
-        layouter: &mut impl Layouter<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-    ) -> Result<Vec<Limb<Fr>>, Error> {
-        let mut arg_cells = None;
-        layouter.assign_region(
-            || "filter operands and opcodes",
-            |mut region| {
-                println!("asign_region");
-                let mut offset = 0;
-                for opcode in shared_opcodes {
-                    println!("opcode is {:?}", opcode);
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_opcode(),
-                        opcode.clone()
-                    )?;
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_operand(),
-                        shared_operands[offset],
-                    )?;
-                    self.config.assign_cell(
-                        &mut region,
-                        offset,
-                        &HostOpConfig::shared_index(),
-                        shared_index[offset],
-                    )?;
-                    offset += 1;
-                }
-                arg_cells = Some(S::assign(
-                    &mut region,
-                    shared_operands,
-                    shared_opcodes,
-                    shared_index,
-                    &self.config,
-                )?);
-                println!("offset is {:?}", offset);
-                Ok(())
-            },
-        )?;
-        Ok(arg_cells.unwrap())
-    }
-}
-
-
 
 
 /*
@@ -259,21 +43,6 @@ customized_circuits!(CommonGateConfig, 2, 5, 12, 0,
    | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | sel
    | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         | nil
 );
-
-#[derive(Clone, Debug)]
-pub struct Limb<F: FieldExt> {
-    pub cell: Option<AssignedCell<F, F>>,
-    pub value: F
-}
-
-impl<F: FieldExt> Limb<F> {
-    pub fn new(cell: Option<AssignedCell<F, F>>, value: F) -> Self {
-        Limb { cell, value }
-    }
-    pub fn get_the_cell(&self) -> AssignedCell<F,F> {
-        self.cell.as_ref().unwrap().clone()
-    }
-}
 
 pub trait LookupAssistConfig {
     /// register a column (col) to be range checked by limb size (sz)
@@ -495,7 +264,7 @@ impl CommonGateConfig {
     fn assign_witness<F:FieldExt, LC:LookupAssistChip<F>> (
        &self,
        region: &mut Region<F>,
-       lookup_assist_chip: &mut LC,
+       _lookup_assist_chip: &mut LC,
        offset: &mut usize,
        value:  [Option<Limb<F>>; 5],
        hint: u64, // the boundary limit of the first cell
@@ -510,11 +279,11 @@ impl CommonGateConfig {
         let mut limbs = vec![];
         for i in 0..5 {
             let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let cell = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
+            let limb = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
             value[i].clone().map(|x| {
-                limbs.push(Limb::new(Some(cell.clone()), x.value));
-                x.cell.map(|c| {
-                    region.constrain_equal(cell.cell(), c.cell()).unwrap();
+                limbs.push(limb.clone());
+                x.cell.as_ref().map(|c| {
+                    region.constrain_equal(limb.get_the_cell().cell(), c.cell()).unwrap();
                 });
             });
         }
@@ -578,11 +347,11 @@ impl CommonGateConfig {
         let mut limbs = vec![];
         for i in 0..6 {
             let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let cell = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
+            let limb = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
             value[i].clone().map(|x| {
-                limbs.push(Limb::new(Some(cell.clone()), x.value));
+                limbs.push(limb.clone());
                 x.cell.map(|c| {
-                    region.constrain_equal(cell.cell(), c.cell()).unwrap();
+                    region.constrain_equal(limb.get_the_cell().cell(), c.cell()).unwrap();
                 });
             });
         }

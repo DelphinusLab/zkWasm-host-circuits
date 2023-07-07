@@ -1,10 +1,7 @@
 use halo2_proofs::arithmetic::BaseExt;
 use crate::utils::field_to_bn;
 use crate::host::ForeignInst;
-use crate::host::{
-    ExternalHostCallEntryTable,
-    ExternalHostCallEntry,
-};
+use crate::host::ExternalHostCallEntry;
 use num_bigint::BigUint;
 
 pub mod bls381adaptor;

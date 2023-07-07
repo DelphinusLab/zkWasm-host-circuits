@@ -2,6 +2,7 @@ use crate::utils::{
     GateCell,
     field_to_bn,
     bn_to_field,
+    Limb,
 };
 use crate::{
     customized_circuits,
@@ -17,7 +18,7 @@ use crate::circuits::{
 use std::ops::Div;
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Region, AssignedCell},
+    circuit::Region,
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells

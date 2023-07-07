@@ -4,7 +4,7 @@ use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
     pairing::bls12_381::G1Affine,
-    plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
+    plonk::{ConstraintSystem, Error},
 };
 use halo2ecc_s::circuit::base_chip::BaseChipOps;
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
@@ -34,7 +34,7 @@ use halo2ecc_s::{
 
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
-use crate::circuits::Limb;
+use crate::utils::Limb;
 
 
 #[derive(Clone, Debug)]

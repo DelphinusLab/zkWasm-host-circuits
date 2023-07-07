@@ -31,7 +31,7 @@ use halo2ecc_s::{
 
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
-use crate::circuits::Limb;
+use crate::utils::Limb;
 
 #[derive(Clone, Debug)]
 pub struct Bn256ChipConfig {

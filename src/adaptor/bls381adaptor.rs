@@ -1,28 +1,27 @@
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
-    circuit::{AssignedCell, Layouter, Region},
+    circuit::{Layouter, Region},
     plonk::{ConstraintSystem, Error},
 };
 use halo2_proofs::arithmetic::FieldExt;
 
-pub const BLS381FQ_SIZE: usize = 8;
+//pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
 pub const BLS381GT_SIZE: usize = 96;
 const BLSPAIR_SIZE: usize = BLS381G1_SIZE + BLS381G2_SIZE + BLS381GT_SIZE;
 const BLSSUM_SIZE: usize = BLS381G1_SIZE * 3;
 
-
-use std::ops::Mul;
 use crate::circuits::bls::{
     Bls381PairChip,
     Bls381SumChip,
     Bls381ChipConfig,
 };
 
-use crate::circuits::{HostOpSelector, HostOpConfig, Limb};
+use crate::circuits::host::{HostOpSelector, HostOpConfig};
 
 use crate::host::ForeignInst;
+use crate::utils::Limb;
 
 impl HostOpSelector for Bls381PairChip<Fr> {
     type Config = Bls381ChipConfig;
@@ -74,9 +73,9 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
 
-            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
 
             for i in 0..16 {
                 let limb = config.assign_merged_operands(
@@ -91,9 +90,9 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
             let ((operand, opcode), index) = *group.get(49).clone().unwrap();
 
-            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
 
             for i in 0..48 {
                 let limb = config.assign_merged_operands(
@@ -169,11 +168,10 @@ impl HostOpSelector for Bls381SumChip<Fr> {
                 r.push(limb);
             }
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
-            let cell = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
-            r.push(Limb::new(Some(cell), operand));
+            r.push(limb);
         }
-        println!("r: {:?} with length {}", r, r.len());
         Ok(r)
     }
 

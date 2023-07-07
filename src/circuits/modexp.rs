@@ -1,6 +1,7 @@
-use crate::utils::{bn_to_field, field_to_bn};
+use crate::utils::{bn_to_field, field_to_bn, Limb};
 
-use crate::circuits::{CommonGateConfig, Limb};
+use crate::circuits::CommonGateConfig;
+
 
 use crate::circuits::range::{RangeCheckChip, RangeCheckConfig};
 
@@ -720,15 +721,15 @@ mod tests {
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
     use num_bigint::BigUint;
-    // use crate::circuits::CommonGateConfig;
-    use crate::circuits::{CommonGateConfig, LookupAssistChip, LookupAssistConfig};
+    use crate::circuits::CommonGateConfig;
+    use crate::utils::Limb;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
-    use super::{Limb, ModExpChip, Number};
+    use super::{ModExpChip, Number};
 
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {

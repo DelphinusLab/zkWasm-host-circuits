@@ -3,13 +3,15 @@ use crate::utils::bn_to_field;
 use halo2_proofs::pairing::bn256::Fr;
 use std::ops::{SubAssign, MulAssign, AddAssign};
 use ff::Field;
-use ff::PrimeField;
 use num_bigint::BigUint;
 
+use ff_ce::BitIterator;
+use franklin_crypto::alt_babyjubjub::fs;
+
 lazy_static! {
-    static ref D_BIG: BigUint = BigUint::parse_bytes(b"168696", 10).unwrap();
+    static ref D_BIG: BigUint = BigUint::parse_bytes(b"12181644023421730124874158521699555681764249180949974110617291017600649128846", 10).unwrap();
     static ref D: Fr = bn_to_field(&(D_BIG));
-    static ref A_BIG: BigUint = BigUint::parse_bytes(b"168700", 10).unwrap();
+    static ref A_BIG: BigUint = BigUint::parse_bytes(b"21888242871839275222246405745257275088548364400416034343698204186575808495616", 10).unwrap();
     static ref A: Fr = bn_to_field(&(A_BIG));
     pub static ref Q: BigUint = BigUint::parse_bytes(
         b"21888242871839275222246405745257275088548364400416034343698204186575808495617",10
@@ -101,6 +103,12 @@ impl Point {
             y: Fr::one(),
         }
     }
+    pub fn zero() -> Self {
+        Point {
+            x: Fr::zero(),
+            y: Fr::one(),
+        }
+    }
     pub fn projective(&self) -> PointProjective {
         PointProjective {
             x: self.x,
@@ -109,21 +117,35 @@ impl Point {
         }
     }
 
+    pub fn add(&self, other: &Point) -> Point{
+        self.projective().add(&other.projective()).affine()
+    }
+
     pub fn mul_scalar(&self, n: &BigUint) -> Point {
-        let mut r: PointProjective = PointProjective {
-            x: Fr::zero(),
-            y: Fr::one(),
-            z: Fr::one(),
-        };
-        let mut exp: PointProjective = self.projective();
+        let mut r = Point::zero();
+        let mut exp = self.clone();
         let b = n.to_bytes_le();
+        //little-end wise, like 6, it is 0,1,1 sequence
         for i in 0..n.bits() {
             if test_bit(&b, i.try_into().unwrap()) {
                 r = r.add(&exp);
             }
             exp = exp.add(&exp);
         }
-        r.affine()
+        r
+    }
+
+
+    pub fn mul_scalar_fs(&self, scalar: fs::Fs) -> Point {
+        let mut r = Point::zero();
+        //big-end wise, like 6, it is 1,1,0 sequence
+        for b in BitIterator::<fs::FsRepr>::new(scalar.into()) {
+            r = r.add(&r);
+            if b {
+                r = r.add(self);
+            }
+        }
+        r
     }
 }
 
@@ -134,36 +156,35 @@ pub fn test_bit(b: &[u8], i: usize) -> bool {
 #[cfg(test)]
 
 mod tests {
+    use super::{Point, PointProjective};
+    use crate::adaptor::fr_to_args;
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
     use crate::utils::field_to_bn;
-    use crate::adaptor::fr_to_args;
     use halo2_proofs::arithmetic::FieldExt;
     use halo2_proofs::pairing::bn256::pairing;
     use halo2_proofs::pairing::bn256::Fr;
     use halo2_proofs::pairing::group::Group;
-    use super::{Point, PointProjective};
     use num_bigint::BigUint;
     use rand::rngs::OsRng;
     use std::fs::File;
     use std::ops::Add;
 
-
     fn babyarg_to_args(v: &Fr, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
         fr_to_args(*v, 4, 64, op)
     }
 
-    fn babysum_to_args(x: Point, y: Point, z:Point) -> Vec<ExternalHostCallEntry> {
+    fn babysum_to_args(x: Point, y: Point, z: Point) -> Vec<ExternalHostCallEntry> {
         let mut ret = vec![
             babyarg_to_args(&x.x, ForeignInst::JubjubSumPush),
             babyarg_to_args(&x.y, ForeignInst::JubjubSumPush),
             babyarg_to_args(&y.x, ForeignInst::JubjubSumPush),
             babyarg_to_args(&y.y, ForeignInst::JubjubSumPush),
             babyarg_to_args(&z.x, ForeignInst::JubjubSumResult),
-            babyarg_to_args(&z.y, ForeignInst::JubjubSumResult)
+            babyarg_to_args(&z.y, ForeignInst::JubjubSumResult),
         ]
-        .into_iter()
-        .flatten()
-        .collect();
+            .into_iter()
+            .flatten()
+            .collect();
         ret
     }
 
@@ -173,7 +194,7 @@ mod tests {
         coeff: [u64; 4],
     }
 
-    fn generate_entries_single_round(context: &mut JubjubSumContext)  -> Vec<ExternalHostCallEntry> {
+    fn generate_entries_single_round(context: &mut JubjubSumContext) -> Vec<ExternalHostCallEntry> {
         todo!()
     }
 
@@ -181,10 +202,77 @@ mod tests {
     fn generate_jubjub_sum_input() {
         let identity = Point::identity();
         let identity_proj = identity.projective();
-        let entries = babysum_to_args(Point::identity(), Point::identity(), identity_proj.add(&identity_proj).affine());
+        let entries = babysum_to_args(
+            Point::identity(),
+            Point::identity(),
+            identity_proj.add(&identity_proj).affine(),
+        );
         let table = ExternalHostCallEntryTable(entries);
         let file = File::create("jubjubsumtest.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &table).expect("can not write to file");
         assert_eq!(identity, identity_proj.add(&identity_proj).affine());
     }
+    use ff_ce::PrimeField;
+    use franklin_crypto::alt_babyjubjub::fs;
+    use franklin_crypto::jubjub::ToUniform;
+    use crate::utils::bn_to_field;
+    use std::str::FromStr;
+    #[test]
+    pub fn verify_alt_jubjub_signature() {
+        let msg = b"Foo bar";
+
+        // pad with zeroes to match representation length
+        let mut msg_padded: Vec<u8> = msg.iter().cloned().collect();
+        msg_padded.resize(32, 0u8);
+
+        let c = fs::Fs::to_uniform_32(msg_padded.as_ref());
+        // let mut c_bytes = [0u8; 32];
+        // c.into_repr().write_le(& mut c_bytes[..]).expect("get LE bytes of signature S");
+        // let c_repr_bigint = BigInt::from_signed_bytes_le(&c_bytes);
+        // println!("c {}",c_repr_bigint.to_str_radix(10));
+
+        let vk = Point {
+            x: bn_to_field(&(BigUint::parse_bytes(b"139f1d319d2a51a1938aef20ae4aa05b4bacef0c95ec2acf6d70b0430bed7808", 16).unwrap())),
+            y: bn_to_field(&(BigUint::parse_bytes(b"023abdc9dac65b2e858cf258c0a9b0c2c8a83a86ec2ebbaab8fdb5169b262597", 16).unwrap())),
+        };
+
+        let sig_r = Point {
+            x: bn_to_field(&(BigUint::parse_bytes(b"00d711880dcccc0767dad1aa321fa2f54462c0d91e7c708836b5ac274215e4ca", 16).unwrap())),
+            y: bn_to_field(&(BigUint::parse_bytes(b"303438ab520086fb5e723bdc3c5e0f6a99b7d1caca0b8871ce16ab467d4baf5c", 16).unwrap())),
+        };
+        let p_g = Point {
+            x: bn_to_field(&(BigUint::parse_bytes(b"2ef3f9b423a2c8c74e9803958f6c320e854a1c1c06cd5cc8fd221dc052d76df7", 16).unwrap())),
+            y: bn_to_field(&(BigUint::parse_bytes(b"05a01167ea785d3f784224644a68e4067532c815f5f6d57d984b5c0e9c6c94b7", 16).unwrap())),
+        };
+        let sig_s_str = "1902101563350775171813864964289368622061698554691074493911860015574812994359";
+        let sig_s = fs::Fs::from_str(sig_s_str).unwrap();
+
+        // 0 = c . vk + R -S . P_G that requires all points to be in the same group
+        // self.0
+        //     .mul(c, params)
+        //     .add(&sig.r, params)
+        //     .add(
+        //         &params.generator(p_g).mul(sig.s, params).negate().into(),
+        //         params,
+        //     )
+        //     .eq(&Point::zero())
+        let lhs = vk.mul_scalar_fs(c).add(&sig_r);
+        let rhs = p_g.mul_scalar_fs(sig_s);
+        // println!("lhs x={},y={}",lhs.x,lhs.y);
+        // println!("rhs x={},y={}",rhs.x,rhs.y);
+        assert_eq!(lhs,rhs);
+
+        let c = BigUint::from_bytes_le(&msg_padded);
+        let sig_s = BigUint::from_str(sig_s_str).unwrap();
+        let lhs = vk.mul_scalar(&c).add(&sig_r);
+        let rhs = p_g.mul_scalar(&sig_s);
+        // println!("lhs x={},y={}",lhs.x,lhs.y);
+        // println!("rhs x={},y={}",rhs.x,rhs.y);
+        assert_eq!(lhs,rhs)
+
+
+
+
+    }
+
 }

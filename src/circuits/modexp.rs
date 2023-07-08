@@ -2,7 +2,6 @@ use crate::utils::{bn_to_field, field_to_bn, Limb};
 
 use crate::circuits::CommonGateConfig;
 
-
 use crate::circuits::range::{RangeCheckChip, RangeCheckConfig};
 
 use std::ops::{Div, Mul};
@@ -90,35 +89,22 @@ impl<F: FieldExt> ModExpChip<F> {
         CommonGateConfig::configure(cs, range_check_config)
     }
 
-    pub fn assign_constant(
+    pub fn assign_constant_number(
         &self,
         region: &mut Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: Number<F>,
-        limbbound: u64,
     ) -> Result<Number<F>, Error> {
         let mut limbs = vec![];
         for i in 0..4 {
-            let l = self.config.assign_line(
+            let l = self.config.assign_constant(
                 region,
                 range_check_chip,
                 offset,
-                [Some(number.limbs[i].clone()), None, None, None, None, None],
-                [
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(F::from(number.limbs[i].value)),
-                    None,
-                    None,
-                ],
-                limbbound,
+                &F::from(number.limbs[i].value),
             )?;
-            limbs.push(l[0].clone())
+            limbs.push(l.clone())
         }
         Ok(Number {
             limbs: limbs.try_into().unwrap(),
@@ -522,6 +508,14 @@ impl<F: FieldExt> ModExpChip<F> {
         Ok(())
     }
 
+    /// constraints for (rhs * lhs) % modulus = result
+    /// (x0,x1,x2) * (y0,y1,y2) = (q0,q1,q2) * (m0,m1,m2) + r0,r1,r2
+    /// mod 2^{108}-1:
+    ///    (x2+x1+x0)*(y0+y1+y2) = (q0+q1+q2)*(m0+m1+m2)+(r0+r1+r2)
+    /// mod 2^{216}:
+    ///    (x1*y0+x0*y1)*2^216+x0*y0 = (q0*m1+q1*m0)*2^{216}+q0*m0+r1+r0
+    /// native:
+    ///   x*y = q*m + r
     pub fn mod_mult(
         &self,
         region: &mut Region<F>,
@@ -531,15 +525,6 @@ impl<F: FieldExt> ModExpChip<F> {
         rhs: &Number<F>,
         modulus: &Number<F>,
     ) -> Result<Number<F>, Error> {
-        /*
-         * x0,x1,x2 * y0,y1,y2 = q0,q1,q2 * m0,m1,m2 + r0,r1,r2
-         * mod 2^{108}-1:
-         *     (x2+x1+x0)*(y0+y1+y2) = (q0+q1+q2)*(m0+m1+m2)+(r0+r1+r2)
-         * mod 2^{216}:
-         *     (x1*y0+x0*y1)*2^216+x0*y0 = (q0*m1+q1*m0)*2^{216}+q0*m0+r1+r0
-         * native:
-         *    x*y = q*m + r
-         */
         let bn_lhs = lhs.to_bn();
         let bn_rhs = rhs.to_bn();
         let bn_mult = bn_lhs.mul(bn_rhs);
@@ -600,21 +585,6 @@ impl<F: FieldExt> ModExpChip<F> {
     /// * `cond` - the exp_bit as a Limb in F, is only 0x1 or 0x0
     /// * `base` - the value of the base as a Number<F>
     /// * `one`  - the value of 1 as a Number<F>
-    ///
-    /// # Constraint
-    ///
-    ///     (w[1] * w[2] * c[7]) + (w[0] * w[3] * c[6]) + (w[4] * c[4]) + (w[3] * c[3]) = 0
-    ///     (cond * base * 1   ) + (cond * base * -1  ) + (res * 1    ) + (one * -1   ) = 0
-    ///
-    /// where: \
-    ///         res = base,   if exp_bit = '1' \
-    ///         res = one,    if exp_bit = '0' \
-    ///
-    /// # Example
-    /// ```
-    /// let select(region, offset, &cond, &base, &one);
-    /// ```
-    ///
     pub fn select(
         &self,
         region: &mut Region<F>,
@@ -624,39 +594,18 @@ impl<F: FieldExt> ModExpChip<F> {
         base: &Number<F>,
         one: &Number<F>,
     ) -> Result<Number<F>, Error> {
-        let w4_val = if cond.value == F::one() {
-            base.clone()
-        } else {
-            one.clone()
-        };
         let mut limbs = vec![];
         for i in 0..4 {
-            let l = self.config.assign_line(
+            let l = self.config.select(
                 region,
                 range_check_chip,
                 offset,
-                [
-                    Some(cond.clone()),
-                    Some(cond.clone()),
-                    Some(base.limbs[i].clone()),
-                    Some(one.limbs[i].clone()),
-                    Some(w4_val.limbs[i].clone()),
-                    None,
-                ],
-                [
-                    None,
-                    None,
-                    None,
-                    Some(-F::one()),
-                    Some(F::one()),
-                    None,
-                    Some(F::one()),
-                    Some(-F::one()),
-                    None,
-                ],
-                0, // check this value is correct for select
+                cond,
+                &one.limbs[i],
+                &base.limbs[i],
+                0,
             )?;
-            limbs.push(l[4].clone());
+            limbs.push(l);
         }
         Ok(Number {
             limbs: limbs.try_into().unwrap(),
@@ -697,12 +646,11 @@ impl<F: FieldExt> ModExpChip<F> {
             &mut limbs,
             108,
         )?;
-        let mut acc = self.assign_constant(
+        let mut acc = self.assign_constant_number(
             region,
             range_check_chip,
             offset,
             Number::from_bn(&BigUint::from(1 as u128)),
-            0,
         )?;
         let one = acc.clone();
         for limb in limbs.iter() {
@@ -717,12 +665,12 @@ impl<F: FieldExt> ModExpChip<F> {
 #[cfg(test)]
 mod tests {
     use crate::circuits::range::{RangeCheckChip, RangeCheckConfig};
+    use crate::circuits::CommonGateConfig;
+    use crate::utils::Limb;
     use crate::value_for_assign;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
     use num_bigint::BigUint;
-    use crate::circuits::CommonGateConfig;
-    use crate::utils::Limb;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},

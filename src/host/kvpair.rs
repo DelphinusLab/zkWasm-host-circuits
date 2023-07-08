@@ -220,6 +220,8 @@ lazy_static::lazy_static! {
         }
         default_hash
     };
+
+    static ref POSEIDON_HASHER: poseidon::Poseidon<Fr, 9, 8> = gen_hasher();
 }
 
 impl MerkleTree<[u8; 32], 20> for MongoMerkle {
@@ -246,7 +248,7 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
     }
 
     fn hash(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
-        let mut hasher = gen_hasher();
+        let mut hasher = POSEIDON_HASHER.clone();
         let a = Fr::from_repr(*a).unwrap();
         let b = Fr::from_repr(*b).unwrap();
         hasher.update(&[a, b]);

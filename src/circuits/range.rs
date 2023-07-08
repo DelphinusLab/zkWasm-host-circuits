@@ -10,6 +10,7 @@ use crate::{
     item_count,
     customized_circuits_expand,
     constant_from,
+    value_for_assign,
 };
 use crate::circuits::{
     LookupAssistConfig,

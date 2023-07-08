@@ -140,7 +140,7 @@ macro_rules! customized_circuits_expand {
                         || gate_cell.name.clone(),
                         self.witness[cell[1]],
                         start_offset + cell[2],
-                        || Ok(value)
+                        || value_for_assign!(value)
                     )?;
                     Ok(Limb::new(Some(c), value))
                 } else if cell[0] == 1 { // fix
@@ -148,7 +148,7 @@ macro_rules! customized_circuits_expand {
                         || format!("assign cell"),
                         self.fixed[cell[1]],
                         start_offset + cell[2],
-                        || Ok(value)
+                        || value_for_assign!(value)
                     )?;
                     Ok(Limb::new(Some(c), value))
                 } else { // selector

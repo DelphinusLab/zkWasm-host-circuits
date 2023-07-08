@@ -13,8 +13,6 @@ use crate::circuits::range::{
     RangeCheckChip,
 };
 
-use std::ops::{Mul, Div};
-
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region},
@@ -36,11 +34,6 @@ pub struct Point<F: FieldExt> {
     x: Limb<F>,
     y: Limb<F>,
 }
-
-/*
-impl<F: FieldExt> Point<F> {
-}
-*/
 
 impl<F: FieldExt> Chip<F> for BabyJubChip<F> {
     type Config = CommonGateConfig;

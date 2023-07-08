@@ -4,6 +4,7 @@ use crate::{
     item_count,
     customized_circuits_expand,
     constant_from,
+    value_for_assign,
 };
 use crate::utils::GateCell;
 use std::marker::PhantomData;
@@ -16,7 +17,7 @@ use halo2_proofs::plonk::{
 };
 use halo2_proofs::poly::Rotation;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::circuit::{Chip, Region, AssignedCell, Layouter};
+use halo2_proofs::circuit::{Chip, Region, Layouter};
 use halo2_proofs::pairing::bn256::Fr;
 
 use crate::host::merkle::{MerkleTree, MerkleProof};

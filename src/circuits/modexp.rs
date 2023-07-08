@@ -612,6 +612,7 @@ impl<F: FieldExt> ModExpChip<F> {
         })
     }
 
+    /// base^exp mod modulus
     pub fn mod_exp(
         &self,
         region: &mut Region<F>,

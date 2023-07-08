@@ -22,8 +22,9 @@ use halo2_proofs::{
 };
 use std::marker::PhantomData;
 
-pub struct BabyJubChip<F:FieldExt> {
+pub struct AltJubChip<F:FieldExt> {
     config: CommonGateConfig,
+    state: JubState<F>,
     _marker: PhantomData<F>
 }
 
@@ -31,11 +32,16 @@ pub struct BabyJubChip<F:FieldExt> {
 
 #[derive(Clone, Debug)]
 pub struct Point<F: FieldExt> {
-    x: Limb<F>,
-    y: Limb<F>,
+    pub x: Limb<F>,
+    pub y: Limb<F>,
 }
 
-impl<F: FieldExt> Chip<F> for BabyJubChip<F> {
+pub struct JubState<F: FieldExt> {
+    acc: Point<F>,
+    default: Point<F>,
+}
+
+impl<F: FieldExt> Chip<F> for AltJubChip<F> {
     type Config = CommonGateConfig;
     type Loaded = ();
 
@@ -48,22 +54,119 @@ impl<F: FieldExt> Chip<F> for BabyJubChip<F> {
     }
 }
 
-impl<F: FieldExt> BabyJubChip<F> {
+impl<F: FieldExt> JubState<F> {
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
+        let one = config.assign_constant(region, &mut (), offset, &F::one())?;
+        self.acc = Point {
+            x: zero.clone(),
+            y: one.clone(),
+        };
+        self.default = Point {
+            x: zero,
+            y: one,
+        };
+        Ok(())
+    }
+}
+
+impl<F: FieldExt> AltJubChip<F> {
     pub fn new(config: CommonGateConfig) -> Self {
-        BabyJubChip {
+        let state = JubState {
+            acc: Point {
+                x: Limb::new(None, F::one()),
+                y: Limb::new(None, F::one()),
+            },
+            default: Point {
+                x: Limb::new(None, F::one()),
+                y: Limb::new(None, F::one()),
+            },
+        };
+        AltJubChip {
             config,
+            state,
             _marker: PhantomData,
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, range_check_config: &RangeCheckConfig) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, range_check_config)
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.state.initialize(config, region, offset)
+
+    }
+
+    pub fn assign_incremental_msm(
+        &mut self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        point: &Point<F>,
+        scalar: &Limb<F>,
+        reset: &Limb<F>,
+        result: &Point<F>,
+    ) -> Result<(), Error> {
+        self.state.acc.x = self.config.select(
+            region,
+            &mut (),
+            offset,
+            &reset,
+            &self.state.acc.x,
+            &self.state.default.x,
+            0
+        )?;
+
+        self.state.acc.y = self.config.select(
+            region,
+            &mut (),
+            offset,
+            &reset,
+            &self.state.acc.y,
+            &self.state.default.y,
+            0
+        )?;
+
+        let operand = self.mul_scalar(
+            region,
+            offset,
+            scalar,
+            point,
+        )?;
+
+        let acc = self.add(
+            region,
+            offset,
+            &self.state.acc,
+            &operand
+        )?;
+
+        self.state.acc = acc;
+        region.constrain_equal(
+            result.x.cell.as_ref().unwrap().cell(),
+            self.state.acc.x.cell.as_ref().unwrap().cell()
+        )?;
+
+        region.constrain_equal(
+            result.y.cell.as_ref().unwrap().cell(),
+            self.state.acc.y.cell.as_ref().unwrap().cell()
+        )?;
+        Ok(())
+    }
+
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &())
     }
 
     pub fn add (
         &self,
         region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         lhs: &Point<F>,
         rhs: &Point<F>,
@@ -74,7 +177,7 @@ impl<F: FieldExt> BabyJubChip<F> {
          */
         let x1x2 = lhs.x.value * rhs.x.value;
         let y1y2 = lhs.y.value * rhs.y.value;
-        let lambda1 = self.config.assign_line(region, range_check_chip, offset,
+        let lambda1 = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lhs.x.clone()),
                 None,
@@ -86,7 +189,7 @@ impl<F: FieldExt> BabyJubChip<F> {
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
             0
         )?[4].clone();
-        let lambda2 = self.config.assign_line(region, range_check_chip, offset,
+        let lambda2 = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lhs.y.clone()),
                 None,
@@ -98,7 +201,7 @@ impl<F: FieldExt> BabyJubChip<F> {
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
             0
         )?[4].clone();
-        let lambda = self.config.assign_line(region, range_check_chip, offset,
+        let lambda = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lambda1),
                 None,
@@ -112,7 +215,7 @@ impl<F: FieldExt> BabyJubChip<F> {
         )?[4].clone();
 
         let x3_f = lhs.x.value * rhs.y.value + lhs.y.value * rhs.x.value;
-        let x3s = self.config.assign_line(region, range_check_chip, offset,
+        let x3s = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lhs.x.clone()),
                 Some(lhs.y.clone()),
@@ -127,7 +230,7 @@ impl<F: FieldExt> BabyJubChip<F> {
 
         //x3 * (1+lambda) = x3s
         let x3_f = x3s.value * (F::one() + lambda.value).invert().unwrap();
-        let x3 = self.config.assign_line(region, range_check_chip, offset,
+        let x3 = self.config.assign_line(region, &mut (), offset,
             [
                 Some(Limb::new(None, x3_f)),
                 Some(x3s.clone()),
@@ -143,7 +246,7 @@ impl<F: FieldExt> BabyJubChip<F> {
 
 
         let y3_f = lhs.y.value * rhs.y.value - lhs.x.value * rhs.x.value;
-        let y3s = self.config.assign_line(region, range_check_chip, offset,
+        let y3s = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lhs.y.clone()),
                 Some(lhs.x.clone()),
@@ -158,7 +261,7 @@ impl<F: FieldExt> BabyJubChip<F> {
 
         //y3 * (1-lambda) = y3s
         let y3_f = y3s.value * (F::one() - lambda.value).invert().unwrap();
-        let y3 = self.config.assign_line(region, range_check_chip, offset,
+        let y3 = self.config.assign_line(region, &mut (), offset,
             [
                 Some(Limb::new(None, y3_f)),
                 Some(y3s.clone()),
@@ -175,11 +278,10 @@ impl<F: FieldExt> BabyJubChip<F> {
 
     pub fn mul_scalar(
         &self,
-        region: &mut Region<F>,
-        range_check_chip: &mut RangeCheckChip<F>,
-        offset: &mut usize,
-        lhs: &Limb<F>,
-        rhs: &Point<F>,
+        _region: &mut Region<F>,
+        _offset: &mut usize,
+        _lhs: &Limb<F>,
+        _rhs: &Point<F>,
     ) -> Result<Point<F>, Error> {
         todo!()
     }

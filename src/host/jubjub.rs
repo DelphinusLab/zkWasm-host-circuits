@@ -269,10 +269,6 @@ mod tests {
         // println!("lhs x={},y={}",lhs.x,lhs.y);
         // println!("rhs x={},y={}",rhs.x,rhs.y);
         assert_eq!(lhs,rhs)
-
-
-
-
     }
 
 }

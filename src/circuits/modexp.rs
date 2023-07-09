@@ -54,9 +54,9 @@ impl<F: FieldExt> Number<F> {
         }
     }
     fn to_bn(&self) -> BigUint {
-        let limb0 = (&self.limbs[0].value);
+        let limb0 = field_to_bn(&self.limbs[0].value);
         let limb1 = field_to_bn(&self.limbs[1].value);
-        let limb2 = field_field_to_bnto_bn(&self.limbs[2].value);
+        let limb2 = field_to_bn(&self.limbs[2].value);
         (limb2 * BigUint::from(1u128 << 108) + limb1) * BigUint::from(1u128 << 108) + limb0
     }
 }

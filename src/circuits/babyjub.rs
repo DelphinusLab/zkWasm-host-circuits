@@ -667,6 +667,7 @@ mod tests {
         p1_y: Fr,
         mul_result_x: Fr,
         mul_result_y: Fr, 
+        scalar: Fr,
 
     }
     
@@ -711,7 +712,7 @@ mod tests {
                 let mut offset = 0;
                 // point 1
                 let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
-                let p3 = babyjubchip.mul_scalar(&mut region, &mut range_chip, &mut offset, & Limb::new(None, Fr::from(2)), &p1)?;
+                let p3 = babyjubchip.mul_scalar(&mut region, &mut range_chip, &mut offset, & Limb::new(None, self.scalar.clone()), &p1)?;
                 let (x,y) = helperchip.assign_addition_result(&mut region, &mut offset, & p3)?;
                 // println!("{:?} \n", p1);
                 // println!("{:?} \n", p2);
@@ -729,7 +730,7 @@ mod tests {
         p1_y: Fr,
         mul_result_x_2: Fr,
         mul_result_y_2: Fr, 
-
+        scalar_2: Fr,
     }
 
     impl Circuit<Fr> for MulTestCircuit_2 {
@@ -766,7 +767,7 @@ mod tests {
                 let mut offset = 0;
                 // point 1
                 let p1 = helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
-                let p3 = babyjubchip.mul_scalar(&mut region, &mut range_chip, &mut offset, & Limb::new(None, Fr::from(5)), &p1)?;
+                let p3 = babyjubchip.mul_scalar(&mut region, &mut range_chip, &mut offset, & Limb::new(None, self.scalar_2.clone()), &p1)?;
                 let (x,y) = helperchip.assign_addition_result(&mut region, &mut offset, & p3)?;
                 // println!("{:?} \n", p1);
                 // println!("{:?} \n", p2);
@@ -820,34 +821,6 @@ mod tests {
             0x1f07aa1b3c598e2f]
         );
 
-        let test_circuit = AddTestCircuit {
-            p1_x,
-            p1_y,
-            p2_x,
-            p2_y,
-            known_x, 
-            known_y} ;
-        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
-
-    }
-
-    #[test]
-    fn test_mul_2() {
-        // point doubling
-        let p1_x =  Fr::from_raw(
-            [0x6adb52fc9ee7a82c,
-            0x9de555e0ba6a693c,
-            0x9bc0d49fa725bddf,
-            0x274dbce8d1517996]
-        );
-        let p1_y = Fr::from_raw(
-            [0x4595febfd51eb853,
-            0xb2e78246231640b5,
-            0xe2eae9a542bd99f6,
-            0x5ce98c61b05f47f,]
-        ); 
-
         let mul_result_x = Fr::from_raw(
             [0x5b3b889296901ab5,
             0xd661502728609ff9,
@@ -861,31 +834,6 @@ mod tests {
             0x5585107619130e62,
             0x9979273078b5c73]
         );
-
-        let test_circuit = MulTestCircuit {
-            p1_x,
-            p1_y,
-            mul_result_x, 
-            mul_result_y} ;
-
-        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
-    }
-
-    #[test]
-    fn test_mul_5(){
-        let p1_x =  Fr::from_raw(
-            [0x6adb52fc9ee7a82c,
-            0x9de555e0ba6a693c,
-            0x9bc0d49fa725bddf,
-            0x274dbce8d1517996]
-        );
-        let p1_y = Fr::from_raw(
-            [0x4595febfd51eb853,
-            0xb2e78246231640b5,
-            0xe2eae9a542bd99f6,
-            0x5ce98c61b05f47f,]
-        ); 
 
         let mul_result_x_2 = Fr::from_raw(
             [0x4448504e4f0a8ea8, 
@@ -901,14 +849,40 @@ mod tests {
             0x0cb91505b04fa754]
         );
 
-        let test_circuit = MulTestCircuit_2 {
+        let test_circuit = AddTestCircuit {
+            p1_x,
+            p1_y,
+            p2_x,
+            p2_y,
+            known_x, 
+            known_y} ;
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+        
+        // point doubling
+        let scalar = Fr::from(2);
+        let test_circuit_2 = MulTestCircuit {
+            p1_x,
+            p1_y,
+            mul_result_x, 
+            mul_result_y,
+            scalar} ;
+
+        let prover_2 = MockProver::run(18, &test_circuit_2, vec![]).unwrap();
+        assert_eq!(prover_2.verify(), Ok(()));
+
+        // mul by 5
+        let scalar_2 = Fr::from(5);
+        let test_circuit_3 = MulTestCircuit_2 {
             p1_x,
             p1_y,
             mul_result_x_2, 
-            mul_result_y_2} ;
+            mul_result_y_2,
+            scalar_2} ;
 
-        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
+        let prover_3 = MockProver::run(18, &test_circuit_3, vec![]).unwrap();
+        assert_eq!(prover_3.verify(), Ok(()));
     }
+
 
 }

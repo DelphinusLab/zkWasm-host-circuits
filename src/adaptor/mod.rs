@@ -8,6 +8,7 @@ pub mod bls381adaptor;
 pub mod bn256adaptor;
 pub mod hashadaptor;
 pub mod msmadaptor;
+pub mod merkleadaptor;
 
 pub fn fr_to_args<F:BaseExt>(f: F, nblimbs: usize, sz: usize, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
     let mut bn = field_to_bn(&f);

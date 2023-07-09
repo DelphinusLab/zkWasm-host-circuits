@@ -17,12 +17,11 @@ use halo2_proofs::plonk::{
 };
 use halo2_proofs::poly::Rotation;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::circuit::{Chip, Region, Layouter};
-use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::circuit::{Chip, Region};
 
 use crate::host::merkle::{MerkleTree, MerkleProof};
 use crate::host::kvpair::MongoMerkle;
-use crate::circuits::{Limb, host::HostOpConfig};
+use crate::circuits::Limb;
 
 
 /* Given a merkel tree eg1 with height=3:
@@ -201,43 +200,5 @@ impl<F: FieldExt> MerkleChip<F> {
     ) -> Result<(), Error> {
         self.assign_proof(region, offset, merkle, proof_get)?;
         self.assign_proof(region, offset, merkle, proof_set)
-    }
-}
-
-impl crate::circuits::host::HostOpSelector for MerkleChip<Fr> {
-    type Config = MerkleConfig;
-    fn configure(
-        meta: &mut ConstraintSystem<Fr>,
-    ) -> Self::Config {
-        MerkleChip::<Fr>::configure(meta)
-    }
-
-    fn construct(c: Self::Config) -> Self {
-        MerkleChip::new(c)
-    }
-
-    fn assign(
-        _region: &mut Region<Fr>,
-        _shared_operands: &Vec<Fr>,
-        _shared_opcodes: &Vec<Fr>,
-        _shared_index: &Vec<Fr>,
-        _config: &HostOpConfig,
-    ) -> Result<Vec<Limb<Fr>>, Error> {
-        let _opcodes: Vec<Fr> = vec![
-            //Fr::from(BN256OP::BN256ADD as u64),
-            //Fr::from(BN256OP::BN256SUM as u64),
-        ];
-        todo!();
-    }
-
-    fn synthesize(
-        &mut self,
-        _arg_cells: &Vec<Limb<Fr>>,
-        _layouter: &mut impl Layouter<Fr>,
-    ) -> Result<(), Error> {
-        todo!();
-        //let args = arg_cells[0..len - 7].to_vec();
-        //let ret = arg_cells[len - 7..len].to_vec();
-        //self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, &point_select_chip, layouter)?;
     }
 }

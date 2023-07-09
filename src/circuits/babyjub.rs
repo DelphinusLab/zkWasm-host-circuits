@@ -779,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn test_circuit() {
+    fn test_circuit_add() {
         let p1_x =  Fr::from_raw(
             [0x6adb52fc9ee7a82c,
             0x9de555e0ba6a693c,
@@ -820,6 +820,34 @@ mod tests {
             0x1f07aa1b3c598e2f]
         );
 
+        let test_circuit = AddTestCircuit {
+            p1_x,
+            p1_y,
+            p2_x,
+            p2_y,
+            known_x, 
+            known_y} ;
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+
+    }
+
+    #[test]
+    fn test_mul_2() {
+        // point doubling
+        let p1_x =  Fr::from_raw(
+            [0x6adb52fc9ee7a82c,
+            0x9de555e0ba6a693c,
+            0x9bc0d49fa725bddf,
+            0x274dbce8d1517996]
+        );
+        let p1_y = Fr::from_raw(
+            [0x4595febfd51eb853,
+            0xb2e78246231640b5,
+            0xe2eae9a542bd99f6,
+            0x5ce98c61b05f47f,]
+        ); 
+
         let mul_result_x = Fr::from_raw(
             [0x5b3b889296901ab5,
             0xd661502728609ff9,
@@ -833,6 +861,31 @@ mod tests {
             0x5585107619130e62,
             0x9979273078b5c73]
         );
+
+        let test_circuit = MulTestCircuit {
+            p1_x,
+            p1_y,
+            mul_result_x, 
+            mul_result_y} ;
+
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+    }
+
+    #[test]
+    fn test_mul_5(){
+        let p1_x =  Fr::from_raw(
+            [0x6adb52fc9ee7a82c,
+            0x9de555e0ba6a693c,
+            0x9bc0d49fa725bddf,
+            0x274dbce8d1517996]
+        );
+        let p1_y = Fr::from_raw(
+            [0x4595febfd51eb853,
+            0xb2e78246231640b5,
+            0xe2eae9a542bd99f6,
+            0x5ce98c61b05f47f,]
+        ); 
 
         let mul_result_x_2 = Fr::from_raw(
             [0x4448504e4f0a8ea8, 
@@ -848,34 +901,14 @@ mod tests {
             0x0cb91505b04fa754]
         );
 
-        let test_circuit = AddTestCircuit {
-            p1_x,
-            p1_y,
-            p2_x,
-            p2_y,
-            known_x, 
-            known_y} ;
-        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
-
-        let test_circuit_2 = MulTestCircuit {
-            p1_x,
-            p1_y,
-            mul_result_x, 
-            mul_result_y} ;
-
-        let prover_2 = MockProver::run(18, &test_circuit_2, vec![]).unwrap();
-        assert_eq!(prover_2.verify(), Ok(()));
-
-        let test_circuit_3 = MulTestCircuit_2 {
+        let test_circuit = MulTestCircuit_2 {
             p1_x,
             p1_y,
             mul_result_x_2, 
             mul_result_y_2} ;
 
-        let prover_3 = MockProver::run(18, &test_circuit_3, vec![]).unwrap();
-        assert_eq!(prover_3.verify(), Ok(()));
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
     }
-
 
 }

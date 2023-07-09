@@ -226,6 +226,7 @@ macro_rules! customized_circuits {
 
 #[cfg(test)]
 mod tests {
+    /*
     use crate::customized_circuits;
     use crate::customized_circuits_expand;
     use crate::table_item;
@@ -239,7 +240,6 @@ mod tests {
         Error,
     };
     use halo2_proofs::poly::Rotation;
-    use halo2_proofs::circuit::{Region};
 
     customized_circuits!(TestConfig, 2, 2, 1, 1,
         | wc  | b2 | c2 |  d2
@@ -250,4 +250,5 @@ mod tests {
           //let config = TestConfig {};
           //assert_eq!(r.to_vec(), r1);
     }
+    */
 }

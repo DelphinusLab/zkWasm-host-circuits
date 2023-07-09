@@ -13,7 +13,7 @@ use crate::{
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Region, AssignedCell, Layouter, Chip},
+    circuit::{Region, Layouter, Chip},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells

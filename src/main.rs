@@ -1,6 +1,6 @@
 #![feature(array_zip)]
 #![feature(slice_flatten)]
-#![feature(int_log)]
+#![deny(warnings)]
 pub mod circuits;
 pub mod host;
 pub mod utils;

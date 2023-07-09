@@ -1,16 +1,13 @@
+/*
 use crate::utils::{
     field_to_bn,
     bn_to_field,
 };
+*/
 
 use crate::circuits::{
     CommonGateConfig,
     Limb,
-};
-
-use crate::circuits::range::{
-    RangeCheckConfig,
-    RangeCheckChip,
 };
 
 use halo2_proofs::{

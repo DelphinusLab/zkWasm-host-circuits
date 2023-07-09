@@ -49,7 +49,7 @@ impl PointProjective {
         let mut a = self.z;
         a.mul_assign(&q.z);
         let mut b = a;
-        b.square();
+        b = b.square();
         let mut c = self.x;
         c.mul_assign(&q.x);
         let mut d = self.y;
@@ -156,62 +156,8 @@ pub fn test_bit(b: &[u8], i: usize) -> bool {
 #[cfg(test)]
 
 mod tests {
-    use super::{Point, PointProjective};
-    use crate::adaptor::fr_to_args;
-    use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
-    use crate::utils::field_to_bn;
-    use halo2_proofs::arithmetic::FieldExt;
-    use halo2_proofs::pairing::bn256::pairing;
-    use halo2_proofs::pairing::bn256::Fr;
-    use halo2_proofs::pairing::group::Group;
+    use super::Point;
     use num_bigint::BigUint;
-    use rand::rngs::OsRng;
-    use std::fs::File;
-    use std::ops::Add;
-
-    fn babyarg_to_args(v: &Fr, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
-        fr_to_args(*v, 4, 64, op)
-    }
-
-    fn babysum_to_args(x: Point, y: Point, z: Point) -> Vec<ExternalHostCallEntry> {
-        let mut ret = vec![
-            babyarg_to_args(&x.x, ForeignInst::JubjubSumPush),
-            babyarg_to_args(&x.y, ForeignInst::JubjubSumPush),
-            babyarg_to_args(&y.x, ForeignInst::JubjubSumPush),
-            babyarg_to_args(&y.y, ForeignInst::JubjubSumPush),
-            babyarg_to_args(&z.x, ForeignInst::JubjubSumResult),
-            babyarg_to_args(&z.y, ForeignInst::JubjubSumResult),
-        ]
-            .into_iter()
-            .flatten()
-            .collect();
-        ret
-    }
-
-    struct JubjubSumContext {
-        acc: Point,
-        operand: Point,
-        coeff: [u64; 4],
-    }
-
-    fn generate_entries_single_round(context: &mut JubjubSumContext) -> Vec<ExternalHostCallEntry> {
-        todo!()
-    }
-
-    #[test]
-    fn generate_jubjub_sum_input() {
-        let identity = Point::identity();
-        let identity_proj = identity.projective();
-        let entries = babysum_to_args(
-            Point::identity(),
-            Point::identity(),
-            identity_proj.add(&identity_proj).affine(),
-        );
-        let table = ExternalHostCallEntryTable(entries);
-        let file = File::create("jubjubsumtest.json").expect("can not create file");
-        serde_json::to_writer_pretty(file, &table).expect("can not write to file");
-        assert_eq!(identity, identity_proj.add(&identity_proj).affine());
-    }
     use ff_ce::PrimeField;
     use franklin_crypto::alt_babyjubjub::fs;
     use franklin_crypto::jubjub::ToUniform;

@@ -1,13 +1,10 @@
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::arithmetic::BaseExt;
-use halo2_proofs::plonk::{VirtualCells, Error, Expression};
+use halo2_proofs::plonk::Error;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Region, Layouter};
 use crate::host::{
-    ForeignInst,
-    ExternalHostCallEntryTable,
     ExternalHostCallEntry,
 };
 use crate::host::ForeignInst::{
@@ -17,8 +14,6 @@ use crate::host::ForeignInst::{
 };
 use crate::circuits::babyjub::{Point as CircuitPoint, AltJubChip};
 use crate::circuits::CommonGateConfig;
-use crate::circuits::LookupAssistChip;
-use crate::host::poseidon::gen_hasher;
 
 use crate::circuits::host::{
     HostOpSelector,
@@ -70,7 +65,7 @@ impl HostOpSelector for AltJubChip<Fr> {
     }
 
     fn construct(c: Self::Config) -> Self {
-        AltJubChip::construct(c)
+        AltJubChip::new(c)
     }
 
 
@@ -192,17 +187,9 @@ mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use crate::host::{
         ExternalHostCallEntryTable,
-        ExternalHostCallEntry,
     };
     use super::msm_to_host_call_table;
     use std::fs::File;
-
-    use crate::host::ForeignInst::{
-        PoseidonNew,
-        PoseidonPush,
-        PoseidonFinalize,
-    };
-
     use crate::host::jubjub::Point;
 
     #[test]

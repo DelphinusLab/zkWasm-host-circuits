@@ -26,7 +26,7 @@ use crate::{
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Region, AssignedCell},
+    circuit::Region,
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells

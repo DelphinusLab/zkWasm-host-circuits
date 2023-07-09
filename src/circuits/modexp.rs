@@ -882,7 +882,7 @@ mod tests {
                 |mut region| {
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
-                    let result =
+                    let _result =
                         helperchip.assign_results(&mut region, &mut offset, &self.bn_test_res)?;
                     let lhs = helperchip.assign_modulus(&mut region, &mut offset, &self.a)?;
                     let rhs = helperchip.assign_base(&mut region, &mut offset, &self.b)?;
@@ -939,7 +939,7 @@ mod tests {
                 |mut region| {
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
-                    let result =
+                    let _result =
                         helperchip.assign_results(&mut region, &mut offset, &self.bn_test_res)?;
                     let lhs = helperchip.assign_base(&mut region, &mut offset, &self.l)?;
                     let rhs = helperchip.assign_base(&mut region, &mut offset, &self.r)?;
@@ -1497,8 +1497,7 @@ mod tests {
 
     // test helpers:
     use halo2_proofs::{
-        dev::{FailureLocation, VerifyFailure},
-        plonk::Any,
+        dev::VerifyFailure,
     };
     use std::fmt;
 
@@ -1507,8 +1506,8 @@ mod tests {
         ProverError(Error),
         /// Thrown when verification fails.
         VerifierError(Vec<VerifyFailure>),
-        /// Thrown when no operation has been specified.
-        NoOperation,
+        // Thrown when no operation has been specified.
+        //NoOperation,
     }
 
     impl fmt::Debug for CircuitError {
@@ -1520,9 +1519,11 @@ mod tests {
                 CircuitError::VerifierError(verifier_error) => {
                     write!(f, "verifier error in circuit: {:#?}", verifier_error)
                 }
+                /*
                 CircuitError::NoOperation => {
                     write!(f, "no operation is set (this should never happen.")
                 }
+                */
             }
         }
     }

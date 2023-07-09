@@ -217,13 +217,13 @@ impl crate::circuits::host::HostOpSelector for MerkleChip<Fr> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-        config: &HostOpConfig,
+        _region: &mut Region<Fr>,
+        _shared_operands: &Vec<Fr>,
+        _shared_opcodes: &Vec<Fr>,
+        _shared_index: &Vec<Fr>,
+        _config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
+        let _opcodes: Vec<Fr> = vec![
             //Fr::from(BN256OP::BN256ADD as u64),
             //Fr::from(BN256OP::BN256SUM as u64),
         ];
@@ -232,13 +232,12 @@ impl crate::circuits::host::HostOpSelector for MerkleChip<Fr> {
 
     fn synthesize(
         &mut self,
-        arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         todo!();
         //let args = arg_cells[0..len - 7].to_vec();
         //let ret = arg_cells[len - 7..len].to_vec();
         //self.load_bn256_sum_circuit(&args, &ret, &base_chip, &range_chip, &point_select_chip, layouter)?;
-        Ok(())
     }
 }

@@ -2,7 +2,7 @@
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Chip, Layouter, Region, AssignedCell},
+    circuit::{Chip, Layouter, Region},
     plonk::{
         Fixed, Advice, Column, ConstraintSystem,
         Error, Expression, Selector, VirtualCells
@@ -512,7 +512,7 @@ mod tests {
     use halo2_proofs::dev::MockProver;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, AssignedCell, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, SimpleFloorPlanner},
         plonk::{
             Advice, Circuit, Column, ConstraintSystem, Error,
         },

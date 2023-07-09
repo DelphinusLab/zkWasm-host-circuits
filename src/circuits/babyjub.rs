@@ -23,7 +23,7 @@ use halo2_proofs::{
 use std::marker::PhantomData;
 
 pub struct AltJubChip<F:FieldExt> {
-    config: CommonGateConfig,
+    pub config: CommonGateConfig,
     state: JubState<F>,
     _marker: PhantomData<F>
 }

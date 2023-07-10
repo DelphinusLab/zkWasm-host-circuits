@@ -5,8 +5,6 @@ use std::ops::{SubAssign, MulAssign, AddAssign};
 use ff::Field;
 use num_bigint::BigUint;
 
-use ff_ce::BitIterator;
-use franklin_crypto::alt_babyjubjub::fs;
 
 lazy_static! {
     static ref D_BIG: BigUint = BigUint::parse_bytes(b"12181644023421730124874158521699555681764249180949974110617291017600649128846", 10).unwrap();
@@ -136,17 +134,6 @@ impl Point {
     }
 
 
-    pub fn mul_scalar_fs(&self, scalar: fs::Fs) -> Point {
-        let mut r = Point::zero();
-        //big-end wise, like 6, it is 1,1,0 sequence
-        for b in BitIterator::<fs::FsRepr>::new(scalar.into()) {
-            r = r.add(&r);
-            if b {
-                r = r.add(self);
-            }
-        }
-        r
-    }
 }
 
 pub fn test_bit(b: &[u8], i: usize) -> bool {
@@ -158,9 +145,6 @@ pub fn test_bit(b: &[u8], i: usize) -> bool {
 mod tests {
     use super::Point;
     use num_bigint::BigUint;
-    use ff_ce::PrimeField;
-    use franklin_crypto::alt_babyjubjub::fs;
-    use franklin_crypto::jubjub::ToUniform;
     use crate::utils::bn_to_field;
     use std::str::FromStr;
     #[test]
@@ -171,11 +155,6 @@ mod tests {
         let mut msg_padded: Vec<u8> = msg.iter().cloned().collect();
         msg_padded.resize(32, 0u8);
 
-        let c = fs::Fs::to_uniform_32(msg_padded.as_ref());
-        // let mut c_bytes = [0u8; 32];
-        // c.into_repr().write_le(& mut c_bytes[..]).expect("get LE bytes of signature S");
-        // let c_repr_bigint = BigInt::from_signed_bytes_le(&c_bytes);
-        // println!("c {}",c_repr_bigint.to_str_radix(10));
 
         let vk = Point {
             x: bn_to_field(&(BigUint::parse_bytes(b"139f1d319d2a51a1938aef20ae4aa05b4bacef0c95ec2acf6d70b0430bed7808", 16).unwrap())),
@@ -191,25 +170,12 @@ mod tests {
             y: bn_to_field(&(BigUint::parse_bytes(b"05a01167ea785d3f784224644a68e4067532c815f5f6d57d984b5c0e9c6c94b7", 16).unwrap())),
         };
         let sig_s_str = "1902101563350775171813864964289368622061698554691074493911860015574812994359";
-        let sig_s = fs::Fs::from_str(sig_s_str).unwrap();
 
-        // 0 = c . vk + R -S . P_G that requires all points to be in the same group
-        // self.0
-        //     .mul(c, params)
-        //     .add(&sig.r, params)
-        //     .add(
-        //         &params.generator(p_g).mul(sig.s, params).negate().into(),
-        //         params,
-        //     )
-        //     .eq(&Point::zero())
-        let lhs = vk.mul_scalar_fs(c).add(&sig_r);
-        let rhs = p_g.mul_scalar_fs(sig_s);
-        // println!("lhs x={},y={}",lhs.x,lhs.y);
-        // println!("rhs x={},y={}",rhs.x,rhs.y);
-        assert_eq!(lhs,rhs);
 
         let c = BigUint::from_bytes_le(&msg_padded);
         let sig_s = BigUint::from_str(sig_s_str).unwrap();
+
+        // 0 = c . vk + R -S . P_G that requires all points to be in the same group
         let lhs = vk.mul_scalar(&c).add(&sig_r);
         let rhs = p_g.mul_scalar(&sig_s);
         // println!("lhs x={},y={}",lhs.x,lhs.y);

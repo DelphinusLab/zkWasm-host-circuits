@@ -22,6 +22,12 @@ use crate::circuits::host::{
 };
 
 use crate::utils::Limb;
+use crate::host::merkle::{
+    MerkleTree,
+    MerkleNode,
+};
+use crate::host::kvpair::MongoMerkle;
+use crate::utils::field_to_bytes;
 
 // Some constants for the purpose of deault entries
 const DEFAULT_ROOT_HASH64: [u64; 4] = [
@@ -34,8 +40,6 @@ const DEFAULT_ROOT_HASH64: [u64; 4] = [
 lazy_static::lazy_static! {
     static ref DEFAULT_ROOT_HASH: Fr = Fr::from_raw(DEFAULT_ROOT_HASH64);
 }
-
-
 
 
 /* The calling convention will be
@@ -162,34 +166,34 @@ impl HostOpSelector for MerkleChip<Fr> {
         println!("total args is {}", arg_cells.len());
         layouter.assign_region(
             || "poseidon hash region",
-            |mut _region| {
-                /*
+            |mut region| {
                 let mut offset = 0;
-                let timer = start_timer!(|| "assign");
-                let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut offset)?;
+                const DEFAULT_ROOT_HASH_BYTES: [u8; 32] = [
+                    73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
+                    100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
+                ];
+
+                //let config = self.config.clone();
+                //self.initialize(&config, &mut region, &mut offset)?;
                 // arg_cells format 1 + 2 + 1 + 2
-                for arg_group in arg_cells.chunks_exact(5).into_iter() {
-                    let args = arg_group.into_iter().map(|x| x.clone());
-                    let args = args.collect::<Vec<_>>();
-                    self.assign_incremental_msm(
+                for arg_group in arg_cells.chunks_exact(3).into_iter() {
+                    let mut mt = MongoMerkle::construct([0u8;32], field_to_bytes(&arg_group[1].value));
+                    let set = true;
+                    let (mut leaf, mut proof) = mt.get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
+                        .expect("get leaf error");
+                    if set {
+                        leaf.set(&field_to_bytes(&arg_group[2].value).to_vec());
+                        proof = mt.set_leaf_with_proof(&leaf).expect("set leaf error");
+                    };
+                    self.assign_proof(
                         &mut region,
                         &mut offset,
-                        &CircuitPoint {
-                            x: args[1].clone(),
-                            y: args[2].clone(),
-                        },
-                        &args[2],
-                        &args[0],
-                        &CircuitPoint {
-                            x: args[3].clone(),
-                            y: args[4].clone(),
-                        },
-
+                        &proof,
+                        &arg_group[0],
+                        &arg_group[0],
+                        &arg_group[0],
                     )?;
                 }
-                end_timer!(timer);
-                */
                 Ok(())
             },
         )?;

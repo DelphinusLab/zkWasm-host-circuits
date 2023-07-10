@@ -19,7 +19,10 @@ use halo2_proofs::poly::Rotation;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Chip, Region};
 
-use crate::host::merkle::{MerkleTree, MerkleProof};
+use crate::host::merkle::{
+//    MerkleTree,
+    MerkleProof
+};
 use crate::host::kvpair::MongoMerkle;
 use crate::circuits::Limb;
 
@@ -148,57 +151,15 @@ impl<F: FieldExt> MerkleChip<F> {
     }
 
 
-    fn assign_proof<const D: usize, M: MerkleTree<F, D>>(
+    pub fn assign_proof<const D: usize>(
         &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        _merkle: &M,
-        proof: &MerkleProof<F, D>,
+        _region: &mut Region<F>,
+        _offset: &mut usize,
+        _proof: &MerkleProof<[u8; 32], D>,
+        _root: &Limb<F>,
+        _value: &Limb<F>,
+        _is_set: &Limb<F>,
     ) -> Result<(), Error> {
-        let mut index_offset = proof.index - (1u32 << D) - 1;
-        let mut carry = proof.source;
-        self.config.enable_selector(region, *offset, &MerkleConfig::is_proof_start())?;
-        for i in 0..D {
-            let depth = D-i-1;
-            let pos = (1u32 << depth) - 1;
-            let index = index_offset + pos;
-            let k = index_offset / 2;
-            let odd = index_offset - (k*2);
-            let (left, right) = if odd == 1 { (&proof.assist[i], &carry) } else { (&carry, &proof.assist[i]) };
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::pos(), F::from(pos as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::k(), F::from(k as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::odd(), F::from(odd as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::carry(), carry)?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::index(), F::from(index as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::left(), *left)?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::right(), *right)?;
-            self.config.enable_selector(region, *offset+i, &MerkleConfig::sel())?;
-            index_offset = index_offset / 2;
-            carry = M::hash(left, right);
-        }
-        *offset += D;
-        Ok(())
-    }
-
-    pub fn assign_get<const D: usize, M: MerkleTree<F, D>>(
-        &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        merkle: &M,
-        proof: &MerkleProof<F, D>,
-    ) -> Result<(), Error> {
-        self.assign_proof(region, offset, merkle, proof)
-    }
-
-    pub fn assign_set<const D: usize, M: MerkleTree<F, D>>(
-        &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        merkle: &M,
-        proof_get: &MerkleProof<F, D>,
-        proof_set: &MerkleProof<F, D>,
-    ) -> Result<(), Error> {
-        self.assign_proof(region, offset, merkle, proof_get)?;
-        self.assign_proof(region, offset, merkle, proof_set)
+        todo!()
     }
 }

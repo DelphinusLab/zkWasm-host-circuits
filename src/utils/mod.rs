@@ -18,7 +18,11 @@ impl<F: FieldExt> Limb<F> {
     }
 }
 
-
+pub fn field_to_bytes<F: BaseExt>(f: &F) -> [u8; 32] {
+    let mut bytes: Vec<u8> = Vec::new();
+    f.write(&mut bytes).unwrap();
+    bytes.try_into().unwrap()
+}
 
 pub fn field_to_bn<F: BaseExt>(f: &F) -> BigUint {
     let mut bytes: Vec<u8> = Vec::new();

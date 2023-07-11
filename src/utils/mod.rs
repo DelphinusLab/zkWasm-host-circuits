@@ -37,6 +37,9 @@ pub fn bn_to_field<F: BaseExt>(bn: &BigUint) -> F {
     F::read(&mut bytes).unwrap()
 }
 
+pub fn bytes_to_field<F: BaseExt>(bytes: &[u8; 32]) -> F {
+    F::read(&mut &bytes.clone().to_vec()[..]).unwrap()
+}
 
 pub fn field_to_u32<F: FieldExt>(f: &F) -> u32 {
     let mut bytes: Vec<u8> = Vec::new();

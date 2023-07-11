@@ -374,6 +374,18 @@ impl CommonGateConfig {
         Ok(limbs)
     }
 
+    /// check if limb is equal to constant F
+    pub fn eq_constant<F:FieldExt, LC:LookupAssistChip<F>> (
+        &self,
+        _region: &mut Region<F>,
+        _lookup_assist_chip: &mut LC,
+        _offset: &mut usize,
+        _limb: &Limb<F>,
+        _constant: &F,
+    ) -> Result<Limb<F>, Error> {
+        todo!()
+    }
+
     pub fn assign_constant<F:FieldExt, LC:LookupAssistChip<F>> (
         &self,
         region: &mut Region<F>,

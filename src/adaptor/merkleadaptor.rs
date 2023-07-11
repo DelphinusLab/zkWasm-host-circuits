@@ -72,7 +72,7 @@ fn kvpair_to_host_call_table<F:FieldExt>(inputs: &Vec<(u64, F, F, ForeignInst)>)
 
 
 
-impl HostOpSelector for MerkleChip<Fr> {
+impl HostOpSelector for MerkleChip<Fr, 20> {
     type Config = CommonGateConfig;
     fn configure(
         _meta: &mut ConstraintSystem<Fr>,
@@ -115,16 +115,17 @@ impl HostOpSelector for MerkleChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(KVPairAddress as u64));
 
-            let limb = config.assign_one_line(
+            let (limb, op) = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
                 true
             )?;
+            r.push(op);
             r.push(limb);
 
             for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(MERGE_SIZE) {
-                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
+                let (limb, _) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
                 r.push(limb);
             }
         }
@@ -140,16 +141,17 @@ impl HostOpSelector for MerkleChip<Fr> {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(KVPairAddress as u64));
 
-            let limb = config.assign_one_line(
+            let (limb, op) = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
                 false
             )?;
+            r.push(op);
             r.push(limb);
 
             for subgroup in default_entries.clone().iter().skip(1).collect::<Vec<_>>().chunks_exact(MERGE_SIZE) {
-                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
+                let (limb, _) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
                 r.push(limb);
             }
         }
@@ -175,8 +177,13 @@ impl HostOpSelector for MerkleChip<Fr> {
 
                 //let config = self.config.clone();
                 //self.initialize(&config, &mut region, &mut offset)?;
-                // arg_cells format 1 + 2 + 1 + 2
-                for arg_group in arg_cells.chunks_exact(3).into_iter() {
+                //
+                //
+                // 0: op_code
+                // 1: address
+                // 2: root
+                // 3: value
+                for arg_group in arg_cells.chunks_exact(4).into_iter() {
                     let mut mt = MongoMerkle::construct([0u8;32], field_to_bytes(&arg_group[1].value));
                     let set = true;
                     let (mut leaf, mut proof) = mt.get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
@@ -190,8 +197,9 @@ impl HostOpSelector for MerkleChip<Fr> {
                         &mut offset,
                         &proof,
                         &arg_group[0],
-                        &arg_group[0],
-                        &arg_group[0],
+                        &arg_group[1],
+                        &arg_group[2],
+                        &arg_group[3],
                     )?;
                 }
                 Ok(())

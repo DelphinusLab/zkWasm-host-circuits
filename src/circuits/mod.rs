@@ -377,13 +377,43 @@ impl CommonGateConfig {
     /// check if limb is equal to constant F
     pub fn eq_constant<F:FieldExt, LC:LookupAssistChip<F>> (
         &self,
-        _region: &mut Region<F>,
-        _lookup_assist_chip: &mut LC,
-        _offset: &mut usize,
-        _limb: &Limb<F>,
-        _constant: &F,
+        region: &mut Region<F>,
+        lookup_assist_chip: &mut LC,
+        offset: &mut usize,
+        limb: &Limb<F>,
+        constant: &F,
     ) -> Result<Limb<F>, Error> {
-        todo!()
+        let delta = limb.value - constant;
+        // ((inv * (limb.value - constant)) - r)
+        // (delta + r
+        let (inv, r) = if delta.is_zero_vartime() {
+            (F::one(), F::zero())
+        } else {
+            (delta.invert().unwrap(), F::one())
+        };
+        let l = self.assign_line(region, lookup_assist_chip, offset,
+                [
+                    Some(Limb::new(None, inv)),
+                    Some(Limb::new(None, r)),
+                    None,
+                    Some(limb.clone()),
+                    None,
+                    None,
+                ],
+                [
+                    Some(-constant.clone()),
+                    Some(-F::one()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(F::one()),
+                    None,
+                    None,
+                ],
+                0
+        )?;
+        Ok(l[1].clone())
     }
 
     pub fn assign_constant<F:FieldExt, LC:LookupAssistChip<F>> (

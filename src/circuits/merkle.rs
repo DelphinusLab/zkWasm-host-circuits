@@ -126,6 +126,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         let mut positions = vec![];
         self.config
             .decompose_limb(region, &mut (), offset, address, &mut positions, D)?;
+        // position = 0 means assist is at right else assist is at left
         let final_hash =
             positions
                 .iter()
@@ -133,7 +134,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                 .fold(value.clone(), |acc, (position, assist)| {
                     let left = self
                         .config
-                        .select(region, &mut (), offset, &position, &assist, &acc, 0)
+                        .select(region, &mut (), offset, &position, &acc, &assist, 0)
                         .unwrap();
                     let right = self
                         .config

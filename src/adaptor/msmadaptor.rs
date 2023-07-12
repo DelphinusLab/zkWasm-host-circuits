@@ -153,7 +153,7 @@ impl HostOpSelector for AltJubChip<Fr> {
                 let config = self.config.clone();
                 self.initialize(&config, &mut region, &mut offset)?;
                 // arg_cells format 1 + 2 + 1 + 2
-                for arg_group in arg_cells.chunks_exact(5).into_iter() {
+                for arg_group in arg_cells.chunks_exact(6).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_incremental_msm(
@@ -163,11 +163,11 @@ impl HostOpSelector for AltJubChip<Fr> {
                             x: args[1].clone(),
                             y: args[2].clone(),
                         },
-                        &args[2],
+                        &args[3],
                         &args[0],
                         &CircuitPoint {
-                            x: args[3].clone(),
-                            y: args[4].clone(),
+                            x: args[4].clone(),
+                            y: args[5].clone(),
                         },
 
                     )?;

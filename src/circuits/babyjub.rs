@@ -76,11 +76,11 @@ impl<F: FieldExt> AltJubChip<F> {
     pub fn new(config: CommonGateConfig) -> Self {
         let state = JubState {
             acc: Point {
-                x: Limb::new(None, F::one()),
+                x: Limb::new(None, F::zero()),
                 y: Limb::new(None, F::one()),
             },
             default: Point {
-                x: Limb::new(None, F::one()),
+                x: Limb::new(None, F::zero()),
                 y: Limb::new(None, F::one()),
             },
         };

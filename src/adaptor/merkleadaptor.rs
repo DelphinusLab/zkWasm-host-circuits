@@ -28,6 +28,7 @@ use crate::host::merkle::{
 };
 use crate::host::kvpair::MongoMerkle;
 use crate::utils::field_to_bytes;
+use crate::utils::data_to_bytes;
 
 // Some constants for the purpose of deault entries
 const DEFAULT_ROOT_HASH64: [u64; 4] = [
@@ -188,8 +189,8 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                     100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
                 ];
 
-                //let config = self.config.clone();
-                //self.initialize(&config, &mut region, &mut offset)?;
+                let config = self.config.clone();
+                self.initialize(&config, &mut region, &mut offset)?;
                 //
                 //
                 // Initialize the mongodb
@@ -208,7 +209,7 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                         println!("op is set, process set:");
                         let (mut leaf, _) = mt.as_ref().unwrap().get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
                             .expect("get leaf error");
-                        leaf.set(&field_to_bytes(&arg_group[3].value).to_vec());
+                        leaf.set(&data_to_bytes(vec![arg_group[2].value, arg_group[3].value]).to_vec());
                         mt.as_mut().unwrap().set_leaf_with_proof(&leaf).expect("set leaf error")
                     } else {
                         // the case of get value:

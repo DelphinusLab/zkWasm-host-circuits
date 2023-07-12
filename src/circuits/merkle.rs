@@ -1,7 +1,7 @@
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
 use crate::utils::bytes_to_field;
-//use crate::utils::field_to_bytes;
+use crate::utils::field_to_bytes;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Chip, Region};
 use halo2_proofs::plonk::ConstraintSystem;
@@ -43,7 +43,7 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
 }
 
 pub struct MerkleChip<F: FieldExt, const D: usize> {
-    config: CommonGateConfig,
+    pub config: CommonGateConfig,
     poseidon_chip: PoseidonChip<F>,
     state: MerkleProofState<F, D>,
     _marker: PhantomData<F>,
@@ -76,6 +76,16 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         D
     }
 
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        self.poseidon_chip.initialize(config, region, offset)
+    }
+
+
     pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &())
     }
@@ -93,9 +103,8 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         let is_set =
             self.config
                 .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
-        //println!("source is {:?}, value is {:?}", proof.source, value[0].value, value[1].value);
+        println!("value is {:?} {:?}", value[0].value, value[1].value);
         println!("is set {:?}", is_set);
-        //assert!(field_to_bytes(&value.value) == proof.source);
         let fills = proof
             .assist
             .to_vec()
@@ -151,6 +160,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
             ],
             &self.state.one.clone(),
         )?;
+        assert_eq!(field_to_bytes(&initial_hash.value), proof.source);
 
         let final_hash =
             positions
@@ -183,6 +193,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                         )
                         .unwrap()
                 });
+        //assert_eq!(root.value, final_hash.value);
         region.constrain_equal(
             root.cell.as_ref().unwrap().cell(),
             final_hash.cell.as_ref().unwrap().cell(),

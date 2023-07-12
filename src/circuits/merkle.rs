@@ -1,7 +1,7 @@
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
 use crate::utils::bytes_to_field;
-use crate::utils::field_to_bytes;
+//use crate::utils::field_to_bytes;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Chip, Region};
 use halo2_proofs::plonk::ConstraintSystem;
@@ -31,7 +31,14 @@ pub struct MerkleProofState<F: FieldExt, const D: usize> {
 
 impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
     fn default() -> Self {
-        todo!()
+        MerkleProofState {
+            source: Limb::new(None, F::zero()),
+            root: Limb::new(None, F::zero()),
+            address: Limb::new(None, F::zero()),
+            assist: [0;D].map(|_| Limb::new(None, F::zero())),
+            zero: Limb::new(None, F::zero()),
+            one: Limb::new(None, F::one()),
+        }
     }
 }
 
@@ -81,12 +88,14 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         opcode: &Limb<F>,
         address: &Limb<F>,
         root: &Limb<F>,
-        value: &Limb<F>,
+        value: [&Limb<F>; 2],
     ) -> Result<(), Error> {
-        assert!(field_to_bytes(&value.value) == proof.source);
         let is_set =
             self.config
                 .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
+        //println!("source is {:?}, value is {:?}", proof.source, value[0].value, value[1].value);
+        println!("is set {:?}", is_set);
+        //assert!(field_to_bytes(&value.value) == proof.source);
         let fills = proof
             .assist
             .to_vec()
@@ -127,11 +136,27 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         self.config
             .decompose_limb(region, &mut (), offset, address, &mut positions, D)?;
         // position = 0 means assist is at right else assist is at left
+        let initial_hash = self.poseidon_chip.get_permute_result(
+            region,
+            offset,
+            &[
+                value[0].clone(),
+                value[1].clone(),
+                self.state.one.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+            ],
+            &self.state.one.clone(),
+        )?;
+
         let final_hash =
             positions
                 .iter()
                 .zip(compare_assist)
-                .fold(value.clone(), |acc, (position, assist)| {
+                .fold(initial_hash, |acc, (position, assist)| {
                     let left = self
                         .config
                         .select(region, &mut (), offset, &position, &acc, &assist, 0)

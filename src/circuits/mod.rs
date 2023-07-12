@@ -385,7 +385,6 @@ impl CommonGateConfig {
     ) -> Result<Limb<F>, Error> {
         let delta = limb.value - constant;
         // ((inv * (limb.value - constant)) - r)
-        // (delta + r
         let (inv, r) = if delta.is_zero_vartime() {
             (F::one(), F::zero())
         } else {

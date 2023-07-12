@@ -48,8 +48,9 @@ lazy_static::lazy_static! {
  * KVPairSet / KVPairGet
  */
 const MERGE_SIZE:usize = 4;
+const MERGE_DATA_SIZE:usize = 2;
 // 0: set/get 1-4: root 5-8:address 9-12:value
-const CHUNK_SIZE:usize = 1 + 1 * MERGE_SIZE + 1*MERGE_SIZE; // should equal to 9
+const CHUNK_SIZE:usize = 1 + 1*MERGE_SIZE + 1*MERGE_SIZE; // should equal to 9
 const TOTAL_CONSTRUCTIONS:usize = 2;
 
 fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
@@ -64,7 +65,7 @@ fn kvpair_to_host_call_table<F:FieldExt>(inputs: &Vec<(u64, F, F, ForeignInst)>)
     let mut r = vec![];
     for (addr, root, value, op) in inputs.into_iter() {
         r.push(kvpair_new(*addr));
-        r.push(crate::adaptor::fr_to_args(*root, 4, 64, *op));
+        r.push(crate::adaptor::fr_to_args(*root, 4, 64, ForeignInst::KVPairSetRoot));
         r.push(crate::adaptor::fr_to_args(*value, 4, 64, *op));
     }
     r.into_iter().flatten().collect::<Vec<_>>()
@@ -75,15 +76,13 @@ fn kvpair_to_host_call_table<F:FieldExt>(inputs: &Vec<(u64, F, F, ForeignInst)>)
 impl HostOpSelector for MerkleChip<Fr, 20> {
     type Config = CommonGateConfig;
     fn configure(
-        _meta: &mut ConstraintSystem<Fr>,
+        meta: &mut ConstraintSystem<Fr>,
     ) -> Self::Config {
-        todo!()
-        //MerkleChip::<Fr>::configure(meta)
+        MerkleChip::<Fr, 20>::configure(meta)
     }
 
-    fn construct(_c: Self::Config) -> Self {
-        todo!()
-        //MerkleChip::new(c)
+    fn construct(c: Self::Config) -> Self {
+        MerkleChip::new(c)
     }
 
     fn assign(
@@ -121,13 +120,20 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                 Fr::zero(),
                 true
             )?;
-            r.push(op);
+            println!("detect address is {:?}", limb.value);
             r.push(limb);
 
-            for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(MERGE_SIZE) {
-                let (limb, _) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
+            let mut setget = op;
+
+            let (limb, _) = config.assign_merged_operands(region, &mut offset, vec![&group[1], &group[2], &group[3], &group[4]], Fr::from_u128(1u128 << 64), true)?;
+            r.push(limb);
+
+            for subgroup in group.clone().into_iter().skip(5).collect::<Vec<_>>().chunks_exact(2) {
+                let (limb, op) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
+                setget = op;
                 r.push(limb);
             }
+            r.push(setget);
         }
 
         let default_table = kvpair_to_host_call_table(&vec![(0u64, *DEFAULT_ROOT_HASH, Fr::zero(), KVPairGet)]);
@@ -147,13 +153,20 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                 Fr::zero(),
                 false
             )?;
-            r.push(op);
             r.push(limb);
 
-            for subgroup in default_entries.clone().iter().skip(1).collect::<Vec<_>>().chunks_exact(MERGE_SIZE) {
-                let (limb, _) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
+            let mut setget = op;
+
+            let (limb, _) = config.assign_merged_operands(region, &mut offset,
+                vec![&default_entries[1], &default_entries[2], &default_entries[3], &default_entries[4]], Fr::from_u128(1u128 << 64), true)?;
+            r.push(limb);
+
+            for subgroup in default_entries.clone().iter().skip(5).collect::<Vec<_>>().chunks_exact(MERGE_DATA_SIZE) {
+                let (limb, op) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
+                setget = op;
                 r.push(limb);
             }
+            r.push(setget);
         }
 
         Ok(r)
@@ -179,28 +192,45 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                 //self.initialize(&config, &mut region, &mut offset)?;
                 //
                 //
-                // 0: op_code
-                // 1: address
-                // 2: root
-                // 3: value
-                for arg_group in arg_cells.chunks_exact(4).into_iter() {
-                    let mut mt = MongoMerkle::construct([0u8;32], field_to_bytes(&arg_group[1].value));
-                    let set = true;
-                    let (mut leaf, mut proof) = mt.get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
-                        .expect("get leaf error");
-                    if set {
-                        leaf.set(&field_to_bytes(&arg_group[2].value).to_vec());
-                        proof = mt.set_leaf_with_proof(&leaf).expect("set leaf error");
+                // Initialize the mongodb
+                //
+                // 0: address
+                // 1: root
+                // 2: value[]
+                // 4: op_code
+                let mut mt:Option<MongoMerkle> = None;
+                for arg_group in arg_cells.chunks_exact(5) {
+                    println!("round ====== ");
+                    println!("address is {}", arg_group[0].value.get_lower_128());
+                    println!("set root with is {:?} [op = {:?}]", arg_group[1].value, arg_group[4].value);
+                    println!("value is {:?} {:?}", arg_group[2].value, arg_group[3].value);
+                    let proof = if arg_group[4].value == Fr::from(KVPairSet as u64) {
+                        println!("op is set, process set:");
+                        let (mut leaf, _) = mt.as_ref().unwrap().get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
+                            .expect("get leaf error");
+                        leaf.set(&field_to_bytes(&arg_group[3].value).to_vec());
+                        mt.as_mut().unwrap().set_leaf_with_proof(&leaf).expect("set leaf error")
+                    } else {
+                        // the case of get value:
+                        // 1. load db
+                        // 2. get leaf
+                        println!("op is get, process get");
+                        mt = Some(MongoMerkle::construct([0u8;32], field_to_bytes(&arg_group[1].value)));
+                        let (_, proof) = mt.as_ref().unwrap().get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
+                            .expect("get leaf error");
+                        proof
                     };
+                    println!("assign proof ...");
                     self.assign_proof(
                         &mut region,
                         &mut offset,
                         &proof,
+                        &arg_group[4],
                         &arg_group[0],
                         &arg_group[1],
-                        &arg_group[2],
-                        &arg_group[3],
+                        [&arg_group[2], &arg_group[3]],
                     )?;
+                    println!("finish assign proof ...");
                 }
                 Ok(())
             },

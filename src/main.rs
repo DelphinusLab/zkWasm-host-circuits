@@ -36,6 +36,7 @@ use crate::circuits::{
     bls::Bls381PairChip, bls::Bls381SumChip,
     bn256::Bn256PairChip, bn256::Bn256SumChip,
     poseidon::PoseidonChip,
+    merkle::MerkleChip,
     host::{
         HostOpSelector,
         HostOpChip,
@@ -65,6 +66,7 @@ enum OpType {
     BN256PAIR,
     BN256SUM,
     POSEIDONHASH,
+    MERKLE,
 }
 
 
@@ -263,6 +265,18 @@ fn main() {
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
+        OpType::MERKLE => {
+            let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, 20>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData,
+            };
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> = HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
+        }
+
     };
 
     //circuit_info.mock_proof(k);

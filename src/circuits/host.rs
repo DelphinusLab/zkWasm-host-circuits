@@ -67,7 +67,7 @@ impl HostOpConfig {
         values: Vec<&((Fr, Fr), Fr)>,
         indicator: Fr,
         enable: bool,
-    ) -> Result<Limb<Fr>, Error> {
+    ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
         let mut rev = values.clone();
         let len = values.len();
         rev.reverse();
@@ -79,9 +79,10 @@ impl HostOpConfig {
         };
         merged_ops.reverse();
         let mut ret = None;
+        let mut op = None;
         for (i, (((operand, opcode), index), merged_op)) in values.into_iter().zip(merged_ops).enumerate() {
             self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), *operand)?;
-            self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
+            let opc = self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
             self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
             self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
             self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
@@ -92,11 +93,12 @@ impl HostOpConfig {
                 self.assign_cell(region, *offset, &HostOpConfig::indicator(), indicator)?;
                 if i == 0 {
                     ret = Some(limb);
+                    op = Some(opc);
                 }
             }
             *offset += 1;
         }
-        Ok(ret.unwrap())
+        Ok((ret.unwrap(), op.unwrap()))
     }
 
     pub fn assign_one_line(
@@ -109,16 +111,16 @@ impl HostOpConfig {
         merge: Fr,
         ind: Fr,
         enable: bool,
-    ) -> Result<Limb<Fr>, Error> {
+    ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
         let r = self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), operand)?;
-        self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
+        let op = self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), opcode)?;
         self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
         self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
         self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
         self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
         self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
         *offset +=1;
-        Ok(r)
+        Ok((r, op))
     }
 }
 

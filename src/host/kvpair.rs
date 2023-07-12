@@ -139,7 +139,7 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         self.hash
     }
     fn set(&mut self, data: &Vec<u8>) {
-        let mut hasher = gen_hasher();
+        let mut hasher = POSEIDON_HASHER.clone();
         self.data = data.clone().try_into().unwrap();
         let batchdata = data
             .chunks(16)
@@ -154,6 +154,8 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         let values: [Fr; 2] = batchdata.try_into().unwrap();
         hasher.update(&values);
         self.hash = hasher.squeeze().to_repr();
+        println!("update with values {:?}", values);
+        println!("update with new hash {:?}", self.hash);
     }
     fn right(&self) -> Option<[u8; 32]> {
         Some(self.right)

@@ -61,7 +61,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
         for group in selected_entries.chunks_exact(BLSPAIR_SIZE) {
             for i in 0..8 {
-                let limb = config.assign_merged_operands(
+                let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
                     vec![&group[2*i], &group[2*i+1]],
@@ -73,12 +73,12 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
 
-            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let (limb,_) = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
             r.push(limb);
 
             for i in 0..16 {
-                let limb = config.assign_merged_operands(
+                let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
                     vec![&group[2*i+17], &group[2*i+1+17]],
@@ -90,12 +90,12 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
             let ((operand, opcode), index) = *group.get(49).clone().unwrap();
 
-            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let (limb, _) = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
             r.push(limb);
 
             for i in 0..48 {
-                let limb = config.assign_merged_operands(
+                let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
                     vec![&group[2*i+50], &group[2*i+1+50]],
@@ -158,7 +158,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
 
         for group in selected_entries.chunks_exact(BLS381G1_SIZE) {
             for i in 0..8 {
-                let limb = config.assign_merged_operands(
+                let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
                     vec![&group[2*i], &group[2*i+1]],
@@ -168,7 +168,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
                 r.push(limb);
             }
             let ((operand, opcode), index) = *group.get(16).clone().unwrap();
-            let limb = config.assign_one_line(region, &mut offset, operand, opcode, index,
+            let (limb, _op) = config.assign_one_line(region, &mut offset, operand, opcode, index,
                operand, Fr::zero(), true)?;
             r.push(limb);
         }

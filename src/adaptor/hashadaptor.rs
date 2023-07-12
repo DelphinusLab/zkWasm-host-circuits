@@ -113,7 +113,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let limb = config.assign_one_line(
+            let (limb, _op) = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
@@ -122,7 +122,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             r.push(limb);
 
             for subgroup in group.clone().into_iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
-                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
+                let (limb, _op) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), true)?;
                 r.push(limb);
             }
         }
@@ -140,7 +140,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 
-            let limb = config.assign_one_line(
+            let (limb, _op) = config.assign_one_line(
                 region, &mut offset, operand, opcode, index,
                 operand,
                 Fr::zero(),
@@ -149,7 +149,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
             r.push(limb);
 
             for subgroup in default_entries.clone().iter().skip(1).collect::<Vec<_>>().chunks_exact(4) {
-                let limb = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
+                let (limb, _op) = config.assign_merged_operands(region, &mut offset, subgroup.to_vec(), Fr::from_u128(1u128 << 64), false)?;
                 r.push(limb);
             }
         }

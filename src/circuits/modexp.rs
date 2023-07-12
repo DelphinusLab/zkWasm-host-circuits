@@ -89,7 +89,7 @@ impl<F: FieldExt> ModExpChip<F> {
         CommonGateConfig::configure(cs, range_check_config)
     }
 
-    pub fn assign_constant_number(
+    fn assign_constant_number(
         &self,
         region: &mut Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
@@ -1496,9 +1496,7 @@ mod tests {
     }
 
     // test helpers:
-    use halo2_proofs::{
-        dev::VerifyFailure,
-    };
+    use halo2_proofs::dev::VerifyFailure;
     use std::fmt;
 
     pub enum CircuitError {

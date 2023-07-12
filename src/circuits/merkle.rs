@@ -1,28 +1,16 @@
-use crate::{
-    customized_circuits,
-    table_item,
-    item_count,
-    customized_circuits_expand,
-    constant_from,
-    value_for_assign,
-};
-use crate::utils::GateCell;
-use std::marker::PhantomData;
-use std::fmt::Debug;
+use crate::circuits::poseidon::PoseidonChip;
+use crate::circuits::CommonGateConfig;
+use crate::utils::bytes_to_field;
+use crate::utils::field_to_bytes;
 use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::plonk::{
-    Fixed, Column, Advice,
-    Selector, Expression, VirtualCells,
-    Error,
-};
-use halo2_proofs::poly::Rotation;
-use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::circuit::{Chip, Region};
+use halo2_proofs::plonk::ConstraintSystem;
+use halo2_proofs::plonk::Error;
+use std::marker::PhantomData;
 
-use crate::host::merkle::{MerkleTree, MerkleProof};
-use crate::host::kvpair::MongoMerkle;
 use crate::circuits::Limb;
-
+use crate::host::merkle::MerkleProof;
+use crate::host::ForeignInst::KVPairSet;
 
 /* Given a merkel tree eg1 with height=3:
  * 0
@@ -32,39 +20,37 @@ use crate::circuits::Limb;
  * A proof of 7 = {source: 7.hash, root: 0.hash, assist: [8.hash,4.hash,2.hash], index: 7}
  */
 
-customized_circuits!(MerkleConfig, 2, 7, 1, 2,
-   | carry   | left | right | index   | k   | odd   | pos   | is_set | is_proof_start | sel
-   | carry_n | nil  | nil   | nil     | k_n | odd_n | nil   | nil    | nil            | nil
-);
-
-
-/*
- * Circuit of eg1 of proof of node 7:
- *
- * 7.hash, left: 7.hash, right: assist[0], index:7, k:0, odd:0, pos:2^{3}-1, is_set, true
- * hash_0, left: hash_0, right: assist[1], index:3, k:0, odd:0, pos:2^{2}-1, is_set, true
- * hash_1, left: hash_1, right: assist[2], index:1, k:0, odd:0, pos:2^{1}-1, is_set, true
- * hash_2                                                                            false
- *
- * index = 2*k + odd + pos
- * k_n * 2 + odd_n = k
- * odd * (carry - right) + (1-odd) * (carry - left) * sel
- * odd * (1-odd) = 0
- *
- * let assigned_cell = hash(left, right) ------> external_circuit return AssignedCell
- * copy_constarint(assigned_cell, carry_n)
- *
- */
-
-
-pub struct MerkleChip<F:FieldExt> {
-    config: MerkleConfig,
-    _marker: PhantomData<F>
+pub struct MerkleProofState<F: FieldExt, const D: usize> {
+    pub source: Limb<F>,
+    pub root: Limb<F>, // last is root
+    pub assist: [Limb<F>; D],
+    pub address: Limb<F>,
+    pub zero: Limb<F>,
+    pub one: Limb<F>,
 }
 
+impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
+    fn default() -> Self {
+        MerkleProofState {
+            source: Limb::new(None, F::zero()),
+            root: Limb::new(None, F::zero()),
+            address: Limb::new(None, F::zero()),
+            assist: [0;D].map(|_| Limb::new(None, F::zero())),
+            zero: Limb::new(None, F::zero()),
+            one: Limb::new(None, F::one()),
+        }
+    }
+}
 
-impl<F: FieldExt> Chip<F> for MerkleChip<F> {
-    type Config = MerkleConfig;
+pub struct MerkleChip<F: FieldExt, const D: usize> {
+    pub config: CommonGateConfig,
+    poseidon_chip: PoseidonChip<F>,
+    state: MerkleProofState<F, D>,
+    _marker: PhantomData<F>,
+}
+
+impl<F: FieldExt, const D: usize> Chip<F> for MerkleChip<F, D> {
+    type Config = CommonGateConfig;
     type Loaded = ();
 
     fn config(&self) -> &Self::Config {
@@ -76,129 +62,142 @@ impl<F: FieldExt> Chip<F> for MerkleChip<F> {
     }
 }
 
-impl<F: FieldExt> MerkleChip<F> {
-    pub fn new(config: MerkleConfig) -> Self {
+impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
+    pub fn new(config: CommonGateConfig) -> Self {
         MerkleChip {
+            poseidon_chip: PoseidonChip::construct(config.clone()),
             config,
+            state: MerkleProofState::default(),
             _marker: PhantomData,
         }
     }
 
     pub fn proof_height() -> usize {
-        MongoMerkle::height()
+        D
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> MerkleConfig {
-        let witness= [0; 7]
-                .map(|_|cs.advice_column());
-        witness.map(|x| cs.enable_equality(x));
-        let selector =[cs.selector(), cs.selector()];
-        let fixed = [cs.fixed_column()];
-
-        let config = MerkleConfig { fixed, selector, witness };
-
-        cs.create_gate("select left right", |meta| {
-            let carry = config.get_expr(meta, MerkleConfig::carry());
-            let left = config.get_expr(meta, MerkleConfig::left());
-            let right = config.get_expr(meta, MerkleConfig::right());
-            let odd = config.get_expr(meta, MerkleConfig::odd());
-            let sel = config.get_expr(meta, MerkleConfig::sel());
-
-            // if odd then carry is put at right else put at left
-            vec![sel * (odd.clone() * (carry.clone() - right) + (constant_from!(1)-odd) * (carry - left))]
-        });
-
-
-        cs.create_gate("calculate offset", |meta| {
-            let index = config.get_expr(meta, MerkleConfig::index());
-            let pos = config.get_expr(meta, MerkleConfig::pos());
-            let odd = config.get_expr(meta, MerkleConfig::odd());
-            let sel = config.get_expr(meta, MerkleConfig::sel());
-            let k = config.get_expr(meta, MerkleConfig::k());
-
-            let k_n = config.get_expr(meta, MerkleConfig::k_n());
-            let odd_n = config.get_expr(meta, MerkleConfig::odd_n());
-
-            vec![
-                sel.clone() * (constant_from!(2) * k.clone() + odd + pos.clone() - index),
-                sel * pos * (constant_from!(2) * k_n + odd_n - k),
-            ]
-        });
-
-        cs.create_gate("set get has equal path", |meta| {
-            let left = config.get_expr(meta, MerkleConfig::left());
-            let right = config.get_expr(meta, MerkleConfig::right());
-            let odd = config.get_expr(meta, MerkleConfig::odd());
-            let is_set = config.get_expr(meta, MerkleConfig::is_set());
-            let sel = config.get_expr(meta, MerkleConfig::sel());
-
-            let left_rel = config.get_expr_with_offset(meta, MerkleConfig::left(), Self::proof_height());
-            let right_rel = config.get_expr_with_offset(meta, MerkleConfig::right(), Self::proof_height());
-            let odd_rel = config.get_expr_with_offset(meta, MerkleConfig::odd(), Self::proof_height());
-
-            let get_rel = left * (constant_from!(1) - odd.clone()) + right * odd;
-            let set_rel = left_rel * (constant_from!(1) - odd_rel.clone()) + right_rel * odd_rel;
-
-            vec![
-                is_set * sel * (get_rel - set_rel)
-            ]
-        });
-
-        config
-    }
-
-
-    fn assign_proof<const D: usize, M: MerkleTree<F, D>>(
-        &self,
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-        _merkle: &M,
-        proof: &MerkleProof<F, D>,
     ) -> Result<(), Error> {
-        let mut index_offset = proof.index - (1u32 << D) - 1;
-        let mut carry = proof.source;
-        self.config.enable_selector(region, *offset, &MerkleConfig::is_proof_start())?;
-        for i in 0..D {
-            let depth = D-i-1;
-            let pos = (1u32 << depth) - 1;
-            let index = index_offset + pos;
-            let k = index_offset / 2;
-            let odd = index_offset - (k*2);
-            let (left, right) = if odd == 1 { (&proof.assist[i], &carry) } else { (&carry, &proof.assist[i]) };
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::pos(), F::from(pos as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::k(), F::from(k as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::odd(), F::from(odd as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::carry(), carry)?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::index(), F::from(index as u64))?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::left(), *left)?;
-            self.config.assign_cell(region, *offset+i, &MerkleConfig::right(), *right)?;
-            self.config.enable_selector(region, *offset+i, &MerkleConfig::sel())?;
-            index_offset = index_offset / 2;
-            carry = M::hash(left, right);
+        self.poseidon_chip.initialize(config, region, offset)
+    }
+
+
+    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &())
+    }
+
+    pub fn assign_proof(
+        &mut self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        proof: &MerkleProof<[u8; 32], D>,
+        opcode: &Limb<F>,
+        address: &Limb<F>,
+        root: &Limb<F>,
+        value: [&Limb<F>; 2],
+    ) -> Result<(), Error> {
+        let is_set =
+            self.config
+                .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
+        println!("value is {:?} {:?}", value[0].value, value[1].value);
+        println!("is set {:?}", is_set);
+        let fills = proof
+            .assist
+            .to_vec()
+            .iter()
+            .map(|x| Some(Limb::new(None, bytes_to_field(&x))))
+            .collect::<Vec<_>>();
+        let new_assist: Vec<Limb<F>> = fills
+            .chunks(5)
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|&values| {
+                let mut v = values.clone().to_vec();
+                v.resize_with(5, || None);
+                self.config
+                    .assign_witness(region, &mut (), offset, v.try_into().unwrap(), 0)
+                    .unwrap()
+            })
+            .collect::<Vec<Vec<Limb<F>>>>()
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let compare_assist = self
+            .state
+            .assist
+            .clone()
+            .zip(new_assist.clone().try_into().unwrap())
+            .map(|(old, new)| {
+                self.config
+                    .select(region, &mut (), offset, &is_set, &new, &old, 0)
+                    .unwrap()
+            });
+        for (a, b) in compare_assist.to_vec().into_iter().zip(new_assist) {
+            region.constrain_equal(a.get_the_cell().cell(), b.get_the_cell().cell())?;
         }
-        *offset += D;
+        self.state.assist = compare_assist.clone();
+
+        let mut positions = vec![];
+        self.config
+            .decompose_limb(region, &mut (), offset, address, &mut positions, D)?;
+        // position = 0 means assist is at right else assist is at left
+        let initial_hash = self.poseidon_chip.get_permute_result(
+            region,
+            offset,
+            &[
+                value[0].clone(),
+                value[1].clone(),
+                self.state.one.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+                self.state.zero.clone(),
+            ],
+            &self.state.one.clone(),
+        )?;
+        assert_eq!(field_to_bytes(&initial_hash.value), proof.source);
+
+        let final_hash =
+            positions
+                .iter()
+                .zip(compare_assist)
+                .fold(initial_hash, |acc, (position, assist)| {
+                    let left = self
+                        .config
+                        .select(region, &mut (), offset, &position, &acc, &assist, 0)
+                        .unwrap();
+                    let right = self
+                        .config
+                        .select(region, &mut (), offset, &position, &assist, &acc, 0)
+                        .unwrap();
+                    self.poseidon_chip
+                        .get_permute_result(
+                            region,
+                            offset,
+                            &[
+                                left,
+                                right,
+                                self.state.one.clone(),
+                                self.state.zero.clone(),
+                                self.state.zero.clone(),
+                                self.state.zero.clone(),
+                                self.state.zero.clone(),
+                                self.state.zero.clone(),
+                            ],
+                            &self.state.one.clone(),
+                        )
+                        .unwrap()
+                });
+        //assert_eq!(root.value, final_hash.value);
+        region.constrain_equal(
+            root.cell.as_ref().unwrap().cell(),
+            final_hash.cell.as_ref().unwrap().cell(),
+        )?;
         Ok(())
-    }
-
-    pub fn assign_get<const D: usize, M: MerkleTree<F, D>>(
-        &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        merkle: &M,
-        proof: &MerkleProof<F, D>,
-    ) -> Result<(), Error> {
-        self.assign_proof(region, offset, merkle, proof)
-    }
-
-    pub fn assign_set<const D: usize, M: MerkleTree<F, D>>(
-        &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        merkle: &M,
-        proof_get: &MerkleProof<F, D>,
-        proof_set: &MerkleProof<F, D>,
-    ) -> Result<(), Error> {
-        self.assign_proof(region, offset, merkle, proof_get)?;
-        self.assign_proof(region, offset, merkle, proof_set)
     }
 }

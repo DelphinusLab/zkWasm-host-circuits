@@ -1,0 +1,5 @@
+# kvpair mongodb upgrade scripts
+## How to run upgrade
+```
+sh upgrade.sh
+```

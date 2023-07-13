@@ -22,4 +22,4 @@ a_0(x,y) = x + y + 1
 | op_b    | $b_1'$  | 1      |  7      |
 
 ## configuring async backend
-There are two async backend for mongodb: `mongostdsync` and `mongotokiosync`(default). Note that when using the non-default backend`mongostdsync`, you must also using `default-features = false`.
+There are two async backend for mongodb: `mongo-std-sync` and `mongo-tokio-sync`(default). Note that when using the non-default backend`mongo-std-sync`, you must also using `default-features = false`.

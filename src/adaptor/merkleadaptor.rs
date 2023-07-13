@@ -217,6 +217,7 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                         // 2. get leaf
                         println!("op is get, process get");
                         mt = Some(MongoMerkle::construct([0u8;32], field_to_bytes(&arg_group[1].value)));
+
                         let (_, proof) = mt.as_ref().unwrap().get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
                             .expect("get leaf error");
                         proof

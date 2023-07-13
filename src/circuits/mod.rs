@@ -384,24 +384,26 @@ impl CommonGateConfig {
         constant: &F,
     ) -> Result<Limb<F>, Error> {
         let delta = limb.value - constant;
-        // ((inv * (limb.value - constant)) - r)
+        // ((limb.value - constant) * r)
+        // ((inv * (limb.value - constant)) - (1-r))
         let (inv, r) = if delta.is_zero_vartime() {
-            (F::one(), F::zero())
+            (F::one(), F::one())
         } else {
-            (delta.invert().unwrap(), F::one())
+            (delta.invert().unwrap(), F::zero())
         };
-        let l = self.assign_line(region, lookup_assist_chip, offset,
+        let diff = self.sum_with_constant(region, lookup_assist_chip, offset, vec![(limb, F::one())], Some(-constant.clone()))?;
+        let r = self.assign_line(region, lookup_assist_chip, offset,
                 [
-                    Some(Limb::new(None, inv)),
-                    Some(Limb::new(None, r)),
+                    Some(diff.clone()),
                     None,
-                    Some(limb.clone()),
+                    None,
+                    Some(Limb::new(None, r)),
                     None,
                     None,
                 ],
                 [
-                    Some(-constant.clone()),
-                    Some(-F::one()),
+                    None,
+                    None,
                     None,
                     None,
                     None,
@@ -409,6 +411,29 @@ impl CommonGateConfig {
                     Some(F::one()),
                     None,
                     None,
+                ],
+                0
+        )?;
+        let r = r[1].clone();
+        let l = self.assign_line(region, lookup_assist_chip, offset,
+                [
+                    Some(Limb::new(None, inv)),
+                    Some(r),
+                    None,
+                    Some(diff),
+                    None,
+                    None,
+                ],
+                [
+                    None,
+                    Some(F::one()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(F::one()),
+                    None,
+                    Some(-F::one()),
                 ],
                 0
         )?;

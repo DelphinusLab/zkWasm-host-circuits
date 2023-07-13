@@ -247,7 +247,7 @@ impl<F: FieldExt> AltJubChip<F> {
                  Some(Limb::new(None, x_d_lambda_inv)),
                  None,
                  None,
-                 Some(x_d_lambda_cell.clone()),
+                 Some(x_d_lambda_cell),
                  None,
                  None,
             ],
@@ -260,10 +260,10 @@ impl<F: FieldExt> AltJubChip<F> {
         let x3_t = x_d_lambda_inv_cell.value * x3_f;
         let x3 = self.config.assign_line(region, &mut (), offset,
             [
-                 Some(x3_f_cell.clone()),
+                 Some(x3_f_cell),
                  Some(Limb::new(None, x3_t)),
                  None,
-                 Some(x_d_lambda_inv_cell.clone()),
+                 Some(x_d_lambda_inv_cell),
                  None,
                  None,
             ],
@@ -307,7 +307,7 @@ impl<F: FieldExt> AltJubChip<F> {
                   Some(Limb::new(None, y_d_lambda_inv)),
                   None,
                   None,
-                  Some(y_d_lambda_cell.clone()),
+                  Some(y_d_lambda_cell),
                   None,
                   None,
             ],
@@ -321,10 +321,10 @@ impl<F: FieldExt> AltJubChip<F> {
         // constrain it
         let y3 = self.config.assign_line(region, &mut (), offset,
             [
-                Some(y3_f_cell.clone()),
+                Some(y3_f_cell),
                 Some(Limb::new(None, y3_t)),
                 None,
-                Some(y_d_lambda_inv_cell.clone()),
+                Some(y_d_lambda_inv_cell),
                 None,
                 None,
             ],

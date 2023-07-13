@@ -11,6 +11,7 @@ function addIndexHashIndex(collectionName) {
                 "hash": -1
             },
             {
+                unique: false,
                 name: "indexHashIndex"
             }
         );

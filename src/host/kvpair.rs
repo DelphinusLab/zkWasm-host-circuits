@@ -246,7 +246,8 @@ impl MerkleTree<[u8; 32]> for MongoMerkle {
     type Node = MerkleRecord;
 
     fn construct(addr: Self::Id, root: Self::Root, depth: usize) -> Self {
-        let client = executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
+        let client =
+            executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
         let default_hash_vec: Vec<[u8; 32]> = Self::gen_default_vec(depth);
         MongoMerkle {
             client,
@@ -356,7 +357,7 @@ mod tests {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [1; 32];
         const TREE_DEPTH: usize = 20;
-        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+        let default_hash_vec: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
 
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
@@ -406,7 +407,7 @@ mod tests {
         const PARENT_INDEX: u32 = 2_u32.pow(19) - 1;
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, default_hash_vec[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),
@@ -486,7 +487,7 @@ mod tests {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [2; 32];
         const TREE_DEPTH: usize = 20;
-        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+        let default_hash_vec: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
 
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
@@ -517,7 +518,7 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, default_hash_vec[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),
@@ -573,7 +574,7 @@ mod tests {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [3; 32];
         const TREE_DEPTH: usize = 20;
-        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+        let default_hash_vec: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
 
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
@@ -636,7 +637,171 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, default_hash_vec[TREE_DEPTH], TREE_DEPTH);
+        executor::block_on(drop_collection::<MerkleRecord>(
+            &mt.client,
+            MongoMerkle::get_db_name(),
+            mt.get_collection_name(),
+        ))
+        .expect("Unexpected DB Error");
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+
+        assert_eq!(root, DEFAULT_ROOT_HASH);
+        assert_eq!(root64, DEFAULT_ROOT_HASH64);
+
+        // 2
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF1);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF1);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        leaf.set(&LEAF2_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF2);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF2);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        assert_eq!(leaf.index, INDEX2);
+        assert_eq!(leaf.data, LEAF2_DATA);
+
+        // 4
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        leaf.set(&LEAF3_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root = mt.get_root_hash();
+        let root64 = root
+            .chunks(8)
+            .into_iter()
+            .map(|x| u64::from_le_bytes(x.to_vec().try_into().unwrap()))
+            .collect::<Vec<u64>>();
+
+        assert_eq!(root, ROOT_HASH_AFTER_LEAF3);
+        assert_eq!(root64, ROOT64_HASH_AFTER_LEAF3);
+
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        assert_eq!(leaf.index, INDEX3);
+        assert_eq!(leaf.data, LEAF3_DATA);
+
+        // 5
+        let mt = MongoMerkle::construct(TEST_ADDR, ROOT_HASH_AFTER_LEAF3, TREE_DEPTH);
+        assert_eq!(mt.get_root_hash(), ROOT_HASH_AFTER_LEAF3);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data, LEAF1_DATA);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
+        assert_eq!(leaf.index, INDEX2);
+        assert_eq!(leaf.data, LEAF2_DATA);
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
+        assert_eq!(leaf.index, INDEX3);
+        assert_eq!(leaf.data, LEAF3_DATA);
+    }
+
+    #[test]
+    /* Tests as same as the above m tree with updating multple leaves but for 13 depth.
+     * 1. Clear m tree collection. Create default empty m tree. Check root (default one, A).
+     * 2. Update index=2_u32.pow(13) - 1 (first leaf) leave value. Check root (1 leave updated, B). Check index=2_u32.pow(13) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(13) (second leaf) leave value. Check root (1 leave updated, C). Check index=2_u32.pow(13) leave value updated.
+     * 4. Update index=2_u32.pow(14) - 2 (last leaf) leave value. Check root (1 leave updated, D). Check index=2_u32.pow(14) -2 leave value updated.
+     * 5. Load m tree from DB with D root hash, check root and leaves' values.
+     */
+    fn test_mongo_merkle_multi_leaves_update_13depth() {
+        // Init checking results
+        const TEST_ADDR: [u8; 32] = [3; 32];
+        const TREE_DEPTH: usize = 13;
+        let default_hash_vec: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+
+        const DEFAULT_ROOT_HASH: [u8; 32] = [
+            251, 161, 24, 144, 66, 123, 199, 66, 233, 19, 64, 83, 145, 25, 174, 97, 32, 120, 7,
+            223, 189, 53, 135, 212, 109, 146, 23, 211, 75, 0, 93, 33,
+        ];
+
+        const DEFAULT_ROOT_HASH64: [u64; 4] = [
+            4811950252684255739,
+            7038591379584324585,
+            15314268147503560736,
+            2404078101749797485,
+        ];
+
+        const INDEX1: u32 = 2_u32.pow(13) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF1: [u8; 32] = [
+            64, 142, 179, 122, 66, 157, 169, 59, 143, 137, 216, 108, 134, 208, 124, 3, 24, 39, 143,
+            120, 26, 5, 220, 176, 191, 228, 113, 66, 174, 69, 173, 47,
+        ];
+        const ROOT64_HASH_AFTER_LEAF1: [u64; 4] = [
+            4299140228153839168,
+            251304954996230543,
+            12744066656801597208,
+            3435478705494942911,
+        ];
+
+        const INDEX2: u32 = 2_u32.pow(13);
+        const LEAF2_DATA: [u8; 32] = [
+            0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF2: [u8; 32] = [
+            37, 44, 248, 214, 184, 39, 62, 115, 228, 75, 174, 183, 0, 234, 120, 36, 190, 67, 174,
+            1, 72, 10, 80, 76, 117, 161, 206, 154, 137, 139, 130, 34,
+        ];
+        const ROOT64_HASH_AFTER_LEAF2: [u64; 4] = [
+            8304118437751827493,
+            2628107671373237220,
+            5498906449401496510,
+            2486703367385948533,
+        ];
+
+        const INDEX3: u32 = 2_u32.pow(14) - 2;
+        const LEAF3_DATA: [u8; 32] = [
+            18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+        const ROOT_HASH_AFTER_LEAF3: [u8; 32] = [
+            136, 81, 217, 130, 212, 53, 168, 98, 164, 14, 64, 147, 160, 200, 127, 230, 226, 118,
+            28, 192, 70, 244, 59, 163, 182, 145, 70, 125, 15, 78, 217, 4,
+        ];
+        const ROOT64_HASH_AFTER_LEAF3: [u64; 4] = [
+            7108991198648947080,
+            16609214542756449956,
+            11762263436516161250,
+            349396274531176886,
+        ];
+
+        // 1
+        let mut mt = MongoMerkle::construct(TEST_ADDR, default_hash_vec[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),

@@ -23,3 +23,6 @@ a_0(x,y) = x + y + 1
 
 ## configuring async backend
 There are two async backend for mongodb: `mongo-std-sync` and `mongo-tokio-sync`(default). Note that when using the non-default backend`mongo-std-sync`, you must also using `default-features = false`.
+
+## Server and Prover
+Using the scripts `run.sh` and `runserver.sh` will start 2 applications in normal mode and REST server mode respectively. Please supply arguments in the scripts before running them.

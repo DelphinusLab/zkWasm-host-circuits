@@ -69,14 +69,13 @@ impl<F: FieldExt> PoseidonChip<F> {
         CommonGateConfig::configure(cs, &())
     }
 
-    pub fn assign_permute(
+    pub (crate) fn get_permute_result(
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE],
         reset: &Limb<F>,
-        result: &Limb<F>,
-    ) -> Result<(), Error> {
+    ) -> Result<Limb<F>, Error> {
         let mut new_state = vec![];
         for (value, default) in self.poseidon_state.state.iter().zip(self.poseidon_state.default.iter()) {
             new_state.push(self.config.select(region, &mut (), offset, &reset, value, default, self.round)?);
@@ -109,10 +108,23 @@ impl<F: FieldExt> PoseidonChip<F> {
             offset,
             &inputs.try_into().unwrap(),
         )?;
-        assert!(self.poseidon_state.state[1].value == result.value);
+        Ok(self.poseidon_state.state[1].clone())
+    }
+
+
+    pub fn assign_permute(
+        &mut self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        values: &[Limb<F>; RATE],
+        reset: &Limb<F>,
+        result: &Limb<F>,
+    ) -> Result<(), Error> {
+        let r = self.get_permute_result(region, offset, values, reset)?;
+        assert!(r.value == result.value);
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
-            self.poseidon_state.state[1].cell.as_ref().unwrap().cell()
+            r.cell.as_ref().unwrap().cell()
         )?;
         Ok(())
     }

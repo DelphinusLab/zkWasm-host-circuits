@@ -32,11 +32,11 @@ pub enum ForeignInst {
     Bn254PairG1,
     Bn254PairG2,
     Bn254PairG3,
-    KVPairSetRoot,
-    KVPairGetRoot,
-    KVPairAddress,
-    KVPairSet,
-    KVPairGet,
+    KVPairSetRoot,   // 11
+    KVPairGetRoot,   // 12
+    KVPairAddress,   // 13
+    KVPairSet,       // 14
+    KVPairGet,       // 15
     SHA256New,
     SHA256Push,
     SHA256Finalize,

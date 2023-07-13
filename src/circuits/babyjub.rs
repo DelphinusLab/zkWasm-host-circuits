@@ -175,10 +175,10 @@ impl<F: FieldExt> AltJubChip<F> {
         let y1y2 = lhs.y.value * rhs.y.value;
         let lambda1 = self.config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, lhs.x.clone().value)),
+                Some(lhs.x.clone()),
                 None,
                 None,
-                Some(Limb::new(None, rhs.x.clone().value)),
+                Some(rhs.x.clone()),
                 Some(Limb::new(None, x1x2)),
                 None,
             ],
@@ -188,36 +188,36 @@ impl<F: FieldExt> AltJubChip<F> {
 
         let lambda2 = self.config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, lhs.y.clone().value)),
+                Some(lhs.y.clone()),
                 None,
                 None,
-                Some(Limb::new(None, rhs.y.clone().value)),
+                Some(rhs.y.clone()),
                 Some(Limb::new(None, y1y2)),
                 None,
             ],
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
             0
         )?[2].clone();  // verify y1y2 is correct
-        let lambda = self.config.assign_line(region, &mut (), offset,
+        let d_lambda = self.config.assign_line(region, &mut (), offset,
             [
                 Some(lambda1),
                 None,
                 None,
                 Some(lambda2),
-                Some(Limb::new(None, y1y2 * x1x2)),
+                Some(Limb::new(None, d*y1y2 * x1x2)),
                 None,
             ],
-            [None, None, None, None, Some(-F::one()), None, Some(F::one()), None, None],
+            [None, None, None, None, Some(-F::one()), None, Some(d), None, None],
             0
         )?[2].clone();  // lambda1*lambda2 = y1y2 * x1x2
 
         let x3_f = lhs.x.value * rhs.y.value + lhs.y.value * rhs.x.value;
-        let x3s = self.config.assign_line(region, &mut (), offset,
+        let x3_f_cell = self.config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, lhs.x.clone().value)),
-                Some(Limb::new(None, lhs.y.clone().value)),
-                Some(Limb::new(None, rhs.x.clone().value)),
-                Some(Limb::new(None, rhs.y.clone().value)),
+                Some(lhs.x.clone()),
+                Some(lhs.y.clone()),
+                Some(rhs.x.clone()),
+                Some(rhs.y.clone()),
                 Some(Limb::new(None, x3_f)),
                 None,
             ],
@@ -225,45 +225,106 @@ impl<F: FieldExt> AltJubChip<F> {
             0
         )?[4].clone();   // gives x1y2 + x2y1
 
-        //x3 * (1+lambda) = x3s
-        let x3_f = (F::one() + d*lambda.value).invert().unwrap();   // other part of x3
+
+        //1+d*lambda
+        let x_d_lambda = F::one() + d_lambda.value;
+        let x_d_lambda_cell = self.config.assign_line(region, &mut (), offset,
+            [
+                 Some(Limb::new(None, x_d_lambda)),
+                 Some(d_lambda.clone()),
+                 None,
+                 None,
+                 None,
+                 None,
+            ],
+            [Some(-F::one()), Some(F::one()), None, None, None, None, None, None, Some(F::one())],
+            0
+        )?[0].clone();
+
+        let x_d_lambda_inv = (F::one() + d_lambda.value).invert().unwrap();
+        let x_d_lambda_inv_cell = self.config.assign_line(region, &mut (), offset,
+            [
+                 Some(Limb::new(None, x_d_lambda_inv)),
+                 None,
+                 None,
+                 Some(x_d_lambda_cell.clone()),
+                 None,
+                 None,
+            ],
+            [None, None, None, None, None, None, Some(-F::one()), None, Some(F::one())],
+            0
+        )?[0].clone();
+
+        //x3 * (1+d*lambda) = x3f
         // constrain x3 to be the product of the two
-        let x3_t = x3s.value * x3_f;
+        let x3_t = x_d_lambda_inv_cell.value * x3_f;
         let x3 = self.config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, x3_f)),
-                Some(Limb::new(None, x3_t)),
-                None,
-                Some(x3s.clone()),
-                None,
-                None,
+                 Some(x3_f_cell.clone()),
+                 Some(Limb::new(None, x3_t)),
+                 None,
+                 Some(x_d_lambda_inv_cell.clone()),
+                 None,
+                 None,
             ],
             [None, Some(-F::one()), None, None, None, None, Some(F::one()), None, None],
             0
         )?[1].clone();
 
+        // gives y1y2 - ax1x2
         let y3_f = lhs.y.value * rhs.y.value - a * lhs.x.value * rhs.x.value;
-        let y3s = self.config.assign_line(region, &mut (), offset,
+        let y3_f_cell = self.config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, lhs.y.clone().value)),
-                Some(Limb::new(None, lhs.x.clone().value)),
-                Some(Limb::new(None, rhs.x.clone().value)),
-                Some(Limb::new(None, rhs.y.clone().value)),
+                Some(lhs.y.clone()),
+                Some(lhs.x.clone()),
+                Some(rhs.x.clone()),
+                Some(rhs.y.clone()),
                 Some(Limb::new(None, y3_f)),
                 None,
             ],
             [None, None, None, None, Some(-F::one()), None, Some(F::one()), Some(-a), None],
             0
-        )?[4].clone(); // gives y1y2 - ax1x2
-        let y3_2 = (F::one() - d*lambda.value).invert().unwrap();
-        let y3_t = y3s.value * y3_2;
+        )?[4].clone();
+
+        //1-d*lambda
+        let y_d_lambda = F::one() - d_lambda.value;
+        let y_d_lambda_cell = self.config.assign_line(region, &mut (), offset,
+            [
+                  Some(Limb::new(None, y_d_lambda)),
+                  Some(d_lambda.clone()),
+                  None,
+                  None,
+                  None,
+                  None,
+            ],
+            [Some(-F::one()), Some(-F::one()), None, None, None, None, None, None, Some(F::one())],
+            0
+        )?[0].clone();
+
+        let y_d_lambda_inv = y_d_lambda.invert().unwrap();
+        let y_d_lambda_inv_cell = self.config.assign_line(region, &mut (), offset,
+            [
+                  Some(Limb::new(None, y_d_lambda_inv)),
+                  None,
+                  None,
+                  Some(y_d_lambda_cell.clone()),
+                  None,
+                  None,
+            ],
+            [None, None, None, None, None, None, Some(-F::one()), None, Some(F::one())],
+            0
+        )?[0].clone();
+
+
+        //y3 * (1-d*lambda) = y3f
+        let y3_t = y_d_lambda_inv_cell.value * y3_f;
         // constrain it
         let y3 = self.config.assign_line(region, &mut (), offset,
             [
-                Some(y3s.clone()),
+                Some(y3_f_cell.clone()),
                 Some(Limb::new(None, y3_t)),
                 None,
-                Some(Limb::new(None, y3_2)),
+                Some(y_d_lambda_inv_cell.clone()),
                 None,
                 None,
             ],
@@ -374,6 +435,11 @@ mod tests {
             let known_y= cs.advice_column();
             let ret_x= cs.advice_column();
             let ret_y= cs.advice_column();
+
+            cs.enable_equality(p1_x);
+            cs.enable_equality(p1_y);
+            cs.enable_equality(p2_x);
+            cs.enable_equality(p2_y);
 
             cs.enable_equality(ret_x);
             cs.enable_equality(ret_y);

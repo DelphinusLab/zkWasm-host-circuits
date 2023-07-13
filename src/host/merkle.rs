@@ -158,11 +158,9 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
                     assert!((acc + 1) * 2 == child);
                     (acc_node.right().unwrap(), acc_node.left().unwrap())
                 };
-                let sibling = self.get_sibling_index(child);
-                let sibling_node = self.get_node_with_hash(sibling, &sibling_hash)?;
                 acc = child;
                 acc_node = self.get_node_with_hash(acc, &hash)?;
-                Ok(sibling_node.hash())
+                Ok(sibling_hash)
             })
             .collect::<Result<Vec<H>, _>>()?;
         let hash = acc_node.hash();

@@ -48,6 +48,7 @@ pub struct MongoMerkle {
     contract_address: [u8; 32],
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
+    tree_depth: usize,
 }
 
 pub async fn get_collection<T>(
@@ -185,18 +186,31 @@ impl MerkleRecord {
 }
 
 impl MongoMerkle {
-    pub fn height() -> usize {
-        return 20;
+    pub fn gen_default_vec(depth: usize) -> Vec<[u8; 32]> {
+        let mut leaf_hash = MongoMerkle::empty_leaf(0).hash;
+        let mut default_hash = vec![leaf_hash];
+        for _ in 0..(depth) {
+            leaf_hash = MongoMerkle::hash(&leaf_hash, &leaf_hash);
+            default_hash.push(leaf_hash);
+        }
+        default_hash
     }
+
+    // Still leave this pub function in case other mod's old codes is using it.
+    // New code should use MerkleTree trait's get_depth as now the MerkleTree depth is configurable
+    pub fn height(&self) -> usize {
+        return self.tree_depth;
+    }
+
     fn empty_leaf(index: u32) -> MerkleRecord {
         let mut leaf = MerkleRecord::new(index);
         leaf.set(&[0; 32].to_vec());
         leaf
     }
-    /// depth start from 0 up to Self::height(). Example 20 height MongoMerkle, root depth=0, leaf depth=20
+    /// depth start from 0 up to self.get_depth(). Example 20 depth MongoMerkle, root depth=0, leaf depth=20
     fn get_default_hash(&self, depth: usize) -> Result<[u8; 32], MerkleError> {
-        if depth <= Self::height() {
-            Ok(self.default_hash[Self::height() - depth])
+        if depth <= self.get_depth() {
+            Ok(self.default_hash[self.get_depth() - depth])
         } else {
             Err(MerkleError::new(
                 [0; 32],
@@ -211,7 +225,7 @@ impl MongoMerkle {
 // For example, height of merkle tree is 20.
 // DEFAULT_HASH_VEC[0] leaf's default hash. DEFAULT_HASH_VEC[20] is root default hash. It has 21 layers including the leaf layer and root layer.
 lazy_static::lazy_static! {
-    static ref DEFAULT_HASH_VEC: Vec<[u8; 32]> = {
+    /*static ref DEFAULT_HASH_VEC: Vec<[u8; 32]> = {
         let mut leaf_hash = MongoMerkle::empty_leaf(0).hash;
         let mut default_hash = vec![leaf_hash];
         for _ in 0..(MongoMerkle::height()) {
@@ -219,24 +233,30 @@ lazy_static::lazy_static! {
             default_hash.push(leaf_hash);
         }
         default_hash
-    };
+    };*/
 
     static ref POSEIDON_HASHER: poseidon::Poseidon<Fr, 9, 8> = gen_hasher();
 }
 
-impl MerkleTree<[u8; 32], 20> for MongoMerkle {
+impl MerkleTree<[u8; 32]> for MongoMerkle {
     type Id = [u8; 32];
     type Root = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(addr: Self::Id, root: Self::Root) -> Self {
+    fn construct(addr: Self::Id, root: Self::Root, depth: usize) -> Self {
         let client = executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
+        let default_hash_vec: Vec<[u8; 32]> = Self::gen_default_vec(depth);
         MongoMerkle {
             client,
             contract_address: addr,
             root_hash: root,
-            default_hash: (*DEFAULT_HASH_VEC).clone(),
+            default_hash: default_hash_vec.clone(),
+            tree_depth: depth,
         }
+    }
+
+    fn get_depth(&self) -> usize {
+        self.tree_depth
     }
 
     fn get_root_hash(&self) -> [u8; 32] {
@@ -282,7 +302,7 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
         v.map_or(
             {
                 let default = self.get_default_hash(height as usize)?;
-                let child_hash = if height == Self::height() as u32 {
+                let child_hash = if height == self.get_depth() as u32 {
                     [0; 32]
                 } else {
                     self.get_default_hash((height + 1) as usize)?
@@ -315,7 +335,7 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
 
 #[cfg(test)]
 mod tests {
-    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
+    use super::{MerkleRecord, MongoMerkle};
     use crate::host::{
         kvpair::drop_collection,
         merkle::{MerkleNode, MerkleTree},
@@ -333,6 +353,8 @@ mod tests {
     fn test_mongo_merkle_parent_node() {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [1; 32];
+        const TREE_DEPTH: usize = 20;
+        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
 
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
@@ -382,7 +404,7 @@ mod tests {
         const PARENT_INDEX: u32 = 2_u32.pow(19) - 1;
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),
@@ -435,7 +457,7 @@ mod tests {
 
         // 5
         let a: [u8; 32] = ROOT_HASH_AFTER_LEAF2;
-        let mt_loaded: MongoMerkle = MongoMerkle::construct(TEST_ADDR, a);
+        let mt_loaded: MongoMerkle = MongoMerkle::construct(TEST_ADDR, a, TREE_DEPTH);
         assert_eq!(mt_loaded.get_root_hash(), a);
         let (leaf1, _) = mt_loaded.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf1.index, INDEX1);
@@ -461,6 +483,9 @@ mod tests {
     fn test_mongo_merkle_single_leaf_update() {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [2; 32];
+        const TREE_DEPTH: usize = 20;
+        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
             100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
@@ -490,7 +515,7 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),
@@ -527,7 +552,7 @@ mod tests {
 
         // 4
         let a = ROOT_HASH_AFTER_LEAF1;
-        let mt = MongoMerkle::construct(TEST_ADDR, a);
+        let mt = MongoMerkle::construct(TEST_ADDR, a, TREE_DEPTH);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -545,6 +570,9 @@ mod tests {
     fn test_mongo_merkle_multi_leaves_update() {
         // Init checking results
         const TEST_ADDR: [u8; 32] = [3; 32];
+        const TREE_DEPTH: usize = 20;
+        const DEFAULT_HASH_VEC: Vec<[u8; 32]> = MongoMerkle::gen_default_vec(TREE_DEPTH);
+
         const DEFAULT_ROOT_HASH: [u8; 32] = [
             73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
             100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
@@ -606,7 +634,7 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[MongoMerkle::height()]);
+        let mut mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_HASH_VEC[TREE_DEPTH], TREE_DEPTH);
         executor::block_on(drop_collection::<MerkleRecord>(
             &mt.client,
             MongoMerkle::get_db_name(),
@@ -682,7 +710,7 @@ mod tests {
         assert_eq!(leaf.data, LEAF3_DATA);
 
         // 5
-        let mt = MongoMerkle::construct(TEST_ADDR, ROOT_HASH_AFTER_LEAF3);
+        let mt = MongoMerkle::construct(TEST_ADDR, ROOT_HASH_AFTER_LEAF3, TREE_DEPTH);
         assert_eq!(mt.get_root_hash(), ROOT_HASH_AFTER_LEAF3);
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);

@@ -46,10 +46,10 @@ pub trait MerkleNode <H: Debug+Clone+PartialEq> {
 }
 
 #[derive(Debug)]
-pub struct MerkleProof<H: Debug+Clone+PartialEq, const D: usize> {
+pub struct MerkleProof<H: Debug+Clone+PartialEq> {
     pub source:H,
     pub root:H, // last is root
-    pub assist:[H; D],
+    pub assist:Vec<H>,
     pub index: u32,
 }
 
@@ -60,14 +60,14 @@ fn get_offset(index: u32) -> u32 {
 }
 
 
-pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
+pub trait MerkleTree<H:Debug+Clone+PartialEq> {
     type Node: MerkleNode<H>;
     type Id;
     type Root;
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
-    fn construct(addr: Self::Id, id: Self::Root) -> Self;
+    fn construct(addr: Self::Id, id: Self::Root, depth: usize) -> Self;
 
     fn hash(a:&H, b:&H) -> H;
     fn set_parent(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
@@ -78,12 +78,14 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     fn update_root_hash(&mut self, hash: &H);
 
     fn boundary_check(&self, index: u32) -> Result<(), MerkleError> {
-        if index as u32 >= (2_u32.pow(D as u32 + 1) - 1) {
+        if index as u32 >= (2_u32.pow(self.get_depth() as u32 + 1) - 1) {
             Err(MerkleError::new([0;32], index, MerkleErrorCode::InvalidIndex))
         } else {
             Ok(())
         }
     }
+
+    fn get_depth(&self) -> usize;
 
     /*
      * Check that an index is a leaf.
@@ -97,8 +99,8 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
      * first = 2^k-1, last = 2^{k+1}-2
      */
     fn leaf_check(&self, index: u32) -> Result<(), MerkleError> {
-        if (index as u32) >= (2_u32.pow(D as u32) - 1)
-            && (index as u32) < (2_u32.pow((D as u32) + 1) - 1){
+        if (index as u32) >= (2_u32.pow(self.get_depth() as u32) - 1)
+            && (index as u32) < (2_u32.pow((self.get_depth() as u32) + 1) - 1){
            Ok(())
         } else {
             Err(MerkleError::new([0; 32], index, MerkleErrorCode::InvalidLeafIndex))
@@ -122,7 +124,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     /// 7 8 9 10 11 12 13 14
     /// get_path(7) = [3, 1]
     /// get_path(15) = [6, 2]
-    fn get_path(&self, index: u32) -> Result<[u32; D], MerkleError> {
+    fn get_path(&self, index: u32) -> Result<Vec<u32>, MerkleError> {
         self.leaf_check(index)?;
         let mut height = (index+1).ilog2();
         let round = height;
@@ -143,7 +145,7 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
     }
 
 
-    fn get_leaf_with_proof(&self, index: u32) -> Result<(Self::Node, MerkleProof<H, D>), MerkleError> {
+    fn get_leaf_with_proof(&self, index: u32) -> Result<(Self::Node, MerkleProof<H>), MerkleError> {
         self.leaf_check(index)?;
         let paths = self.get_path(index)?.to_vec();
         // We push the search from the top
@@ -174,16 +176,16 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
         }))
     }
 
-    fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H, D>, MerkleError> {
+    fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H>, MerkleError> {
         let index = leaf.index();
         let mut hash = leaf.hash();
         let (_, mut proof) = self.get_leaf_with_proof(index)?;
         proof.source = hash.clone();
         let mut p = get_offset(index);
         self.set_leaf(leaf)?;
-        for i in 0..D {
+        for i in 0..self.get_depth() {
             let cur_hash = hash;
-            let depth = D-i-1;
+            let depth = self.get_depth()-i-1;
             let (left, right) = if p % 2 == 1 {
                 (&proof.assist[depth], &cur_hash)
             } else {
@@ -199,13 +201,13 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
         Ok(proof)
     }
 
-    fn update_leaf_data_with_proof(&mut self, index: u32, data: &Vec<u8>) -> Result<MerkleProof<H, D>, MerkleError> {
+    fn update_leaf_data_with_proof(&mut self, index: u32, data: &Vec<u8>) -> Result<MerkleProof<H>, MerkleError> {
         let (mut leaf, _) = self.get_leaf_with_proof(index)?;
         leaf.set(data);
         self.set_leaf_with_proof(&leaf)
     }
 
-    fn verify_proof(&mut self, proof: MerkleProof<H, D>) -> Result <bool, MerkleError> {
+    fn verify_proof(&mut self, proof: MerkleProof<H>) -> Result <bool, MerkleError> {
         let init = proof.source;
         let mut p = get_offset(proof.index);
         let hash = proof.assist.to_vec().iter().fold(init, |acc, x| {
@@ -227,7 +229,8 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
 mod tests {
     use crate::host::merkle::{MerkleNode, MerkleTree, MerkleError};
     struct MerkleAsArray {
-        data: [u64; 127] // 2^7-1 and depth = 6
+        data: [u64; 127], // 2^7-1 and depth = 6
+        tree_depth: usize,
     }
 
     impl MerkleAsArray {
@@ -264,13 +267,14 @@ mod tests {
         }
     }
 
-    impl MerkleTree<u64, 6> for MerkleAsArray {
+    impl MerkleTree<u64> for MerkleAsArray {
         type Id = String;
         type Root = String;
         type Node = MerkleU64Node;
-        fn construct(_addr: Self::Id, _id: Self::Root) -> Self {
+        fn construct(_addr: Self::Id, _id: Self::Root, depth: usize) -> Self {
             MerkleAsArray {
-                data: [0 as u64; 127]
+                data: [0 as u64; 127],
+                tree_depth: depth,
             }
         }
         fn hash(a:&u64, b:&u64) -> u64 {
@@ -296,11 +300,14 @@ mod tests {
             self.data[leaf.index() as usize] = leaf.value;
             Ok(())
         }
+        fn get_depth(&self) -> usize {
+            self.tree_depth
+        }
     }
 
     #[test]
     fn test_merkle_path() {
-       let mut mt = MerkleAsArray::construct("test".to_string(), "test".to_string());
+       let mut mt = MerkleAsArray::construct("test".to_string(), "test".to_string(), 6);
        let (mut leaf, _) = mt.get_leaf_with_proof(2_u32.pow(6) - 1).unwrap();
        leaf.value = 1;
        let _proof = mt.set_leaf_with_proof(&leaf).unwrap();

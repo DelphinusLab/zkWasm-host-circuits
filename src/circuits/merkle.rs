@@ -148,12 +148,12 @@ impl<F: FieldExt> MerkleChip<F> {
     }
 
 
-    fn assign_proof<const D: usize, M: MerkleTree<F, D>>(
+    fn assign_proof<const D: usize, M: MerkleTree<F>>(
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         _merkle: &M,
-        proof: &MerkleProof<F, D>,
+        proof: &MerkleProof<F>,
     ) -> Result<(), Error> {
         let mut index_offset = proof.index - (1u32 << D) - 1;
         let mut carry = proof.source;
@@ -180,23 +180,23 @@ impl<F: FieldExt> MerkleChip<F> {
         Ok(())
     }
 
-    pub fn assign_get<const D: usize, M: MerkleTree<F, D>>(
+    pub fn assign_get<const D: usize, M: MerkleTree<F>>(
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         merkle: &M,
-        proof: &MerkleProof<F, D>,
+        proof: &MerkleProof<F>,
     ) -> Result<(), Error> {
         self.assign_proof(region, offset, merkle, proof)
     }
 
-    pub fn assign_set<const D: usize, M: MerkleTree<F, D>>(
+    pub fn assign_set<const D: usize, M: MerkleTree<F>>(
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         merkle: &M,
-        proof_get: &MerkleProof<F, D>,
-        proof_set: &MerkleProof<F, D>,
+        proof_get: &MerkleProof<F>,
+        proof_set: &MerkleProof<F>,
     ) -> Result<(), Error> {
         self.assign_proof(region, offset, merkle, proof_get)?;
         self.assign_proof(region, offset, merkle, proof_set)

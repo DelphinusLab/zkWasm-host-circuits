@@ -225,7 +225,8 @@ pub trait MerkleTree<H:Debug+Clone+PartialEq, const D: usize> {
 mod tests {
     use crate::host::merkle::{MerkleNode, MerkleTree, MerkleError};
     struct MerkleAsArray {
-        data: [u64; 127] // 2^7-1 and depth = 6
+        data: [u64; 127], // 2^7-1 and depth = 6
+        root_hash: u64,
     }
 
     impl MerkleAsArray {
@@ -240,11 +241,23 @@ mod tests {
                 println!("dbg: {:?}", ns)
             }
         }
+
+        fn get_child_index(index: u32) -> (u32, u32) {
+            let left_child_index = (index + 1) * 2 - 1;
+            let right_child_index = left_child_index + 1;
+            (left_child_index, right_child_index)
+        }
+
+        pub fn height() -> u32 {
+            return 6;
+        }
     }
 
     struct MerkleU64Node {
         pub value: u64,
         pub index: u32,
+        pub left: u64,
+        pub right: u64,
     }
 
     impl MerkleNode<u64> for MerkleU64Node{
@@ -255,10 +268,10 @@ mod tests {
             self.value = u64::from_le_bytes(v);
         }
         fn right(&self) -> Option<u64> {
-            Some(0)
+            Some(self.right)
         }
         fn left(&self) -> Option<u64> {
-            Some(0)
+            Some(self.left)
         }
     }
 
@@ -268,7 +281,8 @@ mod tests {
         type Node = MerkleU64Node;
         fn construct(_addr: Self::Id, _id: Self::Root) -> Self {
             MerkleAsArray {
-                data: [0 as u64; 127]
+                data: [0 as u64; 127],
+                root_hash: 0
             }
         }
         fn hash(a:&u64, b:&u64) -> u64 {
@@ -277,16 +291,35 @@ mod tests {
         fn get_root_hash(&self) -> u64 {
             return self.data[0]
         }
-        fn update_root_hash(&mut self, _h: &u64) {}
+        fn update_root_hash(&mut self, hash: &u64) {
+            self.root_hash = hash.clone();
+        }
 
         fn get_node_with_hash(&self, index: u32, _hash: &u64) -> Result<Self::Node, MerkleError> {
             self.boundary_check(index)?;
-            Ok(MerkleU64Node {value: self.data[index as usize], index})
+
+            let height = (index+1).ilog2();
+            let mut left_val: u64 = 0;
+            let mut right_val: u64  = 0;
+            if height < Self::height() { // not leaf node
+                let (left_child_index, right_child_index) = MerkleAsArray::get_child_index(index);
+                left_val = self.data[left_child_index as usize];
+                right_val = self.data[right_child_index as usize];
+            }
+            Ok(MerkleU64Node {value: self.data[index as usize], index, left: left_val, right: right_val })
         }
 
-        fn set_parent(&mut self, index: u32, hash: &u64, _left: &u64, _right: &u64) -> Result<(), MerkleError> {
+        fn set_parent(&mut self, index: u32, hash: &u64, left: &u64, right: &u64) -> Result<(), MerkleError> {
             self.boundary_check(index)?;
             self.data[index as usize] = *hash;
+
+            let height = (index+1).ilog2();
+            if height < Self::height() { // not leaf node
+                let (left_child_index, right_child_index) = MerkleAsArray::get_child_index(index);
+                self.data[left_child_index as usize] = *left;
+                self.data[right_child_index as usize] = *right;
+            }
+
             Ok(())
         }
         fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError> {
@@ -322,6 +355,7 @@ mod tests {
        let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
        /* two leaves hash needs to be 3 */
        let root = mt.get_root_hash();
+       mt.debug();
        assert_eq!(root, 6 as u64);
     }
 }

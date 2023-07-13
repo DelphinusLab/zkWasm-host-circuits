@@ -142,8 +142,10 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         self.state.assist = compare_assist.clone();
 
         let mut positions = vec![];
+        let c = self.config.sum_with_constant(region, &mut (), offset, vec![(address, F::one())], Some(-F::from((1u64<<D)-1)))?;
+        println!("offset for position is: {:?}", c.value);
         self.config
-            .decompose_limb(region, &mut (), offset, address, &mut positions, D)?;
+            .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
         // position = 0 means assist is at right else assist is at left
         let initial_hash = self.poseidon_chip.get_permute_result(
             region,
@@ -165,7 +167,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         let final_hash =
             positions
                 .iter()
-                .zip(compare_assist)
+                .zip(compare_assist.iter().rev())
                 .fold(initial_hash, |acc, (position, assist)| {
                     let left = self
                         .config
@@ -175,7 +177,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                         .config
                         .select(region, &mut (), offset, &position, &assist, &acc, 0)
                         .unwrap();
-                    self.poseidon_chip
+                    let hash = self.poseidon_chip
                         .get_permute_result(
                             region,
                             offset,
@@ -191,9 +193,11 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                             ],
                             &self.state.one.clone(),
                         )
-                        .unwrap()
+                        .unwrap();
+                    println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
+                    hash
                 });
-        //assert_eq!(root.value, final_hash.value);
+        assert_eq!(root.value, final_hash.value);
         region.constrain_equal(
             root.cell.as_ref().unwrap().cell(),
             final_hash.cell.as_ref().unwrap().cell(),

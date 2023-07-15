@@ -19,15 +19,10 @@ use std::ops::Div;
  * acc will be the sum of the target limbs and rem is the remaining limbs
  * of the target value.
  */
-customized_circuits!(RangeCheckConfig, 2, 3, 2, 0, |limb| acc
-    | rem
-    | table
-    | sel
-    | nil
-    | acc_n
-    | rem_n
-    | nil
-    | sel_n);
+customized_circuits!(RangeCheckConfig, 2, 3, 2, 0,
+    | limb   |  acc   | rem   | table | sel
+    | nil    |  acc_n | rem_n | nil   | sel_n
+);
 
 impl LookupAssistConfig for RangeCheckConfig {
     /// register a column (col) to be range checked by limb size (sz)

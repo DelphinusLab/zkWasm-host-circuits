@@ -201,7 +201,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 println!("asign_region");
                 let mut offset = 0;
                 for opcode in shared_opcodes {
-                    println!("opcode is {:?}", opcode);
                     self.config.assign_cell(
                         &mut region,
                         offset,
@@ -229,7 +228,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                     shared_index,
                     &self.config,
                 )?);
-                println!("offset is {:?}", offset);
                 Ok(())
             },
         )?;

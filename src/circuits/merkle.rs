@@ -103,8 +103,6 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         let is_set =
             self.config
                 .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
-        println!("value is {:?} {:?}", value[0].value, value[1].value);
-        println!("is set {:?}", is_set);
         let fills = proof
             .assist
             .to_vec()
@@ -143,7 +141,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
 
         let mut positions = vec![];
         let c = self.config.sum_with_constant(region, &mut (), offset, vec![(address, F::one())], Some(-F::from((1u64<<D)-1)))?;
-        println!("offset for position is: {:?}", c.value);
+        //println!("offset for position is: {:?}", c.value);
         self.config
             .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
         // position = 0 means assist is at right else assist is at left
@@ -194,7 +192,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                             &self.state.one.clone(),
                         )
                         .unwrap();
-                    println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
+                    //println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
                     hash
                 });
         assert_eq!(root.value, final_hash.value);

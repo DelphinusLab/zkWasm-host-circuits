@@ -51,7 +51,6 @@ macro_rules! table_item {
     };
 }
 
-
 #[macro_export]
 macro_rules! customized_circuits_expand {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
@@ -212,7 +211,6 @@ macro_rules! customized_circuits_expand {
     };
 }
 
-
 #[macro_export]
 /// Define customize circuits with (nb_row, nb_adv, nb_fix, nb_expr)
 /// | adv    | fix    | sel    |
@@ -241,6 +239,7 @@ mod tests {
     };
     use halo2_proofs::poly::Rotation;
 
+    #[rustfmt::skip]
     customized_circuits!(TestConfig, 2, 2, 1, 1,
         | wc  | b2 | c2 |  d2
         | w1  | b3 | c3 |  d3

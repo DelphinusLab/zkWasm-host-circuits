@@ -1,10 +1,10 @@
 #![feature(array_zip)]
 #![feature(slice_flatten)]
 #![deny(warnings)]
+mod adaptor;
 pub mod circuits;
 pub mod host;
 pub mod utils;
-mod adaptor;
 
 /*
 use crate::{
@@ -23,31 +23,22 @@ use halo2_proofs::{
     plonk::{Circuit, ConstraintSystem, Error},
 };
 
-
-
-use std::{
-    marker::PhantomData,
-    fs::File,
-    io::BufReader,
-    path::PathBuf
-};
+use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use crate::circuits::{
-    bls::Bls381PairChip, bls::Bls381SumChip,
-    bn256::Bn256PairChip, bn256::Bn256SumChip,
-    poseidon::PoseidonChip,
+    bls::Bls381PairChip,
+    bls::Bls381SumChip,
+    bn256::Bn256PairChip,
+    bn256::Bn256SumChip,
+    host::{HostOpChip, HostOpConfig, HostOpSelector},
     merkle::MerkleChip,
-    host::{
-        HostOpSelector,
-        HostOpChip,
-        HostOpConfig,
-    }
+    poseidon::PoseidonChip,
 };
 
 use crate::utils::params::{HostCircuitInfo, Prover};
 
-use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bn256::Bn256;
+use halo2_proofs::pairing::bn256::Fr;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(&self, layouter: impl Layouter<F>, a: Vec<F>) -> Result<Self, Error>;
@@ -68,7 +59,6 @@ enum OpType {
     POSEIDONHASH,
     MERKLE,
 }
-
 
 #[derive(Clone)]
 struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
@@ -95,7 +85,6 @@ struct HostCircuitConfig<C: Clone> {
     selectconfig: C,
 }
 
-
 impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     // Since we are using a single chip for everything, we can just reuse its config.
     type Config = HostCircuitConfig<S::Config>;
@@ -118,7 +107,8 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         config: Self::Config,
         mut layouter: impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let host_op_chip = HostOpChip::<Fr, S>::construct(config.hostconfig.clone(), config.selectconfig.clone());
+        let host_op_chip =
+            HostOpChip::<Fr, S>::construct(config.hostconfig.clone(), config.selectconfig.clone());
         let all_arg_cells = host_op_chip.assign(
             &mut layouter,
             &self.shared_operands,
@@ -217,7 +207,8 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> = HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> =
+                HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -228,7 +219,8 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> = HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> =
+                HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -239,7 +231,8 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> = HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> =
+                HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -250,7 +243,8 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> = HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> =
+                HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -261,7 +255,8 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> = HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> =
+                HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
@@ -272,11 +267,11 @@ fn main() {
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> = HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> =
+                HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }
-
     };
 
     //circuit_info.mock_proof(k);

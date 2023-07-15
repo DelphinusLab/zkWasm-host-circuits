@@ -35,7 +35,7 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
             source: Limb::new(None, F::zero()),
             root: Limb::new(None, F::zero()),
             address: Limb::new(None, F::zero()),
-            assist: [0;D].map(|_| Limb::new(None, F::zero())),
+            assist: [0; D].map(|_| Limb::new(None, F::zero())),
             zero: Limb::new(None, F::zero()),
             one: Limb::new(None, F::one()),
         }
@@ -85,7 +85,6 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         self.poseidon_chip.initialize(config, region, offset)
     }
 
-
     pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &())
     }
@@ -103,8 +102,6 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         let is_set =
             self.config
                 .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
-        println!("value is {:?} {:?}", value[0].value, value[1].value);
-        println!("is set {:?}", is_set);
         let fills = proof
             .assist
             .to_vec()
@@ -142,8 +139,14 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         self.state.assist = compare_assist.clone();
 
         let mut positions = vec![];
-        let c = self.config.sum_with_constant(region, &mut (), offset, vec![(address, F::one())], Some(-F::from((1u64<<D)-1)))?;
-        println!("offset for position is: {:?}", c.value);
+        let c = self.config.sum_with_constant(
+            region,
+            &mut (),
+            offset,
+            vec![(address, F::one())],
+            Some(-F::from((1u64 << D) - 1)),
+        )?;
+        //println!("offset for position is: {:?}", c.value);
         self.config
             .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
         // position = 0 means assist is at right else assist is at left
@@ -164,39 +167,39 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
         )?;
         assert_eq!(field_to_bytes(&initial_hash.value), proof.source);
 
-        let final_hash =
-            positions
-                .iter()
-                .zip(compare_assist.iter().rev())
-                .fold(initial_hash, |acc, (position, assist)| {
-                    let left = self
-                        .config
-                        .select(region, &mut (), offset, &position, &acc, &assist, 0)
-                        .unwrap();
-                    let right = self
-                        .config
-                        .select(region, &mut (), offset, &position, &assist, &acc, 0)
-                        .unwrap();
-                    let hash = self.poseidon_chip
-                        .get_permute_result(
-                            region,
-                            offset,
-                            &[
-                                left,
-                                right,
-                                self.state.one.clone(),
-                                self.state.zero.clone(),
-                                self.state.zero.clone(),
-                                self.state.zero.clone(),
-                                self.state.zero.clone(),
-                                self.state.zero.clone(),
-                            ],
-                            &self.state.one.clone(),
-                        )
-                        .unwrap();
-                    println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
-                    hash
-                });
+        let final_hash = positions.iter().zip(compare_assist.iter().rev()).fold(
+            initial_hash,
+            |acc, (position, assist)| {
+                let left = self
+                    .config
+                    .select(region, &mut (), offset, &position, &acc, &assist, 0)
+                    .unwrap();
+                let right = self
+                    .config
+                    .select(region, &mut (), offset, &position, &assist, &acc, 0)
+                    .unwrap();
+                let hash = self
+                    .poseidon_chip
+                    .get_permute_result(
+                        region,
+                        offset,
+                        &[
+                            left,
+                            right,
+                            self.state.one.clone(),
+                            self.state.zero.clone(),
+                            self.state.zero.clone(),
+                            self.state.zero.clone(),
+                            self.state.zero.clone(),
+                            self.state.zero.clone(),
+                        ],
+                        &self.state.one.clone(),
+                    )
+                    .unwrap();
+                //println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
+                hash
+            },
+        );
         assert_eq!(root.value, final_hash.value);
         region.constrain_equal(
             root.cell.as_ref().unwrap().cell(),

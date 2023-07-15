@@ -1,15 +1,15 @@
+use ark_std::rand::rngs::OsRng;
 use halo2_proofs::arithmetic::MultiMillerLoop;
+use halo2_proofs::dev::MockProver;
 use halo2_proofs::plonk::create_proof;
 use halo2_proofs::plonk::keygen_pk;
 use halo2_proofs::plonk::keygen_vk;
 use halo2_proofs::plonk::Circuit;
 use halo2_proofs::plonk::VerifyingKey;
 use halo2_proofs::poly::commitment::Params;
-use halo2_proofs::dev::MockProver;
+use halo2aggregator_s::transcript::poseidon::PoseidonWrite;
 use std::io::Write;
 use std::path::Path;
-use halo2aggregator_s::transcript::poseidon::PoseidonWrite;
-use ark_std::rand::rngs::OsRng;
 
 /*
 use std::io::Read;
@@ -17,8 +17,6 @@ use halo2_proofs::poly::commitment::ParamsVerifier;
 use halo2_proofs::plonk::verify_proof;
 use halo2_proofs::plonk::SingleVerifier;
 */
-
-
 
 pub fn load_or_build_unsafe_params<E: MultiMillerLoop>(
     k: u32,
@@ -74,13 +72,13 @@ pub fn load_or_build_vkey<E: MultiMillerLoop, C: Circuit<E::Scalar>>(
     verify_circuit_vk
 }
 
-pub struct HostCircuitInfo<E:MultiMillerLoop, C: Circuit<E::Scalar>> {
+pub struct HostCircuitInfo<E: MultiMillerLoop, C: Circuit<E::Scalar>> {
     pub circuit: C,
     pub name: String,
     pub instances: Vec<Vec<E::Scalar>>,
 }
 
-impl<E:MultiMillerLoop, C: Circuit<E::Scalar>> HostCircuitInfo<E, C> {
+impl<E: MultiMillerLoop, C: Circuit<E::Scalar>> HostCircuitInfo<E, C> {
     pub fn new(c: C, name: String, instances: Vec<Vec<E::Scalar>>) -> Self {
         HostCircuitInfo {
             circuit: c,
@@ -90,24 +88,13 @@ impl<E:MultiMillerLoop, C: Circuit<E::Scalar>> HostCircuitInfo<E, C> {
     }
 }
 
-pub trait Prover<E:MultiMillerLoop> {
-    fn create_proof (
-        self,
-        cache_folder: &Path,
-        k: u32,
-    ) -> Vec<u8>;
-    fn mock_proof (
-        &self,
-        k: u32,
-    );
+pub trait Prover<E: MultiMillerLoop> {
+    fn create_proof(self, cache_folder: &Path, k: u32) -> Vec<u8>;
+    fn mock_proof(&self, k: u32);
 }
 
-impl<E:MultiMillerLoop, C: Circuit<E::Scalar>> Prover<E> for HostCircuitInfo<E, C> {
-    fn create_proof (
-        self,
-        cache_folder: &Path,
-        k: u32,
-    ) -> Vec<u8> {
+impl<E: MultiMillerLoop, C: Circuit<E::Scalar>> Prover<E> for HostCircuitInfo<E, C> {
+    fn create_proof(self, cache_folder: &Path, k: u32) -> Vec<u8> {
         let params =
             load_or_build_unsafe_params::<E>(k, Some(&cache_folder.join(format!("K{}.params", k))));
         let vkey = load_or_build_vkey::<E, C>(
@@ -118,7 +105,8 @@ impl<E:MultiMillerLoop, C: Circuit<E::Scalar>> Prover<E> for HostCircuitInfo<E, 
         let cache_file = &cache_folder.join(format!("{}.transcript.data", self.name));
         let pkey = keygen_pk(&params, vkey, &self.circuit).expect("keygen_pk should not fail");
         let mut transcript = PoseidonWrite::init(vec![]);
-        let instances: Vec<&[E::Scalar]> = self.instances.iter().map(|x| &x[..]).collect::<Vec<_>>();
+        let instances: Vec<&[E::Scalar]> =
+            self.instances.iter().map(|x| &x[..]).collect::<Vec<_>>();
         create_proof(
             &params,
             &pkey,
@@ -134,10 +122,7 @@ impl<E:MultiMillerLoop, C: Circuit<E::Scalar>> Prover<E> for HostCircuitInfo<E, 
         r
     }
 
-    fn mock_proof (
-        &self,
-        k: u32,
-    ) {
+    fn mock_proof(&self, k: u32) {
         let prover = MockProver::run(k, &self.circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }

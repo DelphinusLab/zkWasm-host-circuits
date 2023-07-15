@@ -1,47 +1,42 @@
-use std::marker::PhantomData;
-use halo2_proofs::pairing::bn256::Fr;
-use crate::utils::GateCell;
 use super::Limb;
+use crate::utils::GateCell;
+use halo2_proofs::pairing::bn256::Fr;
+use std::marker::PhantomData;
 
 use crate::{
-    customized_circuits,
-    table_item,
-    item_count,
-    customized_circuits_expand,
-    value_for_assign,
+    customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
 };
 
 use halo2_proofs::{
     arithmetic::FieldExt,
-    circuit::{Region, Layouter, Chip},
-    plonk::{
-        Fixed, Advice, Column, ConstraintSystem,
-        Error, Expression, Selector, VirtualCells
-    },
+    circuit::{Chip, Layouter, Region},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, VirtualCells},
     poly::Rotation,
 };
 
 use crate::constant_from;
 
+#[rustfmt::skip]
 customized_circuits!(HostOpConfig, 2, 8, 2, 0,
-   | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
-   | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
+    | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
+    | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
 );
 
 impl HostOpConfig {
-    pub fn configure<F:FieldExt>(
-        &self,
-        cs: &mut ConstraintSystem<F>,
-    ) {
+    pub fn configure<F: FieldExt>(&self, cs: &mut ConstraintSystem<F>) {
         cs.lookup_any("filter-shared-ops", |meta| {
             let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
             let soper = self.get_expr(meta, HostOpConfig::shared_operand());
             let sidx = self.get_expr(meta, HostOpConfig::shared_index());
             let enable = self.get_expr(meta, HostOpConfig::enable());
-            let fopc= self.get_expr(meta, HostOpConfig::filtered_opcode());
+            let fopc = self.get_expr(meta, HostOpConfig::filtered_opcode());
             let foper = self.get_expr(meta, HostOpConfig::filtered_operand());
             let fidx = self.get_expr(meta, HostOpConfig::filtered_index());
-            vec![(fidx*enable.clone(), sidx), (foper*enable.clone(), soper), (fopc*enable.clone(), sopc)]
+            vec![
+                (fidx * enable.clone(), sidx),
+                (foper * enable.clone(), soper),
+                (fopc * enable.clone(), sopc),
+            ]
         });
 
         cs.create_gate("merge operands in filtered columns", |meta| {
@@ -74,20 +69,28 @@ impl HostOpConfig {
         let mut merged_ops = vec![];
         let mut merged_acc = Fr::zero();
         for c in rev.iter() {
-            merged_acc = c.0.0 + merged_acc * indicator;
+            merged_acc = c.0 .0 + merged_acc * indicator;
             merged_ops.push(merged_acc);
-        };
+        }
         merged_ops.reverse();
         let mut ret = None;
         let mut op = None;
-        for (i, (((operand, opcode), index), merged_op)) in values.into_iter().zip(merged_ops).enumerate() {
+        for (i, (((operand, opcode), index), merged_op)) in
+            values.into_iter().zip(merged_ops).enumerate()
+        {
             self.assign_cell(region, *offset, &HostOpConfig::filtered_operand(), *operand)?;
-            let opc = self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
+            let opc =
+                self.assign_cell(region, *offset, &HostOpConfig::filtered_opcode(), *opcode)?;
             self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), *index)?;
-            self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
+            self.assign_cell(
+                region,
+                *offset,
+                &HostOpConfig::enable(),
+                Fr::from(enable as u64),
+            )?;
             self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
             let limb = self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merged_op)?;
-            if i == len-1 {
+            if i == len - 1 {
                 self.assign_cell(region, *offset, &HostOpConfig::indicator(), Fr::zero())?;
             } else {
                 self.assign_cell(region, *offset, &HostOpConfig::indicator(), indicator)?;
@@ -117,18 +120,21 @@ impl HostOpConfig {
         self.assign_cell(region, *offset, &HostOpConfig::filtered_index(), index)?;
         self.assign_cell(region, *offset, &HostOpConfig::indicator(), ind)?;
         self.assign_cell(region, *offset, &HostOpConfig::merged_op(), merge)?;
-        self.assign_cell(region, *offset, &HostOpConfig::enable(), Fr::from(enable as u64))?;
+        self.assign_cell(
+            region,
+            *offset,
+            &HostOpConfig::enable(),
+            Fr::from(enable as u64),
+        )?;
         self.assign_cell(region, *offset, &HostOpConfig::sel(), Fr::one())?;
-        *offset +=1;
+        *offset += 1;
         Ok((r, op))
     }
 }
 
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
-    fn configure(
-        meta: &mut ConstraintSystem<Fr>,
-    ) -> Self::Config;
+    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
     fn assign(
         region: &mut Region<Fr>,
@@ -143,7 +149,6 @@ pub trait HostOpSelector {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error>;
 }
-
 
 pub struct HostOpChip<F: FieldExt, S: HostOpSelector> {
     pub config: HostOpConfig,
@@ -173,14 +178,11 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         }
     }
 
-    pub fn configure(
-        cs: &mut ConstraintSystem<Fr>,
-    ) -> <Self as Chip<Fr>>::Config {
-        let witness= [0; 8]
-                .map(|_| cs.advice_column());
+    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
+        let witness = [0; 8].map(|_| cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
         let fixed = [cs.fixed_column(), cs.fixed_column()];
-        let selector =[];
+        let selector = [];
 
         let config = HostOpConfig::new(witness, fixed, selector);
         config.configure(cs);
@@ -201,12 +203,11 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 println!("asign_region");
                 let mut offset = 0;
                 for opcode in shared_opcodes {
-                    println!("opcode is {:?}", opcode);
                     self.config.assign_cell(
                         &mut region,
                         offset,
                         &HostOpConfig::shared_opcode(),
-                        opcode.clone()
+                        opcode.clone(),
                     )?;
                     self.config.assign_cell(
                         &mut region,
@@ -229,7 +230,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                     shared_index,
                     &self.config,
                 )?);
-                println!("offset is {:?}", offset);
                 Ok(())
             },
         )?;

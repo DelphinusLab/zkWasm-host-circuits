@@ -37,56 +37,14 @@ pub struct RMD160Chip<F: FieldExt> {
     _marker: PhantomData<F>,
 }
 
-customized_circuits!(RoundGateConfig, 5, 7, 3, 0, |a| b
-    | c
-    | d
-    | x
-    | e
-    | c_next
-    | offset
-    | h_sel
-    | r_sel
-    | w0
-    | b0
-    | c0
-    | d0
-    | r0
-    | w1_h
-    | w4_h
-    | w1_r
-    | nil
-    | nil
-    | wb
-    | b1
-    | c1
-    | d1
-    | r1
-    | w1_l
-    | w4_l
-    | w1_rr
-    | nil
-    | nil
-    | wc
-    | b2
-    | c2
-    | d2
-    | r2
-    | a_next
-    | w2b
-    | nil
-    | nil
-    | nil
-    | w1
-    | b3
-    | c3
-    | d3
-    | r3
-    | nil
-    | w2c
-    | nil
-    | nil
-    | nil);
-
+#[rustfmt::skip]
+customized_circuits!(RoundGateConfig, 5, 7, 3, 0,
+    | a   | b     | c    |  d   | x    | e     | c_next |  offset  | h_sel | r_sel
+    | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r    | nil   | nil
+    | wb  | b1    | c1   |  d1  | r1   | w1_l  | w4_l   |  w1_rr   | nil   | nil
+    | wc  | b2    | c2   |  d2  | r2   | a_next| w2b    |  nil     | nil   | nil
+    | w1  | b3    | c3   |  d3  | r3   | nil   | w2c    |  nil     | nil   | nil
+);
 /* All witness we need to fill the gate */
 struct RoundWitness<F: FieldExt> {
     r: u32,      // atomic(b, c, d)
@@ -148,55 +106,14 @@ fn get_witnesses<F: FieldExt>(
     }
 }
 
-customized_circuits!(CompressSumConfig, 5, 7, 3, 0, |a| b1
-    | c2
-    | sum0
-    | ca0
-    | bnew
-    | col6
-    | col7
-    | h_sel
-    | r_sel
-    | b
-    | c1
-    | d2
-    | sum1
-    | ca1
-    | cnew
-    | nil
-    | nil
-    | nil
-    | nil
-    | c
-    | d1
-    | e2
-    | sum2
-    | ca2
-    | dnew
-    | nil
-    | nil
-    | nil
-    | nil
-    | d
-    | e1
-    | a2
-    | sum3
-    | ca3
-    | enew
-    | nil
-    | nil
-    | nil
-    | nil
-    | e
-    | a1
-    | b2
-    | sum4
-    | ca4
-    | anew
-    | nil
-    | nil
-    | nil
-    | nil);
+#[rustfmt::skip]
+customized_circuits!(CompressSumConfig, 5, 7, 3, 0,
+    | a   | b1    | c2   | sum0 | ca0  | bnew  | col6 | col7 | h_sel| r_sel
+    | b   | c1    | d2   | sum1 | ca1  | cnew  | nil  | nil  | nil  | nil
+    | c   | d1    | e2   | sum2 | ca2  | dnew  | nil  | nil  | nil  | nil
+    | d   | e1    | a2   | sum3 | ca3  | enew  | nil  | nil  | nil  | nil
+    | e   | a1    | b2   | sum4 | ca4  | anew  | nil  | nil  | nil  | nil
+);
 
 #[derive(Clone, Debug)]
 pub struct RMD160Config {

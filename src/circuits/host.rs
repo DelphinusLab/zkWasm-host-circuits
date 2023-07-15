@@ -16,25 +16,11 @@ use halo2_proofs::{
 
 use crate::constant_from;
 
-customized_circuits!(HostOpConfig, 2, 8, 2, 0, |shared_operand| shared_opcode
-    | shared_index
-    | enable
-    | filtered_operand
-    | filtered_opcode
-    | filtered_index
-    | merged_op
-    | indicator
-    | sel
-    | nil
-    | nil
-    | nil
-    | enable_n
-    | filtered_operand_n
-    | nil
-    | nil
-    | merged_op_n
-    | nil
-    | nil);
+#[rustfmt::skip]
+customized_circuits!(HostOpConfig, 2, 8, 2, 0,
+    | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
+    | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
+);
 
 impl HostOpConfig {
     pub fn configure<F: FieldExt>(&self, cs: &mut ConstraintSystem<F>) {

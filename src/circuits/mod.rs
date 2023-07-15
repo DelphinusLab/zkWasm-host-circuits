@@ -26,40 +26,11 @@ use halo2_proofs::{
  * lookup_hint: lookup information that is usually combined with l0
  * lookup_ind: whether perform lookup at this line
  */
-customized_circuits!(CommonGateConfig, 2, 5, 12, 0, |l0| l1
-    | l2
-    | l3
-    | d
-    | c0
-    | c1
-    | c2
-    | c3
-    | cd
-    | cdn
-    | c
-    | c03
-    | c12
-    | lookup_hint
-    | lookup_ind
-    | sel
-    | nil
-    | nil
-    | nil
-    | nil
-    | d_n
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil
-    | nil);
-
+#[rustfmt::skip]
+customized_circuits!(CommonGateConfig, 2, 5, 12, 0,
+    | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | sel
+    | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         | nil
+);
 pub trait LookupAssistConfig {
     /// register a column (col) to be range checked by limb size (sz)
     fn register<F: FieldExt>(

@@ -32,10 +32,9 @@ use halo2ecc_s::{
     context::{Context, GeneralScalarEccContext},
 };
 
+use crate::utils::Limb;
 use num_bigint::BigUint;
 use std::ops::{AddAssign, Mul};
-use crate::utils::Limb;
-
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {
@@ -281,9 +280,7 @@ impl Bls381PairChip<Fr> {
         }
     }
 
-    pub fn configure(
-        cs: &mut ConstraintSystem<Fr>,
-    ) -> <Self as Chip<Fr>>::Config {
+    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
             base_chip_config: BaseChip::configure(cs),
             range_chip_config: RangeChip::<Fr>::configure(cs),
@@ -320,7 +317,7 @@ impl Bls381PairChip<Fr> {
                     &mut region,
                     &self.base_chip,
                     &self.range_chip,
-                    &self.point_select_chip
+                    &self.point_select_chip,
                 )?;
                 enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
                 enable_g2affine_permute(&mut region, &cells, &b_g2, b)?;
@@ -365,9 +362,7 @@ impl Bls381SumChip<Fr> {
         }
     }
 
-    pub fn configure(
-        cs: &mut ConstraintSystem<Fr>,
-    ) -> <Self as Chip<Fr>>::Config {
+    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
             base_chip_config: BaseChip::configure(cs),
             range_chip_config: RangeChip::<Fr>::configure(cs),
@@ -397,14 +392,30 @@ impl Bls381SumChip<Fr> {
         let sum_ret = sum_ret.to_point();
         let sum_ret = ctx.ecc_reduce(&sum_ret);
         ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[0]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[1]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[2]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.x.limbs_le[3]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[0]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[1]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[2]);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.y.limbs_le[3]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.x.limbs_le[0]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.x.limbs_le[1]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.x.limbs_le[2]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.x.limbs_le[3]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.y.limbs_le[0]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.y.limbs_le[1]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.y.limbs_le[2]);
+        ctx.native_ctx
+            .borrow_mut()
+            .enable_permute(&sum_ret.y.limbs_le[3]);
         let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
             .unwrap()
             .into_inner()
@@ -417,7 +428,7 @@ impl Bls381SumChip<Fr> {
                     &mut region,
                     &self.base_chip,
                     &self.range_chip,
-                    &self.point_select_chip
+                    &self.point_select_chip,
                 )?;
                 let ls = ls
                     .chunks(9)

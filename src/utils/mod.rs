@@ -1,24 +1,24 @@
 use halo2_proofs::arithmetic::BaseExt;
 use halo2_proofs::arithmetic::FieldExt;
-use num_bigint::BigUint;
 use halo2_proofs::circuit::AssignedCell;
+use num_bigint::BigUint;
 
 #[derive(Clone, Debug)]
 pub struct Limb<F: FieldExt> {
     pub cell: Option<AssignedCell<F, F>>,
-    pub value: F
+    pub value: F,
 }
 
 impl<F: FieldExt> Limb<F> {
     pub fn new(cell: Option<AssignedCell<F, F>>, value: F) -> Self {
         Limb { cell, value }
     }
-    pub fn get_the_cell(&self) -> AssignedCell<F,F> {
+    pub fn get_the_cell(&self) -> AssignedCell<F, F> {
         self.cell.as_ref().unwrap().clone()
     }
 }
 
-pub fn data_to_bytes<F:BaseExt>(fs: Vec<F>) -> Vec<u8> {
+pub fn data_to_bytes<F: BaseExt>(fs: Vec<F>) -> Vec<u8> {
     let mut bytes = vec![];
     for f in fs.iter() {
         let mut b = vec![];
@@ -64,14 +64,11 @@ pub fn field_to_u64<F: FieldExt>(f: &F) -> u64 {
     u64::from_le_bytes(bytes[0..8].try_into().unwrap())
 }
 
-
-
-
-#[derive (Debug)]
+#[derive(Debug)]
 pub struct GateCell {
-    pub cell: [usize;3],
+    pub cell: [usize; 3],
     pub name: String,
 }
 
-pub mod params;
 pub mod macros;
+pub mod params;

@@ -108,7 +108,10 @@ mod tests {
             .map(|x| bn256_g1_to_args(x.clone(), ForeignInst::Bn254SumG1))
             .flatten()
             .collect::<Vec<ExternalHostCallEntry>>();
-        r.append(&mut bn256_g1_to_args(sum.clone(), ForeignInst::Bn254SumResult));
+        r.append(&mut bn256_g1_to_args(
+            sum.clone(),
+            ForeignInst::Bn254SumResult,
+        ));
         ExternalHostCallEntryTable(r)
     }
     #[test]

@@ -1516,12 +1516,11 @@ mod tests {
                 }
                 CircuitError::VerifierError(verifier_error) => {
                     write!(f, "verifier error in circuit: {:#?}", verifier_error)
-                }
-                /*
-                CircuitError::NoOperation => {
-                    write!(f, "no operation is set (this should never happen.")
-                }
-                */
+                } /*
+                  CircuitError::NoOperation => {
+                      write!(f, "no operation is set (this should never happen.")
+                  }
+                  */
             }
         }
     }

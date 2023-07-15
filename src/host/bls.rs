@@ -3,7 +3,9 @@ mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
     use crate::utils::field_to_bn;
     use halo2_proofs::pairing::bls12_381::pairing;
-    use halo2_proofs::pairing::bls12_381::{Fq as Bls381Fq, G1Affine, G2Affine, G1, G2, Gt as Bls381Gt};
+    use halo2_proofs::pairing::bls12_381::{
+        Fq as Bls381Fq, G1Affine, G2Affine, Gt as Bls381Gt, G1, G2,
+    };
     use halo2_proofs::pairing::group::Group;
     use num_bigint::BigUint;
     use rand::rngs::OsRng;
@@ -107,7 +109,10 @@ mod tests {
             .map(|x| bls381_g1_to_args(x.clone(), ForeignInst::BlsSumG1))
             .flatten()
             .collect::<Vec<ExternalHostCallEntry>>();
-        r.append(&mut bls381_g1_to_args(sum.clone(), ForeignInst::BlsSumResult));
+        r.append(&mut bls381_g1_to_args(
+            sum.clone(),
+            ForeignInst::BlsSumResult,
+        ));
         ExternalHostCallEntryTable(r)
     }
     #[test]

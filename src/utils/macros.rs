@@ -51,7 +51,6 @@ macro_rules! table_item {
     };
 }
 
-
 #[macro_export]
 macro_rules! customized_circuits_expand {
     ($name:ident, $row:expr, $col:expr, $adv:expr, $fix:expr, $sel:expr, $($item:tt)* ) => {
@@ -211,7 +210,6 @@ macro_rules! customized_circuits_expand {
         }
     };
 }
-
 
 #[macro_export]
 /// Define customize circuits with (nb_row, nb_adv, nb_fix, nb_expr)

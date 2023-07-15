@@ -1,7 +1,6 @@
 #![feature(array_zip)]
 #![feature(slice_flatten)]
-pub mod utils;
+pub mod adaptor;
 pub mod circuits;
 pub mod host;
-pub mod adaptor;
-
+pub mod utils;

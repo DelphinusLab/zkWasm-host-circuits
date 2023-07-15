@@ -1,16 +1,21 @@
-use halo2_proofs::arithmetic::BaseExt;
-use crate::utils::field_to_bn;
-use crate::host::ForeignInst;
 use crate::host::ExternalHostCallEntry;
+use crate::host::ForeignInst;
+use crate::utils::field_to_bn;
+use halo2_proofs::arithmetic::BaseExt;
 use num_bigint::BigUint;
 
 pub mod bls381adaptor;
 pub mod bn256adaptor;
 pub mod hashadaptor;
-pub mod msmadaptor;
 pub mod merkleadaptor;
+pub mod msmadaptor;
 
-pub fn fr_to_args<F:BaseExt>(f: F, nblimbs: usize, sz: usize, op: ForeignInst) -> Vec<ExternalHostCallEntry> {
+pub fn fr_to_args<F: BaseExt>(
+    f: F,
+    nblimbs: usize,
+    sz: usize,
+    op: ForeignInst,
+) -> Vec<ExternalHostCallEntry> {
     let mut bn = field_to_bn(&f);
     let mut ret = vec![];
     for _ in 0..nblimbs {
@@ -31,6 +36,3 @@ pub fn fr_to_args<F:BaseExt>(f: F, nblimbs: usize, sz: usize, op: ForeignInst) -
     }
     ret
 }
-
-
-

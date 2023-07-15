@@ -37,6 +37,7 @@ pub struct RMD160Chip<F: FieldExt> {
     _marker: PhantomData<F>,
 }
 
+#[rustfmt::skip]
 customized_circuits!(RoundGateConfig, 5, 7, 3, 0,
     | a   | b     | c    |  d   | x    | e     | c_next |  offset  | h_sel | r_sel
     | w0  | b0    | c0   |  d0  | r0   | w1_h  | w4_h   |  w1_r    | nil   | nil
@@ -105,6 +106,7 @@ fn get_witnesses<F: FieldExt>(
     }
 }
 
+#[rustfmt::skip]
 customized_circuits!(CompressSumConfig, 5, 7, 3, 0,
     | a   | b1    | c2   | sum0 | ca0  | bnew  | col6 | col7 | h_sel| r_sel
     | b   | c1    | d2   | sum1 | ca1  | cnew  | nil  | nil  | nil  | nil

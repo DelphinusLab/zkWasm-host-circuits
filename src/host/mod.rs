@@ -29,11 +29,13 @@ pub enum ForeignInst {
     BlspairG3,
     BlsSumG1,
     BlsSumResult,
-    Bn254SumG1,
-    Bn254SumResult,
     Bn254PairG1,
     Bn254PairG2,
     Bn254PairG3,
+    Bn254SumNew,
+    Bn254SumScalar,
+    Bn254SumG1,
+    Bn254SumResult,
     KVPairSetRoot, // 11
     KVPairGetRoot, // 12
     KVPairAddress, // 13

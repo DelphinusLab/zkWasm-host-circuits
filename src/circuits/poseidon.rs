@@ -1,10 +1,6 @@
 use crate::host::poseidon::PREFIX_CHALLENGE;
 use crate::host::poseidon::PREFIX_POINT;
 use crate::host::poseidon::PREFIX_SCALAR;
-use crate::host::poseidon::RATE;
-use crate::host::poseidon::R_F;
-use crate::host::poseidon::R_P;
-use crate::host::poseidon::T;
 use halo2_proofs::arithmetic::FieldExt;
 use poseidon::SparseMDSMatrix;
 use poseidon::Spec;
@@ -18,22 +14,22 @@ use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
 
-pub struct PoseidonState<F: FieldExt> {
+pub struct PoseidonState<F: FieldExt, const T: usize> {
     state: [Limb<F>; T],
     default: [Limb<F>; T],
     prefix: Vec<Limb<F>>,
 }
 
-pub struct PoseidonChip<F: FieldExt> {
+pub struct PoseidonChip<F: FieldExt, const T: usize, const RATE: usize> {
     pub config: CommonGateConfig,
     pub spec: Spec<F, T, RATE>,
-    poseidon_state: PoseidonState<F>,
+    poseidon_state: PoseidonState<F, T>,
     round: u64,
     _marker: PhantomData<F>,
 }
 
-impl<F: FieldExt> PoseidonChip<F> {
-    pub fn construct(config: CommonGateConfig) -> Self {
+impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
+    pub fn construct(config: CommonGateConfig, spec:Spec<F, T, RATE>) -> Self {
         let state = [0u32; T].map(|_| Limb::new(None, F::zero()));
         let state = PoseidonState {
             default: state.clone(),
@@ -44,7 +40,7 @@ impl<F: FieldExt> PoseidonChip<F> {
         PoseidonChip {
             round: 0,
             config,
-            spec: Spec::new(R_F, R_P),
+            spec,
             poseidon_state: state,
             _marker: PhantomData,
         }
@@ -89,21 +85,19 @@ impl<F: FieldExt> PoseidonChip<F> {
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
         let parts = values.clone().map(|x| Some(x));
-        let parts = parts.chunks(4).collect::<Vec<_>>();
-        let mut part0 = parts[0].to_vec();
-        let mut part1 = parts[1].to_vec();
-        part0.push(None);
-        part1.push(None);
-        let mut inputs =
-            self.config
-                .assign_witness(region, &mut (), offset, part0.try_into().unwrap(), 0)?;
-        inputs.append(&mut self.config.assign_witness(
-            region,
-            &mut (),
-            offset,
-            part1.try_into().unwrap(),
-            0,
-        )?);
+        let parts = parts.chunks(5).collect::<Vec<_>>();
+        let mut inputs = vec![];
+        for part in parts.into_iter() {
+            let mut p = part.to_vec();
+            p.resize(5, None);
+            inputs.append(&mut self.config.assign_witness(
+                region,
+                &mut (),
+                offset,
+                p.try_into().unwrap(),
+                0,
+            )?);
+        }
         self.poseidon_state.permute(
             &self.config,
             &self.spec,
@@ -132,7 +126,7 @@ impl<F: FieldExt> PoseidonChip<F> {
     }
 }
 
-impl<F: FieldExt> PoseidonState<F> {
+impl<F: FieldExt, const T:usize> PoseidonState<F, T> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
@@ -266,7 +260,7 @@ impl<F: FieldExt> PoseidonState<F> {
         Ok(())
     }
 
-    pub fn permute(
+    pub fn permute<const RATE: usize>(
         &mut self,
         config: &CommonGateConfig,
         spec: &Spec<F, T, RATE>,
@@ -274,7 +268,7 @@ impl<F: FieldExt> PoseidonState<F> {
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
     ) -> Result<(), Error> {
-        let r_f = R_F / 2;
+        let r_f = spec.r_f()/2;
         let mds = &spec.mds_matrices().mds().rows();
 
         let constants = &spec.constants().start();
@@ -306,7 +300,7 @@ impl<F: FieldExt> PoseidonState<F> {
         Ok(())
     }
 
-    fn absorb_with_pre_constants(
+    fn absorb_with_pre_constants<const RATE: usize>(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
@@ -368,7 +362,7 @@ impl<F: FieldExt> PoseidonState<F> {
         Ok(())
     }
 
-    fn apply_sparse_mds(
+    fn apply_sparse_mds<const RATE: usize>(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
@@ -409,7 +403,7 @@ impl<F: FieldExt> PoseidonState<F> {
 #[cfg(test)]
 mod tests {
     use crate::circuits::CommonGateConfig;
-    use crate::host::poseidon::RATE;
+    use crate::host::poseidon::POSEIDON_HASHER_SPEC;
     use crate::value_for_assign;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
@@ -476,9 +470,9 @@ mod tests {
             &self,
             region: &mut Region<Fr>,
             offset: &mut usize,
-            inputs: &[Fr; RATE],
-        ) -> Result<[Limb<Fr>; RATE], Error> {
-            let r = inputs.map(|x| {
+            inputs: &Vec<Fr>,
+        ) -> Result<Vec<Limb<Fr>>, Error> {
+            let r = inputs.iter().map(|x| {
                 let c = region
                     .assign_advice(
                         || format!("assign input"),
@@ -489,7 +483,7 @@ mod tests {
                     .unwrap();
                 *offset += 1;
                 Limb::new(Some(c), x.clone())
-            });
+            }).collect();
             Ok(r)
         }
 
@@ -532,7 +526,7 @@ mod tests {
 
         fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
             Self::Config {
-                poseidonconfig: PoseidonChip::<Fr>::configure(meta),
+                poseidonconfig: PoseidonChip::<Fr, 9, 8>::configure(meta),
                 helperconfig: HelperChip::configure(meta),
             }
         }
@@ -542,7 +536,10 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let mut poseidonchip = PoseidonChip::<Fr>::construct(config.clone().poseidonconfig);
+            let mut poseidonchip = PoseidonChip::<Fr, 9 ,8 >::construct(
+                config.clone().poseidonconfig,
+                POSEIDON_HASHER_SPEC.clone()
+            );
             let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
                 || "assign poseidon test",
@@ -553,7 +550,7 @@ mod tests {
                     let inputs = helperchip.assign_inputs(
                         &mut region,
                         &mut offset,
-                        &self.inputs.clone().try_into().unwrap(),
+                        &self.inputs.clone(),
                     )?;
                     let reset = helperchip.assign_reset(&mut region, &mut offset, true)?;
                     offset = 0;
@@ -565,7 +562,7 @@ mod tests {
                     poseidonchip.assign_permute(
                         &mut region,
                         &mut offset,
-                        &inputs,
+                        &inputs.try_into().unwrap(),
                         &reset,
                         &result,
                     )?;
@@ -578,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_poseidon_circuit_00() {
-        let mut hasher = crate::host::poseidon::gen_hasher();
+        let mut hasher = crate::host::poseidon::POSEIDON_HASHER.clone();
         let result = hasher.squeeze();
         let inputs = vec![
             Fr::one(),

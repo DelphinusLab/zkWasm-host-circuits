@@ -232,11 +232,16 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     fn verify_proof(&mut self, proof: MerkleProof<H, D>) -> Result<bool, MerkleError> {
         let init = proof.source;
         let mut p = get_offset(proof.index);
-        let hash = proof.assist.to_vec().iter().fold(init, |acc, x| {
+        let mut assist = proof.assist.clone();
+        assist.reverse();
+
+        let hash = assist.to_vec().iter().fold(init, |acc, x| {
             let (left, right) = if p % 2 == 1 { (x, &acc) } else { (&acc, x) };
             p = p / 2;
+            println!("hash is {:?}", acc);
             Self::hash(left, right)
         });
+        println!("root {:?}", proof.root);
         Ok(proof.root == hash)
     }
 }

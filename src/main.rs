@@ -249,13 +249,13 @@ fn main() {
             prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::POSEIDONHASH => {
-            let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr>> {
+            let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr, 9, 8>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr>>> =
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
                 HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);

@@ -50,6 +50,28 @@ pub trait LookupAssistChip<F: FieldExt> {
     ) -> Result<(), Error>;
 }
 
+lazy_static::lazy_static! {
+    static ref COMMON_WITNESS: [GateCell;6] = [
+        CommonGateConfig::l0(),
+        CommonGateConfig::l1(),
+        CommonGateConfig::l2(),
+        CommonGateConfig::l3(),
+        CommonGateConfig::d(),
+        CommonGateConfig::d_n(),
+    ];
+    static ref COMMON_CS: [GateCell; 9] = [
+        CommonGateConfig::c0(),
+        CommonGateConfig::c1(),
+        CommonGateConfig::c2(),
+        CommonGateConfig::c3(),
+        CommonGateConfig::cd(),
+        CommonGateConfig::cdn(),
+        CommonGateConfig::c03(),
+        CommonGateConfig::c12(),
+        CommonGateConfig::c(),
+    ];
+}
+
 impl CommonGateConfig {
     pub fn configure<F: FieldExt, LC: LookupAssistConfig>(
         cs: &mut ConstraintSystem<F>,
@@ -354,30 +376,12 @@ impl CommonGateConfig {
                 == F::zero()
         );
 
-        let witnesses = [
-            CommonGateConfig::l0(),
-            CommonGateConfig::l1(),
-            CommonGateConfig::l2(),
-            CommonGateConfig::l3(),
-            CommonGateConfig::d(),
-            CommonGateConfig::d_n(),
-        ];
-        let cs = [
-            CommonGateConfig::c0(),
-            CommonGateConfig::c1(),
-            CommonGateConfig::c2(),
-            CommonGateConfig::c3(),
-            CommonGateConfig::cd(),
-            CommonGateConfig::cdn(),
-            CommonGateConfig::c03(),
-            CommonGateConfig::c12(),
-            CommonGateConfig::c(),
-        ];
-
         let mut limbs = vec![];
         for i in 0..6 {
             let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let limb = self.assign_cell(region, *offset, &witnesses[i], v).unwrap();
+            let limb = self
+                .assign_cell(region, *offset, &COMMON_WITNESS[i], v)
+                .unwrap();
             value[i].clone().map(|x| {
                 limbs.push(limb.clone());
                 x.cell.map(|c| {
@@ -389,7 +393,7 @@ impl CommonGateConfig {
         }
         for i in 0..9 {
             let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
-            self.assign_cell(region, *offset, &cs[i], v).unwrap();
+            self.assign_cell(region, *offset, &COMMON_CS[i], v).unwrap();
         }
         self.assign_cell(region, *offset, &CommonGateConfig::sel(), F::one())?;
         self.assign_cell(

@@ -14,22 +14,12 @@ use crate::circuits::CommonGateConfig;
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
 use crate::host::kvpair::MongoMerkle;
+use crate::host::kvpair::DEFAULT_HASH_VEC;
 use crate::host::merkle::{MerkleNode, MerkleTree};
+use crate::utils::bytes_to_u64;
 use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
 use crate::utils::Limb;
-
-// Some constants for the purpose of deault entries
-const DEFAULT_ROOT_HASH64: [u64; 4] = [
-    14768724118053802825,
-    12044759864135545626,
-    7296277131441537979,
-    802061392934800187,
-];
-
-lazy_static::lazy_static! {
-    static ref DEFAULT_ROOT_HASH: Fr = Fr::from_raw(DEFAULT_ROOT_HASH64);
-}
 
 /* The calling convention will be
  * KVPairAddress
@@ -50,8 +40,8 @@ fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
     }]
 }
 
-fn kvpair_to_host_call_table<F: FieldExt>(
-    inputs: &Vec<(u64, F, F, ForeignInst)>,
+fn kvpair_to_host_call_table(
+    inputs: &Vec<(u64, Fr, [Fr; 2], ForeignInst)>,
 ) -> Vec<ExternalHostCallEntry> {
     let mut r = vec![];
     for (addr, root, value, op) in inputs.into_iter() {
@@ -62,15 +52,17 @@ fn kvpair_to_host_call_table<F: FieldExt>(
             64,
             ForeignInst::KVPairSetRoot,
         ));
-        r.push(crate::adaptor::fr_to_args(*value, 4, 64, *op));
+        for v in value.iter() {
+            r.push(crate::adaptor::fr_to_args(*v, 2, 64, *op));
+        }
     }
     r.into_iter().flatten().collect::<Vec<_>>()
 }
 
-impl HostOpSelector for MerkleChip<Fr, 20> {
+impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     type Config = CommonGateConfig;
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        MerkleChip::<Fr, 20>::configure(meta)
+        MerkleChip::<Fr, DEPTH>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
@@ -102,7 +94,7 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
-        let default_index = 1u64 << 20;
+        let default_index = 1u64 << DEPTH;
 
         let mut offset = 0;
         let mut r = vec![];
@@ -157,8 +149,8 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
 
         let default_table = kvpair_to_host_call_table(&vec![(
             default_index,
-            *DEFAULT_ROOT_HASH,
-            Fr::zero(),
+            Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])),
+            [Fr::zero(), Fr::zero()],
             KVPairGet,
         )]);
 
@@ -249,7 +241,7 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
                 // 1: root
                 // 2: value[]
                 // 4: op_code
-                let mut mt: Option<MongoMerkle> = None;
+                let mut mt: Option<MongoMerkle<DEPTH>> = None;
                 for arg_group in arg_cells.chunks_exact(5) {
                     println!("round ====== {} {}", round, offset);
                     round += 1;
@@ -309,37 +301,34 @@ impl HostOpSelector for MerkleChip<Fr, 20> {
 #[cfg(test)]
 mod tests {
     use super::kvpair_to_host_call_table;
-    use super::DEFAULT_ROOT_HASH;
     use crate::host::kvpair::MongoMerkle;
-    use crate::host::merkle::MerkleTree;
+    use crate::host::kvpair::DEFAULT_HASH_VEC;
+    use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{KVPairGet, KVPairSet};
+    use crate::utils::bytes_to_field;
+    use crate::utils::bytes_to_u64;
+    use crate::utils::field_to_bytes;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
     #[test]
     fn generate_kvpair_input_get_set() {
-        const TEST_ADDR: [u8; 32] = [2; 32];
-        const NEW_ROOT_HASH64: [u64; 4] = [
-            16039362344330646748,
-            7125397509397931624,
-            4246510858682859310,
-            1093404808759360274,
-        ];
-        const DEFAULT_ROOT_HASH_BYTES: [u8; 32] = [
-            73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
-            100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
-        ];
-
-        let mut _mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_ROOT_HASH_BYTES);
-        let root_default = DEFAULT_ROOT_HASH.clone();
+        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[20]));
         let index = 2_u64.pow(20) - 1;
-        let data = 0x1000;
-        let root64_new = Fr::from_raw(NEW_ROOT_HASH64);
+        let data = Fr::from(0x1000 as u64);
+        let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
+        let (mut leaf, _) = mt.get_leaf_with_proof(index as u32).unwrap();
+        let bytesdata = field_to_bytes(&data).to_vec();
+        println!("bytes_data is {:?}", bytesdata);
+        leaf.set(&bytesdata);
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index, root_default, Fr::zero(), KVPairGet),
-            (index, root64_new, Fr::from(data), KVPairSet),
+            (index, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
+            (index, root64_new, [data, Fr::zero()], KVPairSet),
         ]);
         let file = File::create("kvpair_test1.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
@@ -348,28 +337,22 @@ mod tests {
 
     #[test]
     fn generate_kvpair_input_gets_set() {
-        const TEST_ADDR: [u8; 32] = [2; 32];
-        const NEW_ROOT_HASH64: [u64; 4] = [
-            16039362344330646748,
-            7125397509397931624,
-            4246510858682859310,
-            1093404808759360274,
-        ];
-        const DEFAULT_ROOT_HASH_BYTES: [u8; 32] = [
-            73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3, 97, 202,
-            100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
-        ];
-
-        let mut _mt = MongoMerkle::construct(TEST_ADDR, DEFAULT_ROOT_HASH_BYTES);
-        let root_default = DEFAULT_ROOT_HASH.clone();
+        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[20]));
         let index = 2_u64.pow(20) - 1;
-        let data = 0x1000;
-        let root64_new = Fr::from_raw(NEW_ROOT_HASH64);
+        let data = Fr::from(0x1000 as u64);
+
+        let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
+        let (mut leaf, _) = mt.get_leaf_with_proof(index as u32).unwrap();
+        let bytesdata = field_to_bytes(&data).to_vec();
+        println!("bytes_data is {:?}", bytesdata);
+        leaf.set(&bytesdata);
+        mt.set_leaf_with_proof(&leaf).unwrap();
+        let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index + 1, root_default, Fr::zero(), KVPairGet),
-            (index, root_default, Fr::zero(), KVPairGet),
-            (index, root64_new, Fr::from(data), KVPairSet),
+            (index + 1, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
+            (index, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
+            (index, root64_new, [data, Fr::zero()], KVPairSet),
         ]);
         let file = File::create("kvpair_test2.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))

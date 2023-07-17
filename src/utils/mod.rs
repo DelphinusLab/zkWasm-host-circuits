@@ -29,6 +29,15 @@ pub fn data_to_bytes<F: BaseExt>(fs: Vec<F>) -> Vec<u8> {
     bytes
 }
 
+pub fn bytes_to_u64(bytes: &[u8; 32]) -> [u64; 4] {
+    let r = bytes
+        .to_vec()
+        .chunks_exact(8)
+        .map(|x| u64::from_le_bytes(x.try_into().unwrap()))
+        .collect::<Vec<_>>();
+    r.try_into().unwrap()
+}
+
 pub fn field_to_bytes<F: BaseExt>(f: &F) -> [u8; 32] {
     let mut bytes: Vec<u8> = Vec::new();
     f.write(&mut bytes).unwrap();

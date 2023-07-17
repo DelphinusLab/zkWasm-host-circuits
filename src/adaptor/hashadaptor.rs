@@ -2,7 +2,8 @@ use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::CommonGateConfig;
 use crate::circuits::LookupAssistChip;
 use crate::circuits::LookupAssistConfig;
-use crate::host::poseidon::gen_hasher;
+use crate::host::poseidon::POSEIDON_HASHER;
+use crate::host::poseidon::POSEIDON_HASHER_SPEC;
 use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
 use ark_std::{end_timer, start_timer};
@@ -59,14 +60,14 @@ fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntry
 
 const TOTAL_CONSTRUCTIONS: usize = 2048;
 
-impl HostOpSelector for PoseidonChip<Fr> {
+impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     type Config = CommonGateConfig;
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        PoseidonChip::<Fr>::configure(meta)
+        PoseidonChip::<Fr, 9, 8>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
-        PoseidonChip::construct(c)
+        PoseidonChip::construct(c, POSEIDON_HASHER_SPEC.clone())
     }
 
     fn assign(
@@ -143,7 +144,7 @@ impl HostOpSelector for PoseidonChip<Fr> {
                 Fr::zero(),
                 Fr::zero(),
             ],
-            gen_hasher().squeeze(),
+            POSEIDON_HASHER.clone().squeeze(),
         );
 
         //let entries = default_table.
@@ -241,7 +242,7 @@ mod tests {
     fn hash_to_host_call_table(inputs: Vec<[Fr; 8]>) -> ExternalHostCallEntryTable {
         let mut r = vec![];
         let mut start = true;
-        let mut hasher = crate::host::poseidon::gen_hasher();
+        let mut hasher = crate::host::poseidon::POSEIDON_HASHER.clone();
         for round in inputs.into_iter() {
             r.push(hash_cont(start));
             start = false;

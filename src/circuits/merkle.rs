@@ -10,7 +10,10 @@ use std::marker::PhantomData;
 
 use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
+use crate::host::poseidon::MERKLE_HASHER_SPEC;
+use crate::host::poseidon::POSEIDON_HASHER_SPEC;
 use crate::host::ForeignInst::KVPairSet;
+use halo2_proofs::pairing::bn256::Fr;
 
 /* Given a merkel tree eg1 with height=3:
  * 0
@@ -44,7 +47,8 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
 
 pub struct MerkleChip<F: FieldExt, const D: usize> {
     pub config: CommonGateConfig,
-    poseidon_chip: PoseidonChip<F>,
+    data_hasher_chip: PoseidonChip<F, 9, 8>,
+    merkle_hasher_chip: PoseidonChip<F, 3, 2>,
     state: MerkleProofState<F, D>,
     _marker: PhantomData<F>,
 }
@@ -62,10 +66,11 @@ impl<F: FieldExt, const D: usize> Chip<F> for MerkleChip<F, D> {
     }
 }
 
-impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
+impl<const D: usize> MerkleChip<Fr, D> {
     pub fn new(config: CommonGateConfig) -> Self {
         MerkleChip {
-            poseidon_chip: PoseidonChip::construct(config.clone()),
+            merkle_hasher_chip: PoseidonChip::construct(config.clone(), MERKLE_HASHER_SPEC.clone()),
+            data_hasher_chip: PoseidonChip::construct(config.clone(), POSEIDON_HASHER_SPEC.clone()),
             config,
             state: MerkleProofState::default(),
             _marker: PhantomData,
@@ -79,36 +84,41 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &mut Region<Fr>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        self.poseidon_chip.initialize(config, region, offset)
+        self.merkle_hasher_chip.initialize(config, region, offset)?;
+        self.data_hasher_chip.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
+    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &())
     }
 
     pub fn assign_proof(
         &mut self,
-        region: &mut Region<F>,
+        region: &mut Region<Fr>,
         offset: &mut usize,
         proof: &MerkleProof<[u8; 32], D>,
-        opcode: &Limb<F>,
-        address: &Limb<F>,
-        root: &Limb<F>,
-        value: [&Limb<F>; 2],
+        opcode: &Limb<Fr>,
+        address: &Limb<Fr>,
+        root: &Limb<Fr>,
+        value: [&Limb<Fr>; 2],
     ) -> Result<(), Error> {
-        let is_set =
-            self.config
-                .eq_constant(region, &mut (), offset, opcode, &F::from(KVPairSet as u64))?;
+        let is_set = self.config.eq_constant(
+            region,
+            &mut (),
+            offset,
+            opcode,
+            &Fr::from(KVPairSet as u64),
+        )?;
         let fills = proof
             .assist
             .to_vec()
             .iter()
             .map(|x| Some(Limb::new(None, bytes_to_field(&x))))
             .collect::<Vec<_>>();
-        let new_assist: Vec<Limb<F>> = fills
+        let new_assist: Vec<Limb<Fr>> = fills
             .chunks(5)
             .collect::<Vec<_>>()
             .iter()
@@ -119,7 +129,7 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                     .assign_witness(region, &mut (), offset, v.try_into().unwrap(), 0)
                     .unwrap()
             })
-            .collect::<Vec<Vec<Limb<F>>>>()
+            .collect::<Vec<Vec<Limb<_>>>>()
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
@@ -143,14 +153,14 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
             region,
             &mut (),
             offset,
-            vec![(address, F::one())],
-            Some(-F::from((1u64 << D) - 1)),
+            vec![(address, Fr::one())],
+            Some(-Fr::from((1u64 << D) - 1)),
         )?;
         //println!("offset for position is: {:?}", c.value);
         self.config
             .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
         // position = 0 means assist is at right else assist is at left
-        let initial_hash = self.poseidon_chip.get_permute_result(
+        let initial_hash = self.data_hasher_chip.get_permute_result(
             region,
             offset,
             &[
@@ -179,24 +189,10 @@ impl<F: FieldExt, const D: usize> MerkleChip<F, D> {
                     .select(region, &mut (), offset, &position, &assist, &acc, 0)
                     .unwrap();
                 let hash = self
-                    .poseidon_chip
-                    .get_permute_result(
-                        region,
-                        offset,
-                        &[
-                            left,
-                            right,
-                            self.state.one.clone(),
-                            self.state.zero.clone(),
-                            self.state.zero.clone(),
-                            self.state.zero.clone(),
-                            self.state.zero.clone(),
-                            self.state.zero.clone(),
-                        ],
-                        &self.state.one.clone(),
-                    )
+                    .merkle_hasher_chip
+                    .get_permute_result(region, offset, &[left, right], &self.state.one.clone())
                     .unwrap();
-                //println!("position check: {:?} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
+                //println!("position check: {:?} {:?}", acc.clone().value, assist.clone().value);
                 hash
             },
         );

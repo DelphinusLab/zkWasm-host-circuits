@@ -5,6 +5,7 @@ pub mod kvpair;
 pub mod merkle;
 pub mod poseidon;
 pub mod rmd160;
+pub mod cache;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};

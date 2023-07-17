@@ -16,6 +16,10 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
+use crate::host::cache::MERKLE_CACHE;
+
+const CACHE: bool = true;
+
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
     D: Deserializer<'de>,
@@ -86,34 +90,57 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         index: u32,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-        let mut filter = doc! {};
-        filter.insert("index", index);
-        filter.insert("hash", bytes_to_bson(hash));
-        collection.find_one(filter, None)
+        if CACHE {
+            let mut cache = MERKLE_CACHE.lock().unwrap();
+            let cache_record = cache.get(&(index, hash.clone()));
+            let r = cache_record.map_or({
+                println!("cache miss get {}", index);
+                let dbname = Self::get_db_name();
+                let cname = self.get_collection_name();
+                let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+                let mut filter = doc! {};
+                filter.insert("index", index);
+                filter.insert("hash", bytes_to_bson(hash));
+                collection.find_one(filter, None)?
+            }, |x| x.clone());
+            cache.insert((index, hash.clone()), r.clone());
+            Ok(r)
+        } else {
+            let dbname = Self::get_db_name();
+            let cname = self.get_collection_name();
+            let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+            let mut filter = doc! {};
+            filter.insert("index", index);
+            filter.insert("hash", bytes_to_bson(hash));
+            collection.find_one(filter, None)
+        }
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-        let mut filter = doc! {};
-        filter.insert("index", record.index);
-        filter.insert("hash", bytes_to_bson(&record.hash));
-        let exists = collection.find_one(filter, None)?;
-        exists.map_or(
-            {
-                collection.insert_one(record, None)?;
-                Ok(())
-            },
-            |_| {
-                //println!("find existing node, preventing duplicate");
-                Ok(())
-            },
-        )
+        if CACHE {
+            MERKLE_CACHE.lock().unwrap().insert((record.index, record.hash.clone()), Some(record.clone()));
+            Ok(())
+        } else {
+            println!("cache miss update");
+            let dbname = Self::get_db_name();
+            let cname = self.get_collection_name();
+            let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+            let mut filter = doc! {};
+            filter.insert("index", record.index);
+            filter.insert("hash", bytes_to_bson(&record.hash));
+            let exists = collection.find_one(filter, None)?;
+            exists.map_or(
+                {
+                    collection.insert_one(record, None)?;
+                    Ok(())
+                },
+                |_| {
+                    //println!("find existing node, preventing duplicate");
+                    Ok(())
+                },
+            )
+        }
     }
 }
 
@@ -157,8 +184,6 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         let values: [Fr; 2] = batchdata.try_into().unwrap();
         hasher.update(&values);
         self.hash = hasher.squeeze().to_repr();
-        println!("update with values {:?}", values);
-        println!("update with new hash {:?}", self.hash);
     }
     fn right(&self) -> Option<[u8; 32]> {
         Some(self.right)
@@ -474,5 +499,12 @@ mod tests {
         assert_eq!(leaf.data, LEAF3_DATA);
         assert!(mt.verify_proof(proof).unwrap());
         end_timer!(timer);
+    }
+
+    #[test]
+    fn test_mongo_merkle_cache() {
+        for _ in 0..100 {
+            test_mongo_merkle_multi_leaves_update();
+        }
     }
 }

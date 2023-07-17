@@ -84,26 +84,12 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
             )?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
-        let parts = values.clone().map(|x| Some(x));
-        let parts = parts.chunks(5).collect::<Vec<_>>();
-        let mut inputs = vec![];
-        for part in parts.into_iter() {
-            let mut p = part.to_vec();
-            p.resize(5, None);
-            inputs.append(&mut self.config.assign_witness(
-                region,
-                &mut (),
-                offset,
-                p.try_into().unwrap(),
-                0,
-            )?);
-        }
         self.poseidon_state.permute(
             &self.config,
             &self.spec,
             region,
             offset,
-            &inputs.try_into().unwrap(),
+            values,
         )?;
         Ok(self.poseidon_state.state[1].clone())
     }

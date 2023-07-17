@@ -1,6 +1,9 @@
 use super::MONGODB_URI;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
+use crate::host::poseidon::MERKLE_HASHER;
+use crate::host::poseidon::POSEIDON_HASHER;
 use ff::PrimeField;
+use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
 use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
@@ -12,9 +15,6 @@ use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use crate::host::poseidon::POSEIDON_HASHER;
-use crate::host::poseidon::MERKLE_HASHER;
-use halo2_proofs::pairing::bn256::Fr;
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
@@ -402,6 +402,8 @@ mod tests {
      */
     fn test_mongo_merkle_multi_leaves_update() {
         // Init checking results
+        use ark_std::{end_timer, start_timer};
+        let timer = start_timer!(|| "testging multi leaves update");
         const TEST_ADDR: [u8; 32] = [3; 32];
         const INDEX1: u32 = 2_u32.pow(20) - 1;
         const LEAF1_DATA: [u8; 32] = [
@@ -471,5 +473,6 @@ mod tests {
         assert_eq!(leaf.index, INDEX3);
         assert_eq!(leaf.data, LEAF3_DATA);
         assert!(mt.verify_proof(proof).unwrap());
+        end_timer!(timer);
     }
 }

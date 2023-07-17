@@ -10,9 +10,9 @@ use std::marker::PhantomData;
 
 use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
-use crate::host::ForeignInst::KVPairSet;
 use crate::host::poseidon::MERKLE_HASHER_SPEC;
 use crate::host::poseidon::POSEIDON_HASHER_SPEC;
+use crate::host::ForeignInst::KVPairSet;
 use halo2_proofs::pairing::bn256::Fr;
 
 /* Given a merkel tree eg1 with height=3:
@@ -105,9 +105,13 @@ impl<const D: usize> MerkleChip<Fr, D> {
         root: &Limb<Fr>,
         value: [&Limb<Fr>; 2],
     ) -> Result<(), Error> {
-        let is_set =
-            self.config
-                .eq_constant(region, &mut (), offset, opcode, &Fr::from(KVPairSet as u64))?;
+        let is_set = self.config.eq_constant(
+            region,
+            &mut (),
+            offset,
+            opcode,
+            &Fr::from(KVPairSet as u64),
+        )?;
         let fills = proof
             .assist
             .to_vec()
@@ -186,15 +190,7 @@ impl<const D: usize> MerkleChip<Fr, D> {
                     .unwrap();
                 let hash = self
                     .merkle_hasher_chip
-                    .get_permute_result(
-                        region,
-                        offset,
-                        &[
-                            left,
-                            right,
-                        ],
-                        &self.state.one.clone(),
-                    )
+                    .get_permute_result(region, offset, &[left, right], &self.state.one.clone())
                     .unwrap();
                 //println!("position check: {:?} {:?}", acc.clone().value, assist.clone().value);
                 hash

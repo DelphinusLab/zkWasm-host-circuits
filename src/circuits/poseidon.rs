@@ -29,7 +29,7 @@ pub struct PoseidonChip<F: FieldExt, const T: usize, const RATE: usize> {
 }
 
 impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
-    pub fn construct(config: CommonGateConfig, spec:Spec<F, T, RATE>) -> Self {
+    pub fn construct(config: CommonGateConfig, spec: Spec<F, T, RATE>) -> Self {
         let state = [0u32; T].map(|_| Limb::new(None, F::zero()));
         let state = PoseidonState {
             default: state.clone(),
@@ -84,13 +84,8 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
             )?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
-        self.poseidon_state.permute(
-            &self.config,
-            &self.spec,
-            region,
-            offset,
-            values,
-        )?;
+        self.poseidon_state
+            .permute(&self.config, &self.spec, region, offset, values)?;
         Ok(self.poseidon_state.state[1].clone())
     }
 
@@ -112,7 +107,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
     }
 }
 
-impl<F: FieldExt, const T:usize> PoseidonState<F, T> {
+impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
@@ -254,7 +249,7 @@ impl<F: FieldExt, const T:usize> PoseidonState<F, T> {
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
     ) -> Result<(), Error> {
-        let r_f = spec.r_f()/2;
+        let r_f = spec.r_f() / 2;
         let mds = &spec.mds_matrices().mds().rows();
 
         let constants = &spec.constants().start();
@@ -458,18 +453,21 @@ mod tests {
             offset: &mut usize,
             inputs: &Vec<Fr>,
         ) -> Result<Vec<Limb<Fr>>, Error> {
-            let r = inputs.iter().map(|x| {
-                let c = region
-                    .assign_advice(
-                        || format!("assign input"),
-                        self.config.limb,
-                        *offset,
-                        || value_for_assign!(x.clone()),
-                    )
-                    .unwrap();
-                *offset += 1;
-                Limb::new(Some(c), x.clone())
-            }).collect();
+            let r = inputs
+                .iter()
+                .map(|x| {
+                    let c = region
+                        .assign_advice(
+                            || format!("assign input"),
+                            self.config.limb,
+                            *offset,
+                            || value_for_assign!(x.clone()),
+                        )
+                        .unwrap();
+                    *offset += 1;
+                    Limb::new(Some(c), x.clone())
+                })
+                .collect();
             Ok(r)
         }
 
@@ -522,9 +520,9 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let mut poseidonchip = PoseidonChip::<Fr, 9 ,8 >::construct(
+            let mut poseidonchip = PoseidonChip::<Fr, 9, 8>::construct(
                 config.clone().poseidonconfig,
-                POSEIDON_HASHER_SPEC.clone()
+                POSEIDON_HASHER_SPEC.clone(),
             );
             let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
@@ -533,11 +531,8 @@ mod tests {
                     let mut offset = 0;
                     let result =
                         helperchip.assign_result(&mut region, &mut offset, &self.result)?;
-                    let inputs = helperchip.assign_inputs(
-                        &mut region,
-                        &mut offset,
-                        &self.inputs.clone(),
-                    )?;
+                    let inputs =
+                        helperchip.assign_inputs(&mut region, &mut offset, &self.inputs.clone())?;
                     let reset = helperchip.assign_reset(&mut region, &mut offset, true)?;
                     offset = 0;
                     poseidonchip.poseidon_state.initialize(

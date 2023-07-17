@@ -14,12 +14,12 @@ use crate::circuits::CommonGateConfig;
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
 use crate::host::kvpair::MongoMerkle;
+use crate::host::kvpair::DEFAULT_HASH_VEC;
 use crate::host::merkle::{MerkleNode, MerkleTree};
-use crate::utils::data_to_bytes;
 use crate::utils::bytes_to_u64;
+use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
 use crate::utils::Limb;
-use crate::host::kvpair::DEFAULT_HASH_VEC;
 
 /* The calling convention will be
  * KVPairAddress
@@ -301,15 +301,15 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 #[cfg(test)]
 mod tests {
     use super::kvpair_to_host_call_table;
+    use crate::host::kvpair::MongoMerkle;
+    use crate::host::kvpair::DEFAULT_HASH_VEC;
+    use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{KVPairGet, KVPairSet};
-    use halo2_proofs::pairing::bn256::Fr;
-    use crate::host::kvpair::DEFAULT_HASH_VEC;
+    use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
-    use crate::utils::bytes_to_field;
-    use crate::host::kvpair::MongoMerkle;
-    use crate::host::merkle::{MerkleNode, MerkleTree};
+    use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
     #[test]

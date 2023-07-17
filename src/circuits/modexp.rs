@@ -1111,7 +1111,8 @@ mod tests {
                     let modulus =
                         helperchip.assign_modulus(&mut region, &mut offset, &self.op_c)?;
                     let quo = helperchip.assign_base(&mut region, &mut offset, &self.op_d)?;
-                    let rem = helperchip.assign_base(&mut region, &mut offset, &self.bn_test_res)?;
+                    let rem =
+                        helperchip.assign_base(&mut region, &mut offset, &self.bn_test_res)?;
                     let rl_mod_108m1 = modexpchip.mod_power108m1_mul(
                         &mut region,
                         &mut range_chip,
@@ -1306,9 +1307,7 @@ mod tests {
                 BigUint::from(0u128),
                 BigUint::from(0u128),
             );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }
@@ -1341,9 +1340,7 @@ mod tests {
                 get_random_x_bit_bn(bit_len_b[i]),
                 BigUint::from(0u128),
             );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }
@@ -1370,16 +1367,14 @@ mod tests {
             LIMB_WIDTH + LIMB_WIDTH + 1,
             LIMB_WIDTH + LIMB_WIDTH + 108,
         ];
-        let bit_len_c: [usize; 8] = [1,2,4,8,16,32,64,100];
+        let bit_len_c: [usize; 8] = [1, 2, 4, 8, 16, 32, 64, 100];
         for i in 0..8 {
             let (a, b, c) = (
                 get_random_x_bit_bn(bit_len_a[i]),
                 get_random_x_bit_bn(bit_len_b[i]),
                 get_random_x_bit_bn(bit_len_c[i]),
             );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }
@@ -1391,17 +1386,11 @@ mod tests {
         // i.e., l (1-80-bits) * r (LIMB_WIDTH - (1-80-bits)) < (2^108)-1)
         const L_BITLENGTH: usize = 80;
         let mut rng = rand::thread_rng();
-        let bit_len_c: [usize; 8] = [1,2,4,8,16,32,32,32];
+        let bit_len_c: [usize; 8] = [1, 2, 4, 8, 16, 32, 32, 32];
         for i in 0..8 {
             let (bn_a, bn_b) = get_random_product_not_exceed_n_bits(rng.gen_range(1..=L_BITLENGTH));
-            let (a, b, c) = (
-                bn_a,
-                bn_b,
-                get_random_x_bit_bn(bit_len_c[i]),
-            );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            let (a, b, c) = (bn_a, bn_b, get_random_x_bit_bn(bit_len_c[i]));
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }
@@ -1432,16 +1421,14 @@ mod tests {
                 get_random_x_bit_bn(bit_len_r[i]),
                 get_random_x_bit_bn(bit_len_m[i]),
             );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }
 
     fn testvectors_modexp() -> Vec<(BigUint, BigUint, BigUint)> {
         let mut bn_test_vectors: Vec<(BigUint, BigUint, BigUint)> = Vec::with_capacity(8);
-        const NUM_TESTS: usize = 5;   // 100 finished in 573.17s
+        const NUM_TESTS: usize = 5; // 100 finished in 573.17s
         let mut bit_len_b: [usize; NUM_TESTS] = [0; NUM_TESTS];
         let mut bit_len_m: [usize; NUM_TESTS] = [0; NUM_TESTS];
         let mut bit_len_e: [usize; NUM_TESTS] = [0; NUM_TESTS];
@@ -1457,9 +1444,7 @@ mod tests {
                 get_random_x_bit_bn(bit_len_m[i]),
                 get_random_x_bit_bn(bit_len_e[i]),
             );
-            bn_test_vectors.push(
-                (a, b, c)
-            );
+            bn_test_vectors.push((a, b, c));
         }
         bn_test_vectors
     }

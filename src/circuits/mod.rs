@@ -50,7 +50,6 @@ pub trait LookupAssistChip<F: FieldExt> {
     ) -> Result<(), Error>;
 }
 
-
 lazy_static::lazy_static! {
     static ref COMMON_WITNESS: [GateCell;6] = [
         CommonGateConfig::l0(),
@@ -380,7 +379,9 @@ impl CommonGateConfig {
         let mut limbs = vec![];
         for i in 0..6 {
             let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let limb = self.assign_cell(region, *offset, &COMMON_WITNESS[i], v).unwrap();
+            let limb = self
+                .assign_cell(region, *offset, &COMMON_WITNESS[i], v)
+                .unwrap();
             value[i].clone().map(|x| {
                 limbs.push(limb.clone());
                 x.cell.map(|c| {

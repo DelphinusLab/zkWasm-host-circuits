@@ -1,0 +1,1 @@
+mongosh --file upgrade.js

@@ -1,5 +1,6 @@
 # kvpair mongodb upgrade scripts
 ## How to run upgrade
 ```
-sh upgrade.sh
+npm install
+npm run upgrade
 ```

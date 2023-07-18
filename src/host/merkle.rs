@@ -195,12 +195,17 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     }
 
     fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H, D>, MerkleError> {
+        use ark_std::{end_timer, start_timer};
         let index = leaf.index();
         let mut hash = leaf.hash();
+        let timer = start_timer!(|| "testing get_leaf_with_proof");
         let (_, mut proof) = self.get_leaf_with_proof(index)?;
+        end_timer!(timer);
         proof.source = hash.clone();
         let mut p = get_offset(index);
+        let timer_set_leaf = start_timer!(|| "testing set leaf");
         self.set_leaf(leaf)?;
+        end_timer!(timer_set_leaf);
         for i in 0..D {
             let cur_hash = hash;
             let depth = D - i - 1;
@@ -209,10 +214,14 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
             } else {
                 (&cur_hash, &proof.assist[depth])
             };
+            let timer = start_timer!(|| "do hash");
             hash = Self::hash(left, right);
+            end_timer!(timer);
             p = p / 2;
             let index = p + (1 << depth) - 1;
+            let timer_set_parent = start_timer!(|| "testing set parent");
             self.set_parent(index, &hash, left, right)?;
+            end_timer!(timer_set_parent);
         }
         self.update_root_hash(&hash);
         proof.root = hash;

@@ -19,7 +19,7 @@ use serde::{
 use crate::host::cache::MERKLE_CACHE;
 
 
-const CACHE: bool = true;
+const CACHE: bool = false;
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
@@ -126,9 +126,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
-    pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
+    pub fn update_records(&self, record: Vec<MerkleRecord>) -> Result<(), mongodb::error::Error> {
         if CACHE {
-            MERKLE_CACHE.lock().unwrap().insert((record.index, record.hash.clone()), Some(record.clone()));
+            for record in record.iter() {
+                MERKLE_CACHE.lock().unwrap().insert((record.index, record.hash), Some(record.clone()));
+            }
             /*let dbname = Self::get_db_name();
             let cname = self.get_collection_name();
             let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
@@ -152,20 +154,14 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             let dbname = Self::get_db_name();
             let cname = self.get_collection_name();
             let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-            let mut filter = doc! {};
-            filter.insert("index", record.index);
-            filter.insert("hash", bytes_to_bson(&record.hash));
-            let exists = collection.find_one(filter, None)?;
-            exists.map_or_else(
-                || {
-                    collection.insert_one(record, None)?;
-                    Ok(())
-                },
-                |_| {
-                    //println!("find existing node, preventing duplicate");
-                    Ok(())
-                },
-            )
+            let upserts = record.iter().filter(|x| {
+                self.get_record(x.index, &x.hash).unwrap().is_none()
+            }).collect::<Vec<_>>();
+            println!("inserts : {}", upserts.len());
+            if !upserts.is_empty() {
+                collection.insert_many(upserts, None)?;
+            }
+            Ok(())
         }
     }
 }
@@ -310,28 +306,25 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         hasher.update_exact(&[a, b]).to_repr()
     }
 
-    fn set_parent(
-        &mut self,
-        index: u32,
-        hash: &[u8; 32],
-        left: &[u8; 32],
-        right: &[u8; 32],
-    ) -> Result<(), MerkleError> {
-        self.boundary_check(index)?;
-        let record = MerkleRecord {
-            index,
-            data: [0; 32],
-            left: *left,
-            right: *right,
-            hash: *hash,
-        };
-        //println!("set_node_with_hash {} {:?}", index, hash);
-        use ark_std::{end_timer, start_timer};
-        let timer = start_timer!(|| "testging update_record parent");
-        self.update_record(record).expect("Unexpected DB Error");
-        end_timer!(timer);
+    fn set_leaf_and_parents(&mut self, leaf: &MerkleRecord, parents: [(u32, [u8; 32], [u8; 32], [u8; 32]); DEPTH]) -> Result<(), MerkleError> {
+        self.boundary_check(leaf.index())?; //should be leaf check?
+        let mut records = parents.map(|(index, hash, left, right)| {
+            MerkleRecord {
+                index,
+                data: [0; 32],
+                left,
+                right,
+                hash,
+            }
+        }).to_vec();
+
+        records.push(leaf.clone());
+
+        self.update_records(records)
+            .expect("Unexpected DB Error");
         Ok(())
     }
+
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
         //use ark_std::{end_timer, start_timer};
@@ -379,15 +372,6 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         )
     }
 
-    fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
-        self.boundary_check(leaf.index())?; //should be leaf check?
-        use ark_std::{end_timer, start_timer};
-        let timer = start_timer!(|| "testging update_record leaf");
-        self.update_record(leaf.clone())
-            .expect("Unexpected DB Error");
-        end_timer!(timer);
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -567,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_mongo_merkle_cache() {
-        for _ in 0..3 {
+        for _ in 0..200 {
             test_mongo_merkle_multi_leaves_update();
         }
     }

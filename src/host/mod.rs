@@ -1,5 +1,6 @@
 pub mod bls;
 pub mod bn256;
+pub mod cache;
 pub mod jubjub;
 pub mod kvpair;
 pub mod merkle;

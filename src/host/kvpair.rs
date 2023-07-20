@@ -7,6 +7,7 @@ use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
 use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
+//use mongodb::options::InsertManyOptions;
 use mongodb::{
     bson::doc,
     sync::{Client, Collection},
@@ -125,6 +126,39 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
     }
 
+    // or: [{and: [index=??? hash=???]}, {and: [index=??? hash= }
+
+    pub fn get_records(
+        &self,
+        index: &Vec<MerkleRecord>
+    ) -> Result<(Vec<MerkleRecord>, Vec<MerkleRecord>), mongodb::error::Error> {
+        println!("get records with size {}", index.len());
+        let mut docs:Vec<mongodb::bson::Document>= vec![];
+        for record in index.iter() {
+            let mut and_doc:Vec<mongodb::bson::Document>= vec![];
+            and_doc.push(doc!{"index": record.index});
+            and_doc.push(doc!{"hash": bytes_to_bson(&record.hash)});
+            docs.push(doc!{"$and": and_doc});
+        }
+        let filter = doc! {
+            "$or": docs
+        };
+        let dbname = Self::get_db_name();
+        let cname = self.get_collection_name();
+        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+        let mut cursor = collection.find(filter, None)?;
+        let mut find = vec![];
+        let mut notfind = index.clone();
+
+        while let Some(record) = cursor.next() {
+            let r = record.unwrap();
+            println!("find {:?}", r.index);
+            find.push(r.clone());
+            notfind.remove(notfind.iter().position(|x| {x.clone() == r.clone()}).unwrap());
+        }
+        Ok((find, notfind))
+    }
+
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_records(&self, record: Vec<MerkleRecord>) -> Result<(), mongodb::error::Error> {
         if CACHE {
@@ -154,13 +188,18 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             let dbname = Self::get_db_name();
             let cname = self.get_collection_name();
             let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-            let upserts = record.iter().filter(|x| {
-                self.get_record(x.index, &x.hash).unwrap().is_none()
-            }).collect::<Vec<_>>();
+            /*
+            collection.insert_many(record.clone(),
+                Some(InsertManyOptions::builder().ordered(Some(true)).build()))?;
+            */
+            use ark_std::{end_timer, start_timer};
+            let get_records_timer = start_timer!(|| "testing get records");
+            let (_, upserts) = self.get_records(&record)?;
             println!("inserts : {}", upserts.len());
             if !upserts.is_empty() {
-                collection.insert_many(upserts, None)?;
             }
+            collection.insert_many(upserts, None)?;
+            end_timer!(get_records_timer);
             Ok(())
         }
     }
@@ -181,6 +220,16 @@ pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     data: [u8; 32],
+}
+
+
+impl PartialEq for MerkleRecord {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.hash == other.hash
+    }
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
 }
 
 impl MerkleNode<[u8; 32]> for MerkleRecord {
@@ -506,7 +555,7 @@ mod tests {
         end_timer!(timer2);
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
-       
+
 
         // 3
         let timer34 = start_timer!(|| "testing 3,4");

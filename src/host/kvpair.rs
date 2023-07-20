@@ -425,13 +425,11 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
-    use crate::host::{
-        kvpair::drop_collection,
-        merkle::{MerkleNode, MerkleTree},
-    };
+    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC, get_collection};
+    use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::field_to_bytes;
     use halo2_proofs::pairing::bn256::Fr;
+    use mongodb::bson::doc;
 
     #[test]
     /* Test for check parent node
@@ -442,10 +440,16 @@ mod tests {
      * 5. Load mt from DB and Get index=2_u32.pow(19) - 1 node with hash and confirm the left and right are previous set leaves.
      */
     fn test_mongo_merkle_parent_node() {
-        const TEST_ADDR: [u8; 32] = [2; 32];
+        const TEST_ADDR: [u8; 32] = [1; 32];
         let index = 2_u64.pow(20) - 1;
         let data = Fr::from(0x1000 as u64);
+
         let mut mt = MongoMerkle::<20>::construct(TEST_ADDR, DEFAULT_HASH_VEC[20].clone());
+        let dbname: String =MongoMerkle::<20>::get_db_name();
+        let cname = mt.get_collection_name();
+        let collection = get_collection::<MerkleRecord>(&mt.client, dbname, cname).unwrap();
+        let _ = collection.delete_many(doc! {}, None);
+
         let (mut leaf, proof) = mt.get_leaf_with_proof(index as u32).unwrap();
         assert_eq!(mt.verify_proof(proof).unwrap(), true);
         let bytesdata = field_to_bytes(&data).to_vec();
@@ -471,12 +475,10 @@ mod tests {
 
         // 1
         let mut mt = MongoMerkle::<20>::construct(TEST_ADDR, DEFAULT_HASH_VEC[20].clone());
-        drop_collection::<MerkleRecord>(
-            &mt.client,
-            MongoMerkle::<20>::get_db_name(),
-            mt.get_collection_name(),
-        )
-        .expect("Unexpected DB Error");
+        let dbname: String =MongoMerkle::<20>::get_db_name();
+        let cname = mt.get_collection_name();
+        let collection = get_collection::<MerkleRecord>(&mt.client, dbname, cname).unwrap();
+        let _ = collection.delete_many(doc! {}, None);
 
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
@@ -529,12 +531,10 @@ mod tests {
         // 1
         let timer1 = start_timer!(|| "testing 1");
         let mut mt = MongoMerkle::<20>::construct(TEST_ADDR, DEFAULT_HASH_VEC[20]);
-        drop_collection::<MerkleRecord>(
-            &mt.client,
-            MongoMerkle::<20>::get_db_name(),
-            mt.get_collection_name(),
-        )
-        .expect("Unexpected DB Error");
+        let dbname: String =MongoMerkle::<20>::get_db_name();
+        let cname = mt.get_collection_name();
+        let collection = get_collection::<MerkleRecord>(&mt.client, dbname, cname).unwrap();
+        let _ = collection.delete_many(doc! {}, None);
         end_timer!(timer1);
 
         // 2

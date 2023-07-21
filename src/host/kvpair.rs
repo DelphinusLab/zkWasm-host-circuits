@@ -85,19 +85,17 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
+
     pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let cache_key = cname.clone() + &record.index.to_string() + &hex::encode(&record.hash);
-        let mut cache = MERKLE_CACHE.lock().unwrap();
-        cache.push(cache_key, record.clone());
-        let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
-        let mut filter = doc! {};
-        filter.insert("index", record.index);
-        filter.insert("hash", bytes_to_bson(&record.hash));
-        let exists = collection.find_one(filter, None)?;
+        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
+        let exists = self.get_record(record.index, &record.hash);
         exists.map_or(
             {
+                let cache_key = cname + &record.index.to_string() + &hex::encode(&record.hash);
+                let mut cache = MERKLE_CACHE.lock().unwrap();
+                cache.push(cache_key, record.clone());
                 collection.insert_one(record, None)?;
                 Ok(())
             },

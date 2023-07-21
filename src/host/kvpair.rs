@@ -1,17 +1,14 @@
-use super::MONGODB_URI;
 use crate::host::cache::MERKLE_CACHE;
+use crate::host::db;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
+use mongodb::bson::doc;
 use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
-use mongodb::{
-    bson::doc,
-    sync::{Client, Collection},
-};
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -48,28 +45,13 @@ fn bytes_to_bson(x: &[u8; 32]) -> Bson {
 
 #[derive(Debug)]
 pub struct MongoMerkle<const DEPTH: usize> {
-    client: Client,
     contract_address: [u8; 32],
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
 }
 
-pub fn get_collection<T>(
-    client: &Client,
-    database: String,
-    name: String,
-) -> Result<Collection<T>, mongodb::error::Error> {
-    let database = client.database(database.as_str());
-    let collection = database.collection::<T>(name.as_str());
-    Ok(collection)
-}
-
-pub fn drop_collection<T>(
-    client: &Client,
-    database: String,
-    name: String,
-) -> Result<(), mongodb::error::Error> {
-    let collection = get_collection::<MerkleRecord>(client, database, name)?;
+pub fn drop_collection<T>(database: String, name: String) -> Result<(), mongodb::error::Error> {
+    let collection = db::get_collection::<MerkleRecord>(database, name)?;
     let options = DropCollectionOptions::builder().build();
     collection.drop(options)
 }
@@ -94,7 +76,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         if let Some(record) = cache.get(&cache_key) {
             Ok(Some(record.clone()))
         } else {
-            let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+            let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
             let mut filter = doc! {};
             filter.insert("index", index);
             filter.insert("hash", bytes_to_bson(hash));
@@ -109,7 +91,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let cache_key = cname.clone() + &record.index.to_string() + &hex::encode(&record.hash);
         let mut cache = MERKLE_CACHE.lock().unwrap();
         cache.push(cache_key, record.clone());
-        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+        let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
         let mut filter = doc! {};
         filter.insert("index", record.index);
         filter.insert("hash", bytes_to_bson(&record.hash));
@@ -245,9 +227,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     type Node = MerkleRecord;
 
     fn construct(addr: Self::Id, root: Self::Root) -> Self {
-        let client = Client::with_uri_str(MONGODB_URI).expect("Unexpected DB Error");
         MongoMerkle {
-            client,
             contract_address: addr,
             root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
@@ -376,12 +356,8 @@ mod tests {
 
         // 1
         let mut mt = MongoMerkle::<20>::construct(TEST_ADDR, DEFAULT_HASH_VEC[20].clone());
-        drop_collection::<MerkleRecord>(
-            &mt.client,
-            MongoMerkle::<20>::get_db_name(),
-            mt.get_collection_name(),
-        )
-        .expect("Unexpected DB Error");
+        drop_collection::<MerkleRecord>(MongoMerkle::<20>::get_db_name(), mt.get_collection_name())
+            .expect("Unexpected DB Error");
 
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
@@ -433,12 +409,8 @@ mod tests {
 
         // 1
         let mut mt = MongoMerkle::<20>::construct(TEST_ADDR, DEFAULT_HASH_VEC[20]);
-        drop_collection::<MerkleRecord>(
-            &mt.client,
-            MongoMerkle::<20>::get_db_name(),
-            mt.get_collection_name(),
-        )
-        .expect("Unexpected DB Error");
+        drop_collection::<MerkleRecord>(MongoMerkle::<20>::get_db_name(), mt.get_collection_name())
+            .expect("Unexpected DB Error");
 
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();

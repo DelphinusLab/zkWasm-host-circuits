@@ -1,4 +1,4 @@
-use crate::host::cache::MERKLE_CACHE;
+use crate::host::cache::{get_cache_key, MERKLE_CACHE};
 use crate::host::db;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
@@ -71,7 +71,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let cache_key = cname.clone() + &index.to_string() + &hex::encode(hash);
+        let cache_key = get_cache_key(cname.clone(), index, hash);
         let mut cache = MERKLE_CACHE.lock().unwrap();
         if let Some(record) = cache.get(&cache_key) {
             Ok(Some(record.clone()))
@@ -80,7 +80,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             let mut filter = doc! {};
             filter.insert("index", index);
             filter.insert("hash", bytes_to_bson(hash));
-            collection.find_one(filter, None)
+            let record = collection.find_one(filter, None);
+            if let Ok(Some(value)) = record.clone() {
+                cache.push(cache_key, value);
+            };
+            record
         }
     }
 
@@ -93,7 +97,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let exists = self.get_record(record.index, &record.hash);
         exists.map_or(
             {
-                let cache_key = cname + &record.index.to_string() + &hex::encode(&record.hash);
+                let cache_key = get_cache_key(cname, record.index, &record.hash);
                 let mut cache = MERKLE_CACHE.lock().unwrap();
                 cache.push(cache_key, record.clone());
                 collection.insert_one(record, None)?;

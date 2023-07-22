@@ -294,7 +294,7 @@ impl Bn256PairChip<Fr> {
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
         let ctx = IntegerContext::<Bn256Fq, Fr>::new(context);
-        let mut ctx = NativeScalarEccContext(ctx);
+        let mut ctx = NativeScalarEccContext(ctx, 0);
 
         let a_g1 = get_g1_from_cells(&mut ctx, a);
         let b_g2 = get_g2_from_cells(&mut ctx, b);
@@ -376,7 +376,7 @@ impl Bn256SumChip<Fr> {
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
         let ctx = IntegerContext::<Bn256Fq, Fr>::new(context);
-        let mut ctx = NativeScalarEccContext(ctx);
+        let mut ctx = NativeScalarEccContext(ctx, 0);
 
         let g1s: Vec<AssignedPoint<_, _>> = ls
             .chunks(7)

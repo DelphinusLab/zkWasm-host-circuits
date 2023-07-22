@@ -1018,12 +1018,12 @@ dependencies = [
 [[package]]
 name = "halo2aggregator-s"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?tag=bisect-lookup-0.3.0#fa6e8033d960c1e13ac334ab5699f64c80fe47ab"
+source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?tag=bisect-lookup-0.3.1#8db25a7ab365a5fba842cee00919b3c6e7812200"
 dependencies = [
  "ark-std",
  "blake2b_simd",
  "halo2_proofs",
- "halo2ecc-s 0.2.0 (git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.3.0)",
+ "halo2ecc-s",
  "lazy_static",
  "num-bigint",
  "num-integer",
@@ -1034,19 +1034,8 @@ dependencies = [
 
 [[package]]
 name = "halo2ecc-s"
-version = "0.2.0"
-source = "git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.3.0#99d0a2abe633651a997cf5bf0e0e2bf70f624347"
-dependencies = [
- "halo2_proofs",
- "num-bigint",
- "num-integer",
- "rayon",
-]
-
-[[package]]
-name = "halo2ecc-s"
-version = "0.2.0"
-source = "git+https://github.com/lanbones/halo2ecc-s.git?branch=bisect-lookup#f6346e176e044236e9dfe32254e4c618d3f5ce97"
+version = "0.3.1"
+source = "git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.3.1#df03d80b3aa6ac2530db9f692f8fa3748095750c"
 dependencies = [
  "halo2_proofs",
  "num-bigint",
@@ -2932,7 +2921,7 @@ dependencies = [
  "ff",
  "halo2_proofs",
  "halo2aggregator-s",
- "halo2ecc-s 0.2.0 (git+https://github.com/lanbones/halo2ecc-s.git?branch=bisect-lookup)",
+ "halo2ecc-s",
  "hex",
  "lazy_static",
  "lru",

@@ -18,15 +18,15 @@ use halo2_proofs::pairing::bn256::Bn256;
 use serde::{ Deserialize, Serialize };
 
 #[derive(Deserialize, Debug)]
-pub struct QueryReq {
+pub struct CreateproofReq {
     pub host_call_entry_table: Option<ExternalHostCallEntryTable>,
     pub opname: Option<OpType>,
     pub output_folder: Option<PathBuf>,
 }
 
-impl QueryReq {
+impl CreateproofReq {
     pub fn default() -> Self {
-        QueryReq {
+        CreateproofReq {
             host_call_entry_table: None,
             opname: None,
             output_folder: None,
@@ -48,7 +48,7 @@ impl<T: Serialize + Clone> Responder for RequestResult<T> {
 }
 
 #[get("/createproof")]
-pub async fn createproof(_req_body: web::Query<QueryReq>) -> Result<RequestResult<Vec<u8>>, std::io::Error> {
+pub async fn createproof(_req_body: web::Json<CreateproofReq>) -> Result<RequestResult<Vec<u8>>, std::io::Error> {
     // ANCHOR: test-circuit
     // The number of rows in our circuit cannot exceed 2^k. Since our example
     // circuit is very small, we can pick a very small value here.

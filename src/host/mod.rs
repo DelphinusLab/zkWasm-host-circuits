@@ -1,5 +1,7 @@
 pub mod bls;
 pub mod bn256;
+pub mod cache;
+pub mod db;
 pub mod jubjub;
 pub mod kvpair;
 pub mod merkle;
@@ -47,8 +49,6 @@ pub enum ForeignInst {
     JubjubSumPush,
     JubjubSumResult,
 }
-
-pub const MONGODB_URI: &str = "mongodb://localhost:27017";
 
 pub enum ReduceRule<F: FieldExt> {
     Bytes(Vec<u8>, usize),

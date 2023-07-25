@@ -471,18 +471,9 @@ mod tests {
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         leaf.set(&LEAF1_DATA.to_vec());
-        match mt.set_leaf_with_proof(&leaf) {
-            Ok(_) => {},
-            Err(error) => println!("set_leaf_with_proof error: {:?}", error),
-        };
+        mt.set_leaf_with_proof(&leaf).unwrap();
 
-        let (leaf, _) =  match mt.get_leaf_with_proof(INDEX1) {
-            Ok((leaf, p)) => {(leaf, p)},
-            Err(error) => {
-                println!("get_leaf_with_proof error: {:?}", error);
-                panic!("get_leaf_with_proof error: index {:?} error {:?}", INDEX1, error)
-            },
-        };
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
 
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);

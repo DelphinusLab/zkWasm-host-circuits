@@ -523,9 +523,11 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_update() {
+    /* Tests cache hit
+     * Please note this test logic is to delete the records in DB for the second run and all depends on cache.
+     */
+    fn test_cache_hit() {
         for _ in 0..2 {
-            println!("Begin test -------------------------------");
             test_mongo_merkle_multi_leaves_update();
         }
     }

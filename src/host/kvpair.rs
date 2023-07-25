@@ -94,9 +94,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
-        let exists = self.get_record(record.index, &record.hash);
-        exists.map_or(
-            {
+        let exists: Result<Option<MerkleRecord>, mongodb::error::Error> = self.get_record(record.index, &record.hash);
+        println!("record exist is {:?}", exists.as_ref().unwrap().is_none());
+        exists.map_or_else(
+            |_| {
+                println!("Do update record for index {:?}, hash: {:?}", record.index, record.hash);
                 let cache_key = get_cache_key(cname, record.index, &record.hash);
                 let mut cache = MERKLE_CACHE.lock().unwrap();
                 cache.push(cache_key, record.clone());
@@ -272,11 +274,14 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
+        println!("get_node_with_hash {} {:?}", index, hash);
         let v = self.get_record(index, hash).expect("Unexpected DB Error");
-        //println!("get_node_with_hash {} {:?} {:?}", index, hash, v);
+        println!("v is none: {:?}", v.is_none());
+
         let height = (index + 1).ilog2();
-        v.map_or(
-            {
+        v.map_or_else(
+            || {
+                println!("get from default: {:?}",index);
                 let default = self.get_default_hash(height as usize)?;
                 let child_hash = if height == Self::height() as u32 {
                     [0; 32]
@@ -468,9 +473,18 @@ mod tests {
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         leaf.set(&LEAF1_DATA.to_vec());
-        mt.set_leaf_with_proof(&leaf).unwrap();
+        match mt.set_leaf_with_proof(&leaf) {
+            Ok(_) => {},
+            Err(error) => println!("set_leaf_with_proof error: {:?}", error),
+        };
 
-        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        let (leaf, _) =  match mt.get_leaf_with_proof(INDEX1) {
+            Ok((leaf, p)) => {(leaf, p)},
+            Err(error) => {
+                println!("get_leaf_with_proof error: {:?}", error);
+                panic!("get_leaf_with_proof error: index {:?} error {:?}", INDEX1, error)
+            },
+        };
 
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
@@ -509,4 +523,13 @@ mod tests {
         assert_eq!(leaf.data, LEAF3_DATA);
         assert!(mt.verify_proof(proof).unwrap());
     }
+
+    #[test]
+    fn test_cache_update() {
+        for _ in 0..2 {
+            println!("Begin test -------------------------------");
+            test_mongo_merkle_multi_leaves_update();
+        }
+    }
+
 }

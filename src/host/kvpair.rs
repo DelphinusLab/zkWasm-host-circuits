@@ -95,20 +95,22 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let cname = self.get_collection_name();
         let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
         let exists: Result<Option<MerkleRecord>, mongodb::error::Error> = self.get_record(record.index, &record.hash);
-        println!("record exist is {:?}", exists.as_ref().unwrap().is_none());
+        //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
         exists.map_or_else(
-            |_| {
-                println!("Do update record for index {:?}, hash: {:?}", record.index, record.hash);
-                let cache_key = get_cache_key(cname, record.index, &record.hash);
-                let mut cache = MERKLE_CACHE.lock().unwrap();
-                cache.push(cache_key, record.clone());
-                collection.insert_one(record, None)?;
-                Ok(())
-            },
-            |_| {
-                //println!("find existing node, preventing duplicate");
-                Ok(())
-            },
+            |e: mongodb::error::Error| { Err(e) },
+            |r: Option<MerkleRecord>| {
+                r.map_or_else(
+                    || {
+                    //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
+                    let cache_key = get_cache_key(cname, record.index, &record.hash);
+                    let mut cache = MERKLE_CACHE.lock().unwrap();
+                    cache.push(cache_key, record.clone());
+                    collection.insert_one(record, None)?;
+                    Ok(())
+                }, 
+                |_| Ok(())
+            )
+        },
         )
     }
 }
@@ -153,8 +155,8 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         let values: [Fr; 2] = batchdata.try_into().unwrap();
         hasher.update(&values);
         self.hash = hasher.squeeze().to_repr();
-        println!("update with values {:?}", values);
-        println!("update with new hash {:?}", self.hash);
+        //println!("update with values {:?}", values);
+        //println!("update with new hash {:?}", self.hash);
     }
     fn right(&self) -> Option<[u8; 32]> {
         Some(self.right)
@@ -274,14 +276,10 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
-        println!("get_node_with_hash {} {:?}", index, hash);
         let v = self.get_record(index, hash).expect("Unexpected DB Error");
-        println!("v is none: {:?}", v.is_none());
-
         let height = (index + 1).ilog2();
         v.map_or_else(
             || {
-                println!("get from default: {:?}",index);
                 let default = self.get_default_hash(height as usize)?;
                 let child_hash = if height == Self::height() as u32 {
                     [0; 32]

@@ -184,11 +184,12 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let cname = self.get_collection_name();
         let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
         let (_, new_records) = self.batch_get_records(&records)?;
+        /*
         println!(
             "records size is: {:?}, new record size is : {:?}",
             records.len(),
             new_records.len()
-        );
+        );*/
 
         if new_records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
@@ -369,29 +370,21 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         parents: [(u32, [u8; 32], [u8; 32], [u8; 32]); DEPTH],
     ) -> Result<(), MerkleError> {
         self.leaf_check(leaf.index)?;
-        if parents.len() != DEPTH {
-            Err(MerkleError::new(
-                [0; 32],
-                parents.len() as u32,
-                MerkleErrorCode::InvalidDepth,
-            ))
-        } else {
-            let mut records: Vec<MerkleRecord> = parents
-                .map(|(index, hash, left, right)| MerkleRecord {
-                    index: index,
-                    data: [0; 32],
-                    left: left,
-                    right: right,
-                    hash: hash,
-                })
-                .to_vec();
+        let mut records: Vec<MerkleRecord> = parents
+            .map(|(index, hash, left, right)| MerkleRecord {
+                index: index,
+                data: [0; 32],
+                left: left,
+                right: right,
+                hash: hash,
+            })
+            .to_vec();
 
-            records.push(leaf.clone());
-            self.batch_update_records(&records)
-                .expect("Unexpected DB Error when update records.");
+        records.push(leaf.clone());
+        self.batch_update_records(&records)
+            .expect("Unexpected DB Error when update records.");
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {

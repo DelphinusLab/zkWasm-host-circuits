@@ -78,6 +78,11 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     fn hash(a: &H, b: &H) -> H;
     fn set_parent(&mut self, index: u32, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
     fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;
+    fn set_leaf_and_parents(
+        &mut self,
+        leaf: &Self::Node,
+        parents: [(u32, H, H, H); D],
+    ) -> Result<(), MerkleError>;
     fn get_node_with_hash(&self, index: u32, hash: &H) -> Result<Self::Node, MerkleError>;
 
     fn get_root_hash(&self) -> H;
@@ -200,7 +205,8 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         let (_, mut proof) = self.get_leaf_with_proof(index)?;
         proof.source = hash.clone();
         let mut p = get_offset(index);
-        self.set_leaf(leaf)?;
+        //self.set_leaf(leaf)?;
+        let mut parents = vec![];
         for i in 0..D {
             let cur_hash = hash;
             let depth = D - i - 1;
@@ -212,8 +218,10 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
             hash = Self::hash(left, right);
             p = p / 2;
             let index = p + (1 << depth) - 1;
-            self.set_parent(index, &hash, left, right)?;
+            //self.set_parent(index, &hash, left, right)?;
+            parents.push((index, hash.clone(), left.clone(), right.clone()));
         }
+        self.set_leaf_and_parents(leaf, parents.try_into().unwrap())?;
         self.update_root_hash(&hash);
         proof.root = hash;
         Ok(proof)
@@ -367,6 +375,32 @@ mod tests {
         fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError> {
             self.leaf_check(leaf.index())?;
             self.data[leaf.index() as usize] = leaf.value;
+            Ok(())
+        }
+
+        fn set_leaf_and_parents(
+            &mut self,
+            leaf: &Self::Node,
+            parents: [(u32, u64, u64, u64); 6],
+        ) -> Result<(), MerkleError> {
+            // set leaf
+            self.leaf_check(leaf.index())?;
+            self.data[leaf.index() as usize] = leaf.value;
+
+            // set parent
+            for (index, hash, left, right) in parents.iter() {
+                self.boundary_check(*index)?;
+                self.data[*index as usize] = *hash;
+
+                let height = (index + 1).ilog2();
+                if height < Self::height() {
+                    // not leaf node
+                    let (left_child_index, right_child_index) =
+                        MerkleAsArray::get_child_index(*index);
+                    self.data[left_child_index as usize] = *left;
+                    self.data[right_child_index as usize] = *right;
+                }
+            }
             Ok(())
         }
     }

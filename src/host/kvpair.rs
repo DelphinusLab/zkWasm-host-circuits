@@ -56,6 +56,15 @@ pub fn drop_collection<T>(database: String, name: String) -> Result<(), mongodb:
     collection.drop(options)
 }
 
+impl PartialEq for MerkleRecord {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.hash == other.hash
+    }
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
+}
+
 impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     fn get_collection_name(&self) -> String {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
@@ -88,30 +97,109 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
     }
 
-    /* We always insert new record as there might be uncommitted update to the merkle tree */
+    pub fn batch_get_records(
+        &self,
+        records: &Vec<MerkleRecord>,
+    ) -> Result<(Vec<MerkleRecord>, Vec<MerkleRecord>), mongodb::error::Error> {
+        let dbname = Self::get_db_name();
+        let cname = self.get_collection_name();
+        let mut find: Vec<MerkleRecord> = vec![];
+        let mut notfind: Vec<MerkleRecord> = records.clone();
 
+        //Check Cache first
+        let mut cache = MERKLE_CACHE.lock().unwrap();
+        for record in records.iter() {
+            let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
+            if let Some(r) = cache.get(&cache_key) {
+                find.push(r.clone());
+                notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
+            }
+        }
+
+        if notfind.len() > 0 {
+            //Check DB
+            let mut find_in_db_only: Vec<MerkleRecord> = vec![];
+            let mut docs: Vec<mongodb::bson::Document> = vec![];
+            for record in notfind.iter() {
+                let mut and_doc: Vec<mongodb::bson::Document> = vec![];
+                and_doc.push(doc! {"index": record.index});
+                and_doc.push(doc! {"hash": bytes_to_bson(&record.hash)});
+                docs.push(doc! {"$and": and_doc});
+            }
+            let filter = doc! {
+                "$or": docs
+            };
+
+            let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
+            let mut cursor = collection.find(filter, None)?;
+
+            while let Some(record) = cursor.next() {
+                let r = record.unwrap();
+                println!("find in db only{:?}", r.index);
+                find.push(r.clone());
+                find_in_db_only.push(r.clone());
+                notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
+            }
+
+            //Update Cache
+            for record in find_in_db_only.iter() {
+                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
+                cache.push(cache_key, record.clone());
+            }
+        }
+        Ok((find, notfind))
+    }
+
+    /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
-        let exists: Result<Option<MerkleRecord>, mongodb::error::Error> = self.get_record(record.index, &record.hash);
+        let exists: Result<Option<MerkleRecord>, mongodb::error::Error> =
+            self.get_record(record.index, &record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
         exists.map_or_else(
-            |e: mongodb::error::Error| { Err(e) },
+            |e: mongodb::error::Error| Err(e),
             |r: Option<MerkleRecord>| {
                 r.map_or_else(
                     || {
-                    //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
-                    let cache_key = get_cache_key(cname, record.index, &record.hash);
-                    let mut cache = MERKLE_CACHE.lock().unwrap();
-                    cache.push(cache_key, record.clone());
-                    collection.insert_one(record, None)?;
-                    Ok(())
-                }, 
-                |_| Ok(())
-            )
-        },
+                        //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
+                        let cache_key = get_cache_key(cname, record.index, &record.hash);
+                        let mut cache = MERKLE_CACHE.lock().unwrap();
+                        cache.push(cache_key, record.clone());
+                        collection.insert_one(record, None)?;
+                        Ok(())
+                    },
+                    |_| Ok(()),
+                )
+            },
         )
+    }
+
+    pub fn batch_update_records(
+        &self,
+        records: &Vec<MerkleRecord>,
+    ) -> Result<(), mongodb::error::Error> {
+        let dbname = Self::get_db_name();
+        let cname = self.get_collection_name();
+        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
+        let (_, new_records) = self.batch_get_records(&records)?;
+        println!(
+            "records size is: {:?}, new record size is : {:?}",
+            records.len(),
+            new_records.len()
+        );
+
+        if new_records.len() > 0 {
+            let mut cache = MERKLE_CACHE.lock().unwrap();
+            for record in new_records.iter() {
+                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
+                cache.push(cache_key, record.clone());
+            }
+
+            collection.insert_many(new_records, None)?;
+        }
+        Ok(())
     }
 }
 
@@ -275,6 +363,37 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         Ok(())
     }
 
+    fn set_leaf_and_parents(
+        &mut self,
+        leaf: &MerkleRecord,
+        parents: [(u32, [u8; 32], [u8; 32], [u8; 32]); DEPTH],
+    ) -> Result<(), MerkleError> {
+        self.leaf_check(leaf.index)?;
+        if parents.len() != DEPTH {
+            Err(MerkleError::new(
+                [0; 32],
+                parents.len() as u32,
+                MerkleErrorCode::InvalidDepth,
+            ))
+        } else {
+            let mut records: Vec<MerkleRecord> = parents
+                .map(|(index, hash, left, right)| MerkleRecord {
+                    index: index,
+                    data: [0; 32],
+                    left: left,
+                    right: right,
+                    hash: hash,
+                })
+                .to_vec();
+
+            records.push(leaf.clone());
+            self.batch_update_records(&records)
+                .expect("Unexpected DB Error when update records.");
+
+            Ok(())
+        }
+    }
+
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
         let v = self.get_record(index, hash).expect("Unexpected DB Error");
         let height = (index + 1).ilog2();
@@ -306,7 +425,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
-        self.boundary_check(leaf.index())?; //should be leaf check?
+        self.leaf_check(leaf.index())?;
         self.update_record(leaf.clone())
             .expect("Unexpected DB Error");
         Ok(())
@@ -434,7 +553,6 @@ mod tests {
         assert_eq!(mt.verify_proof(proof).unwrap(), true);
     }
 
-    #[test]
     /* Tests for 20 height m tree with updating multple leaves
      * 1. Clear m tree collection. Create default empty m tree. Check root (default one, A).
      * 2. Update index=2_u32.pow(20) - 1 (first leaf) leave value. Check root (1 leave updated, B). Check index=2_u32.pow(20) - 1 leave value updated.
@@ -442,10 +560,10 @@ mod tests {
      * 4. Update index=2_u32.pow(21) - 2 (last leaf) leave value. Check root (1 leave updated, D). Check index=2_u32.pow(21) -2 leave value updated.
      * 5. Load m tree from DB with D root hash, check root and leaves' values.
      */
-    fn test_mongo_merkle_multi_leaves_update() {
+    fn _test_mongo_merkle_multi_leaves_update(addr: u8) {
         // Init checking results
         const DEPTH: usize = 20;
-        const TEST_ADDR: [u8; 32] = [3; 32];
+        let test_addr: [u8; 32] = [addr; 32];
         const INDEX1: u32 = 2_u32.pow(DEPTH as u32) - 1;
         const LEAF1_DATA: [u8; 32] = [
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -463,7 +581,7 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH]);
+        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, DEFAULT_HASH_VEC[DEPTH]);
         let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
         let cname = mt.get_collection_name();
         let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
@@ -498,7 +616,7 @@ mod tests {
 
         // 5
         let root = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, root);
+        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, root);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
@@ -514,13 +632,17 @@ mod tests {
     }
 
     #[test]
+    fn test_mongo_merkle_multi_leaves_update() {
+        _test_mongo_merkle_multi_leaves_update(3);
+    }
+
+    #[test]
     /* Tests cache hit
      * Please note this test logic is to delete the records in DB for the second run and all depends on cache.
      */
     fn test_cache_hit() {
         for _ in 0..2 {
-            test_mongo_merkle_multi_leaves_update();
+            _test_mongo_merkle_multi_leaves_update(5);
         }
     }
-
 }

@@ -23,6 +23,8 @@ pub static MERKLE_CACHE: Lazy<Mutex<LruCache<String, MerkleRecord>>> = Lazy::new
     };
     println!("initializing MERKLE_CACHE with cap: {:?}", merkle_cache_size);
 
+    //TODO: Do preloading from db
+
     Mutex::new(LruCache::<String, MerkleRecord>::new(
         NonZeroUsize::new(merkle_cache_size).unwrap()))
 });

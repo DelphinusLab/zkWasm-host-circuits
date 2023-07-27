@@ -135,7 +135,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
             while let Some(record) = cursor.next() {
                 let r = record.unwrap();
-                println!("find in db only{:?}", r.index);
+                //println!("find in db only{:?}", r.index);
                 find.push(r.clone());
                 find_in_db_only.push(r.clone());
                 notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
@@ -163,7 +163,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             |r: Option<MerkleRecord>| {
                 r.map_or_else(
                     || {
-                        //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
+                        /*
+                        println!(
+                            "Do update record to DB for index {:?}, hash: {:?}",
+                            record.index, record.hash
+                        );*/
                         let cache_key = get_cache_key(cname, record.index, &record.hash);
                         let mut cache = MERKLE_CACHE.lock().unwrap();
                         cache.push(cache_key, record.clone());
@@ -189,8 +193,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             "records size is: {:?}, new record size is : {:?}",
             records.len(),
             new_records.len()
-        );*/
-
+        );
+        */
         if new_records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
             for record in new_records.iter() {
@@ -433,6 +437,8 @@ mod tests {
     use crate::utils::field_to_bytes;
     use halo2_proofs::pairing::bn256::Fr;
     use mongodb::bson::doc;
+    use std::env;
+    use crate::host::cache::CACHE_SIZE_KEY;
 
     #[test]
     /* Test for check parent node
@@ -553,7 +559,7 @@ mod tests {
      * 4. Update index=2_u32.pow(21) - 2 (last leaf) leave value. Check root (1 leave updated, D). Check index=2_u32.pow(21) -2 leave value updated.
      * 5. Load m tree from DB with D root hash, check root and leaves' values.
      */
-    fn _test_mongo_merkle_multi_leaves_update(addr: u8) {
+    fn _test_mongo_merkle_multi_leaves_update(addr: u8, clean_db: bool) {
         // Init checking results
         const DEPTH: usize = 20;
         let test_addr: [u8; 32] = [addr; 32];
@@ -575,10 +581,12 @@ mod tests {
 
         // 1
         let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, DEFAULT_HASH_VEC[DEPTH]);
-        let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
-        let cname = mt.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
-        let _ = collection.delete_many(doc! {}, None);
+        if clean_db {
+            let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
+            let cname = mt.get_collection_name();
+            let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
+            let _ = collection.delete_many(doc! {}, None);
+        }
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         leaf.set(&LEAF1_DATA.to_vec());
@@ -626,16 +634,40 @@ mod tests {
 
     #[test]
     fn test_mongo_merkle_multi_leaves_update() {
-        _test_mongo_merkle_multi_leaves_update(3);
+        _test_mongo_merkle_multi_leaves_update(3, true);
     }
 
     #[test]
     /* Tests cache hit
-     * Please note this test logic is to delete the records in DB for the second run and all depends on cache.
+     * It will clean db for the first testing and then do not clean db in the following loop.
+     * This makes it to be able to test cache hot loading by manually change cache size to lower than 63.
      */
     fn test_cache_hit() {
-        for _ in 0..2 {
-            _test_mongo_merkle_multi_leaves_update(5);
+        let mut clean_db: bool = true;
+        for i in 0..2 {
+            //println!("Run test round: {:?}", i);
+            if i > 0 {
+                clean_db = false;
+            }
+            _test_mongo_merkle_multi_leaves_update(5, clean_db);
+        }
+    }
+
+    #[test]
+    /* Test cache hit with small cache size
+     * _test_mongo_merkle_multi_leaves_update will create 63 nodes in cache and db. 
+     * Just set cache size to small size to test
+     * Please note this unit test functionable when run it individually, or the cache may be init by other tests depends on unit tests running order.
+     */
+    fn test_small_cache_hit() {
+        env::set_var(CACHE_SIZE_KEY, "43");
+        let mut clean_db: bool = true;
+        for i in 0..2 {
+            //println!("Run test round: {:?}", i);
+            if i > 0 {
+                clean_db = false;
+            }
+            _test_mongo_merkle_multi_leaves_update(5, clean_db);
         }
     }
 }

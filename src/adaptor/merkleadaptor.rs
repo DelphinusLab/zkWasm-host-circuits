@@ -30,7 +30,7 @@ const MERGE_SIZE: usize = 4;
 const MERGE_DATA_SIZE: usize = 2;
 // 0: set/get 1-4: root 5-8:address 9-12:value
 const CHUNK_SIZE: usize = 1 + 1 * MERGE_SIZE + 1 * MERGE_SIZE; // should equal to 9
-const TOTAL_CONSTRUCTIONS: usize = 128;
+const TOTAL_CONSTRUCTIONS: usize = 800;
 
 fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {

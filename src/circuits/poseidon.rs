@@ -266,9 +266,24 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
 
         let sparse_matrices = &spec.mds_matrices().sparse_matrices();
         let constants = &spec.constants().partial();
-        for (constant, sparse_mds) in constants.iter().zip(sparse_matrices.iter()) {
-            self.sbox_part(config, region, offset, constant)?;
-            self.apply_sparse_mds(config, region, offset, sparse_mds)?;
+        for (idx, (constant, sparse_mds)) in
+            constants.iter().zip(sparse_matrices.iter()).enumerate()
+        {
+            if RATE != 2 {
+                self.sbox_part(config, region, offset, constant)?;
+                self.apply_sparse_mds(config, region, offset, sparse_mds)?;
+            } else {
+                config.assign_permute_helper_line(
+                    region,
+                    offset,
+                    &mut self.state,
+                    *constant,
+                    *sparse_mds.row(),
+                    *sparse_mds.col_hat(),
+                    idx == 0,
+                    idx == constants.len() - 1,
+                )?;
+            }
         }
 
         let constants = &spec.constants().end();

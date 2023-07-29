@@ -1,4 +1,5 @@
 use crate::circuits::poseidon::PoseidonChip;
+use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
 use crate::circuits::LookupAssistChip;
 use crate::circuits::LookupAssistConfig;
@@ -61,13 +62,13 @@ fn hash_to_host_call_table(inputs: [Fr; 8], result: Fr) -> ExternalHostCallEntry
 const TOTAL_CONSTRUCTIONS: usize = 2048;
 
 impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
-    type Config = CommonGateConfig;
+    type Config = (CommonGateConfig, PoseidonGateConfig);
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         PoseidonChip::<Fr, 9, 8>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
-        PoseidonChip::construct(c, POSEIDON_HASHER_SPEC.clone())
+        PoseidonChip::construct(c.0, c.1, POSEIDON_HASHER_SPEC.clone())
     }
 
     fn assign(

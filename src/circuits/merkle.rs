@@ -1,4 +1,5 @@
 use crate::circuits::poseidon::PoseidonChip;
+use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
 use crate::utils::bytes_to_field;
 use crate::utils::field_to_bytes;
@@ -47,6 +48,7 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
 
 pub struct MerkleChip<F: FieldExt, const D: usize> {
     pub config: CommonGateConfig,
+    pub extend: PoseidonGateConfig,
     data_hasher_chip: PoseidonChip<F, 9, 8>,
     merkle_hasher_chip: PoseidonChip<F, 3, 2>,
     state: MerkleProofState<F, D>,
@@ -67,11 +69,12 @@ impl<F: FieldExt, const D: usize> Chip<F> for MerkleChip<F, D> {
 }
 
 impl<const D: usize> MerkleChip<Fr, D> {
-    pub fn new(config: CommonGateConfig) -> Self {
+    pub fn new(config: CommonGateConfig, extend: PoseidonGateConfig) -> Self {
         MerkleChip {
-            merkle_hasher_chip: PoseidonChip::construct(config.clone(), MERKLE_HASHER_SPEC.clone()),
-            data_hasher_chip: PoseidonChip::construct(config.clone(), POSEIDON_HASHER_SPEC.clone()),
+            merkle_hasher_chip: PoseidonChip::construct(config.clone(), extend.clone(), MERKLE_HASHER_SPEC.clone()),
+            data_hasher_chip: PoseidonChip::construct(config.clone(), extend.clone(), POSEIDON_HASHER_SPEC.clone()),
             config,
+            extend,
             state: MerkleProofState::default(),
             _marker: PhantomData,
         }
@@ -91,8 +94,10 @@ impl<const D: usize> MerkleChip<Fr, D> {
         self.data_hasher_chip.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &())
+    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> (CommonGateConfig, PoseidonGateConfig) {
+        let config = CommonGateConfig::configure(cs, &());
+        let extend = PoseidonGateConfig::configure(cs, &config);
+        (config, extend)
     }
 
     pub fn assign_proof(

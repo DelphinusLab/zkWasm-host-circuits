@@ -10,6 +10,7 @@ use halo2_proofs::plonk::Error;
 
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::CommonGateConfig;
+use crate::circuits::poseidon::PoseidonGateConfig;
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
@@ -60,13 +61,13 @@ fn kvpair_to_host_call_table(
 }
 
 impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
-    type Config = CommonGateConfig;
+    type Config = (CommonGateConfig, PoseidonGateConfig);
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
         MerkleChip::<Fr, DEPTH>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
-        MerkleChip::new(c)
+        MerkleChip::new(c.0, c.1)
     }
 
     fn assign(

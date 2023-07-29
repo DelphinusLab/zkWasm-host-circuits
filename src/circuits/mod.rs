@@ -28,7 +28,7 @@ use halo2_proofs::{
  */
 #[rustfmt::skip]
 customized_circuits!(CommonGateConfig, 2, 5, 13, 0,
-    | l0   | l1    | l2   | l3   | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | common_sel | permute_sel 
+    | l0   | l1    | l2   | l3   | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | common_sel | extension_sel
     | l0_n | l1_n  | l2_n | nil  | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         |    nil     |      nil
 );
 pub trait LookupAssistConfig {
@@ -96,35 +96,6 @@ impl CommonGateConfig {
             },
             |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
         );
-
-        cs.create_gate("poseidon-2 permute helper constraint", |meta| {
-            let x0 = config.get_expr(meta, CommonGateConfig::l0());
-            let x1 = config.get_expr(meta, CommonGateConfig::l1());
-            let x2 = config.get_expr(meta, CommonGateConfig::l2());
-            let x0_2 = config.get_expr(meta, CommonGateConfig::l3());
-            let x0_5_c = config.get_expr(meta, CommonGateConfig::d());
-
-            let x0_next = config.get_expr(meta, CommonGateConfig::l0_n());
-            let x1_next = config.get_expr(meta, CommonGateConfig::l1_n());
-            let x2_next = config.get_expr(meta, CommonGateConfig::l2_n());
-
-            let c = config.get_expr(meta, CommonGateConfig::cd());
-            let c0 = config.get_expr(meta, CommonGateConfig::c0());
-            let c1 = config.get_expr(meta, CommonGateConfig::c1());
-            let c2 = config.get_expr(meta, CommonGateConfig::c2());
-            let e1 = config.get_expr(meta, CommonGateConfig::c3());
-            let e2 = config.get_expr(meta, CommonGateConfig::c());
-
-            let sel = config.get_expr(meta, CommonGateConfig::permute_sel());
-
-            vec![
-                sel.clone() * (x0.clone() * x0.clone() - x0_2.clone()),
-                sel.clone() * (x0_2.clone() * x0_2.clone() * x0 + c - x0_5_c.clone()),
-                sel.clone() * (x0_next - (x0_5_c.clone() * c0 + x1.clone() * c1 + x2.clone() * c2)),
-                sel.clone() * (x1_next - (x0_5_c.clone() * e1 + x1)),
-                sel.clone() * (x2_next - (x0_5_c * e2 + x2)),
-            ]
-        });
 
         // helper gates for implementing poseidon with 2 cell permute
         cs.create_gate("one line constraint", |meta| {
@@ -372,88 +343,6 @@ impl CommonGateConfig {
         Ok(limbs)
     }
 
-    fn assign_permute_helper_line<F: FieldExt, const RATE: usize, const T: usize>(
-        &self,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        state: &mut [Limb<F>; T],
-        x5_c_v: F,
-        c_v: [F; T],
-        e_v: [F; RATE],
-        is_first_line: bool,
-        is_last_line: bool,
-    ) -> Result<(), Error> {
-        // currently only supports (2, 3)
-        assert!(RATE == 2);
-        assert!(T == 3);
-
-        let x = [Self::l0(), Self::l1(), Self::l2()];
-        let x0_2 = Self::l3();
-        let x0_5_c = Self::d();
-
-        let x5_c = CommonGateConfig::cd();
-        let c = [
-            CommonGateConfig::c0(),
-            CommonGateConfig::c1(),
-            CommonGateConfig::c2(),
-        ];
-        let e = [CommonGateConfig::c3(), CommonGateConfig::c()];
-
-        self.assign_cell(region, *offset, &CommonGateConfig::permute_sel(), F::one())?;
-
-        // assign constants
-        for i in 0..RATE {
-            self.assign_cell(region, *offset, &e[i], e_v[i])?;
-        }
-
-        for i in 0..T {
-            self.assign_cell(region, *offset, &c[i], c_v[i])?;
-        }
-
-        self.assign_cell(region, *offset, &x5_c, x5_c_v)?;
-
-        // assign current states
-        // only assign state at the 1st line of a permute block
-        if is_first_line {
-            for i in 0..T {
-                let x = self.assign_cell(region, *offset, &x[i], state[i].value)?;
-                region.constrain_equal(x.get_the_cell().cell(), state[i].get_the_cell().cell())?;
-            }
-        }
-
-        // assign current states aux
-        let x0_2 = self.assign_cell(region, *offset, &x0_2, state[0].value.square())?;
-        let x0_5_c = self.assign_cell(
-            region,
-            *offset,
-            &x0_5_c,
-            x0_2.value.square() * state[0].value + x5_c_v,
-        )?;
-
-        // assign next states
-        state[0] = self.assign_cell(
-            region,
-            *offset + 1,
-            &x[0],
-            x0_5_c.value * c_v[0] + state[1].value * c_v[1] + state[2].value * c_v[2],
-        )?;
-        for i in 1..T {
-            state[i] = self.assign_cell(
-                region,
-                *offset + 1,
-                &x[i],
-                x0_5_c.value * e_v[i - 1] + state[i].value,
-            )?;
-        }
-
-        if is_last_line {
-            *offset = *offset + 2;
-        } else {
-            *offset = *offset + 1;
-        }
-
-        Ok(())
-    }
 
     fn assign_line<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,

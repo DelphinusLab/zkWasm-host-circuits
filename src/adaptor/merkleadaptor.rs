@@ -1,7 +1,7 @@
 //use ark_std::{end_timer, start_timer};
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
-use crate::host::ForeignInst::{KVPairAddress, KVPairGet, KVPairSet, KVPairSetRoot};
+use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleSet, MerkleSetRoot};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
@@ -14,8 +14,8 @@ use crate::circuits::poseidon::PoseidonGateConfig;
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
-use crate::host::kvpair::MongoMerkle;
-use crate::host::kvpair::DEFAULT_HASH_VEC;
+use crate::host::mongomerkle::MongoMerkle;
+use crate::host::mongomerkle::DEFAULT_HASH_VEC;
 use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::utils::bytes_to_u64;
 use crate::utils::data_to_bytes;
@@ -23,9 +23,9 @@ use crate::utils::field_to_bytes;
 use crate::utils::Limb;
 
 /* The calling convention will be
- * KVPairAddress
- * KVPairSetRoot
- * KVPairSet / KVPairGet
+ * MerkleAddress
+ * MerkleSetRoot
+ * MerkleSet / MerkleGet
  */
 const MERGE_SIZE: usize = 4;
 const MERGE_DATA_SIZE: usize = 2;
@@ -35,7 +35,7 @@ const TOTAL_CONSTRUCTIONS: usize = 800;
 
 fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
-        op: KVPairAddress as usize,
+        op: MerkleAddress as usize,
         value: address,
         is_ret: false,
     }]
@@ -51,7 +51,7 @@ fn kvpair_to_host_call_table(
             *root,
             4,
             64,
-            ForeignInst::KVPairSetRoot,
+            MerkleSetRoot,
         ));
         for v in value.iter() {
             r.push(crate::adaptor::fr_to_args(*v, 2, 64, *op));
@@ -78,10 +78,10 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes: Vec<Fr> = vec![
-            Fr::from(KVPairSetRoot as u64),
-            Fr::from(KVPairAddress as u64),
-            Fr::from(KVPairSet as u64),
-            Fr::from(KVPairGet as u64),
+            Fr::from(MerkleSetRoot as u64),
+            Fr::from(MerkleAddress as u64),
+            Fr::from(MerkleSet as u64),
+            Fr::from(MerkleGet as u64),
         ];
 
         let entries = shared_operands
@@ -102,7 +102,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
         for group in selected_entries.chunks_exact(CHUNK_SIZE) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
-            assert!(opcode.clone() == Fr::from(KVPairAddress as u64));
+            assert!(opcode.clone() == Fr::from(MerkleAddress as u64));
 
             let (limb, op) = config.assign_one_line(
                 region,
@@ -152,7 +152,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             default_index,
             Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])),
             [Fr::zero(), Fr::zero()],
-            KVPairGet,
+            MerkleGet,
         )]);
 
         //let entries = default_table.
@@ -163,7 +163,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
-            assert!(opcode.clone() == Fr::from(KVPairAddress as u64));
+            assert!(opcode.clone() == Fr::from(MerkleAddress as u64));
 
             let (limb, op) = config.assign_one_line(
                 region,
@@ -249,7 +249,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                     //println!("address is {}", arg_group[0].value.get_lower_128());
                     //println!("set root with is {:?} [op = {:?}]", arg_group[1].value, arg_group[4].value);
                     //println!("value is {:?} {:?}", arg_group[2].value, arg_group[3].value);
-                    let proof = if arg_group[4].value == Fr::from(KVPairSet as u64) {
+                    let proof = if arg_group[4].value == Fr::from(MerkleSet as u64) {
                         //println!("op is set, process set:");
                         let (mut leaf, _) = mt
                             .as_ref()
@@ -302,11 +302,11 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 #[cfg(test)]
 mod tests {
     use super::kvpair_to_host_call_table;
-    use crate::host::kvpair::MongoMerkle;
-    use crate::host::kvpair::DEFAULT_HASH_VEC;
+    use crate::host::mongomerkle::MongoMerkle;
+    use crate::host::mongomerkle::DEFAULT_HASH_VEC;
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::ExternalHostCallEntryTable;
-    use crate::host::ForeignInst::{KVPairGet, KVPairSet};
+    use crate::host::ForeignInst::{MerkleGet, MerkleSet};
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
@@ -328,8 +328,8 @@ mod tests {
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
-            (index, root64_new, [data, Fr::zero()], KVPairSet),
+            (index, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
+            (index, root64_new, [data, Fr::zero()], MerkleSet),
         ]);
         let file = File::create("kvpair_test1.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
@@ -351,9 +351,9 @@ mod tests {
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index + 1, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
-            (index, root_default, [Fr::zero(), Fr::zero()], KVPairGet),
-            (index, root64_new, [data, Fr::zero()], KVPairSet),
+            (index + 1, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
+            (index, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
+            (index, root64_new, [data, Fr::zero()], MerkleSet),
         ]);
         let file = File::create("kvpair_test2.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))

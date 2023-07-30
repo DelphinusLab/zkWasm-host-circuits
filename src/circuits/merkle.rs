@@ -13,7 +13,7 @@ use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
 use crate::host::poseidon::MERKLE_HASHER_SPEC;
 use crate::host::poseidon::POSEIDON_HASHER_SPEC;
-use crate::host::ForeignInst::KVPairSet;
+use crate::host::ForeignInst::MerkleSet;
 use halo2_proofs::pairing::bn256::Fr;
 
 /* Given a merkel tree eg1 with height=3:
@@ -115,7 +115,7 @@ impl<const D: usize> MerkleChip<Fr, D> {
             &mut (),
             offset,
             opcode,
-            &Fr::from(KVPairSet as u64),
+            &Fr::from(MerkleSet as u64),
         )?;
         let fills = proof
             .assist

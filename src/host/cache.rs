@@ -1,4 +1,4 @@
-use crate::host::kvpair::MerkleRecord;
+use crate::host::mongomerkle::MerkleRecord;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;

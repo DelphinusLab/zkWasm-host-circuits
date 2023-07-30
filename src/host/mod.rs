@@ -3,7 +3,7 @@ pub mod bn256;
 pub mod cache;
 pub mod db;
 pub mod jubjub;
-pub mod kvpair;
+pub mod mongomerkle;
 pub mod merkle;
 pub mod poseidon;
 pub mod rmd160;
@@ -38,11 +38,11 @@ pub enum ForeignInst {
     Bn254SumScalar,
     Bn254SumG1,
     Bn254SumResult,
-    KVPairSetRoot, // 11
-    KVPairGetRoot, // 12
-    KVPairAddress, // 13
-    KVPairSet,     // 14
-    KVPairGet,     // 15
+    MerkleSetRoot, // 11
+    MerkleGetRoot, // 12
+    MerkleAddress, // 13
+    MerkleSet,     // 14
+    MerkleGet,     // 15
     SHA256New,
     SHA256Push,
     SHA256Finalize,

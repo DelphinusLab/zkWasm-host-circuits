@@ -102,7 +102,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
     fn get_db_name() -> String {
-        return "zkwasmkvpair".to_string();
+        return "zkwasm-mongo-merkle".to_string();
     }
 
     pub fn get_record(

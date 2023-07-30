@@ -20,7 +20,7 @@ where
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok({
-            let c: [u8;8] = bytes.bytes.try_into().unwrap();
+            let c: [u8; 8] = bytes.bytes.try_into().unwrap();
             u64::from_le_bytes(c)
         }),
         Ok(..) => Err(Error::invalid_value(Unexpected::Enum, &"Bson::Binary")),
@@ -59,13 +59,6 @@ where
         bytes: bytes.into(),
     });
     binary.serialize(serializer)
-}
-
-fn bytes_to_bson(x: &[u8; 32]) -> Bson {
-    Bson::Binary(mongodb::bson::Binary {
-        subtype: BinarySubtype::Generic,
-        bytes: (*x).into(),
-    })
 }
 
 fn u64_to_bson(x: u64) -> Bson {
@@ -120,7 +113,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
             let mut filter = doc! {};
             filter.insert("index", u64_to_bson(index));
-            filter.insert("hash", bytes_to_bson(hash));
+            filter.insert("hash", db::u256_to_bson(hash));
             let record = collection.find_one(filter, None);
             if let Ok(Some(value)) = record.clone() {
                 cache.push(cache_key, value);
@@ -155,7 +148,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             for record in notfind.iter() {
                 let mut and_doc: Vec<mongodb::bson::Document> = vec![];
                 and_doc.push(doc! {"index": u64_to_bson(record.index)});
-                and_doc.push(doc! {"hash": bytes_to_bson(&record.hash)});
+                and_doc.push(doc! {"hash": db::u256_to_bson(&record.hash)});
                 docs.push(doc! {"$and": and_doc});
             }
             let filter = doc! {

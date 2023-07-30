@@ -3,6 +3,8 @@ use mongodb::{
     sync::{Client, Collection},
 };
 
+use mongodb::bson::{spec::BinarySubtype, Bson};
+
 const MONGODB_URI: &str = "mongodb://localhost:27017";
 
 lazy_static::lazy_static! {
@@ -17,3 +19,12 @@ pub fn get_collection<T>(
     let collection = database.collection::<T>(name.as_str());
     Ok(collection)
 }
+
+pub fn u256_to_bson(x: &[u8; 32]) -> Bson {
+    Bson::Binary(mongodb::bson::Binary {
+        subtype: BinarySubtype::Generic,
+        bytes: (*x).into(),
+    })
+}
+
+

@@ -7,6 +7,7 @@ pub mod mongomerkle;
 pub mod merkle;
 pub mod poseidon;
 pub mod rmd160;
+pub mod datahash;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};

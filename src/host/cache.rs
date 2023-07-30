@@ -14,6 +14,6 @@ lazy_static::lazy_static! {
         ));
 }
 
-pub fn get_cache_key(cname: String, index: u32, hash: &[u8; 32]) -> String {
+pub fn get_cache_key(cname: String, index: u64, hash: &[u8; 32]) -> String {
     cname + &index.to_string() + &hex::encode(hash)
 }

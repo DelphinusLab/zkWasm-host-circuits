@@ -254,7 +254,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         let (mut leaf, _) = mt
                             .as_ref()
                             .unwrap()
-                            .get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
+                            .get_leaf_with_proof(arg_group[0].value.get_lower_128() as u64)
                             .expect("get leaf error");
                         leaf.set(
                             &data_to_bytes(vec![arg_group[2].value, arg_group[3].value]).to_vec(),
@@ -276,7 +276,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         let (_, proof) = mt
                             .as_ref()
                             .unwrap()
-                            .get_leaf_with_proof(arg_group[0].value.get_lower_128() as u32)
+                            .get_leaf_with_proof(arg_group[0].value.get_lower_128() as u64)
                             .expect("get leaf error");
                         proof
                     };
@@ -319,7 +319,7 @@ mod tests {
         let index = 2_u64.pow(20) - 1;
         let data = Fr::from(0x1000 as u64);
         let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
-        let (mut leaf, _) = mt.get_leaf_with_proof(index as u32).unwrap();
+        let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);
         leaf.set(&bytesdata);
@@ -343,7 +343,7 @@ mod tests {
         let data = Fr::from(0x1000 as u64);
 
         let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
-        let (mut leaf, _) = mt.get_leaf_with_proof(index as u32).unwrap();
+        let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);
         leaf.set(&bytesdata);

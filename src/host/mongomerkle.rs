@@ -160,7 +160,6 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
             while let Some(record) = cursor.next() {
                 let r = record.unwrap();
-                println!("find in db only{:?}", r.index);
                 find.push(r.clone());
                 find_in_db_only.push(r.clone());
                 notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());

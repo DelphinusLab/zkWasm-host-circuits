@@ -114,10 +114,10 @@ impl MongoDataHash {
 pub struct DataHashRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_from_binary")]
-    hash: [u8; 32],
+    pub hash: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_bytes_from_binary")]
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 impl DataHashRecord {

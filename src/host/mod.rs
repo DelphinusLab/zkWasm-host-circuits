@@ -44,6 +44,8 @@ pub enum ForeignInst {
     MerkleAddress, // 13
     MerkleSet,     // 14
     MerkleGet,     // 15
+    MerklePutData,  // 16
+    MerkleFetchData, // 17
     SHA256New,
     SHA256Push,
     SHA256Finalize,

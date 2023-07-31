@@ -95,6 +95,59 @@ impl PointProjective {
             z: z3,
         }
     }
+
+
+    #[allow(clippy::many_single_char_names)]
+    pub fn double(&self) -> PointProjective {
+        // dbl-2008-bbjlp https://hyperelliptic.org/EFD/g1p/auto-twisted-projective.html#dbl-2008-bbjlp
+        let mut two = Fr::one();
+        two = two.double();
+
+        let mut b = self.x;
+        b.add_assign(&self.y);
+        b = b.square();
+
+        let mut c = self.x;
+        c = c.square();
+
+        let mut d = self.y;
+        d = d.square();
+
+        let mut e = *A;
+        e.mul_assign(&c);
+
+        let mut f = e;
+        f.add_assign(&d);
+
+        let mut h = self.z;
+        h = h.square();
+
+        let mut h2 = two;
+        h2.mul_assign(&h);
+
+        let mut j = f;
+        j.sub_assign(&h2);
+
+        let mut x3 = b;
+        x3.sub_assign(&c);
+        x3.sub_assign(&d);
+        x3.mul_assign(&j);
+
+        let mut ed = e;
+        ed.sub_assign(&d);
+        let mut y3 = f;
+        // y3.sub_assign(d);
+        y3.mul_assign(&ed);
+
+        let mut z3 = f;
+        z3.mul_assign(&j);
+        PointProjective {
+            x: x3,
+            y: y3,
+            z: z3,
+        }
+    }
+
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -110,12 +163,7 @@ impl Point {
             y: Fr::one(),
         }
     }
-    pub fn zero() -> Self {
-        Point {
-            x: Fr::zero(),
-            y: Fr::one(),
-        }
-    }
+
     pub fn projective(&self) -> PointProjective {
         PointProjective {
             x: self.x,
@@ -129,17 +177,17 @@ impl Point {
     }
 
     pub fn mul_scalar(&self, n: &BigUint) -> Point {
-        let mut r = Point::zero();
-        let mut exp = self.clone();
+        let mut r = Point::identity().projective();
+        let mut exp = self.projective();
         let b = n.to_bytes_le();
         //little-end wise, like 6, it is 0,1,1 sequence
         for i in 0..n.bits() {
             if test_bit(&b, i.try_into().unwrap()) {
                 r = r.add(&exp);
             }
-            exp = exp.add(&exp);
+            exp = exp.double();
         }
-        r
+        r.affine()
     }
 }
 
@@ -148,7 +196,6 @@ pub fn test_bit(b: &[u8], i: usize) -> bool {
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::Point;
     use crate::utils::bn_to_field;
@@ -158,19 +205,15 @@ mod tests {
     use std::str::FromStr;
     #[test]
     pub fn verify_alt_jubjub_signature() {
-        let msg = b"Foo bar";
-
-        // pad with zeroes to match representation length
-        let mut msg_padded: Vec<u8> = msg.iter().cloned().collect();
-        msg_padded.resize(32, 0u8);
+        let msg = "12183188902842291436925829409440956230535359139686694837527706100765491669070";
 
         let pk_x = BigUint::parse_bytes(
-            b"139f1d319d2a51a1938aef20ae4aa05b4bacef0c95ec2acf6d70b0430bed7808",
+            b"252e5567f8d2ec21093deb668196ebd676767e5414d167a09223d72a354e5b45",
             16,
         )
         .unwrap();
         let pk_y = BigUint::parse_bytes(
-            b"023abdc9dac65b2e858cf258c0a9b0c2c8a83a86ec2ebbaab8fdb5169b262597",
+            b"2e91ef67e1f4bad22d03af787175c1ddeeca18c59451421a3958c6b64a376ec4",
             16,
         )
         .unwrap();
@@ -183,12 +226,12 @@ mod tests {
         println!("pk_y is: {:?} {:?}", BigUint::to_u64_digits(&pk_y), pk_y);
 
         let sig_rx = BigUint::parse_bytes(
-            b"00d711880dcccc0767dad1aa321fa2f54462c0d91e7c708836b5ac274215e4ca",
+            b"03871ac3f0ae73813b0a4bbaa778bd0ea3d43d75297cd1a2d3a8b98e053cf2af",
             16,
         )
         .unwrap();
         let sig_ry = BigUint::parse_bytes(
-            b"303438ab520086fb5e723bdc3c5e0f6a99b7d1caca0b8871ce16ab467d4baf5c",
+            b"1054763a3bdce693bb5f58064092cb5d3f45473eda5f1d0ead04e9e3a7b278f7",
             16,
         )
         .unwrap();
@@ -209,8 +252,14 @@ mod tests {
             sig_ry
         );
 
+        // let p_g = Point {
+        //     x: bn_to_field(&(BigUint::parse_bytes(b"2ef3f9b423a2c8c74e9803958f6c320e854a1c1c06cd5cc8fd221dc052d76df7", 16).unwrap())),
+        //     y: bn_to_field(&(BigUint::parse_bytes(b"05a01167ea785d3f784224644a68e4067532c815f5f6d57d984b5c0e9c6c94b7", 16).unwrap())),
+        // };
+
+        //p_g.negate()
         let base_x = BigUint::parse_bytes(
-            b"2ef3f9b423a2c8c74e9803958f6c320e854a1c1c06cd5cc8fd221dc052d76df7",
+            b"017054bebd8ed76269b84220f215264ea2e9cc2c72ec13c846bfd7d39d28920a",
             16,
         )
         .unwrap();
@@ -219,12 +268,12 @@ mod tests {
             16,
         )
         .unwrap();
-        let p_g = Point {
+        let p_g_neg = Point {
             x: bn_to_field(&(base_x)),
             y: bn_to_field(&(base_y)),
         };
         let sig_s_str =
-            "1902101563350775171813864964289368622061698554691074493911860015574812994359";
+            "760414664615846567287977379644619164343552866248912558409257763292500819717";
 
         println!(
             "base x is: {:?} {:?}",
@@ -237,24 +286,22 @@ mod tests {
             base_y
         );
 
-        let c = BigUint::from_bytes_le(&msg_padded);
+        let c = BigUint::from_str(msg).unwrap();
         let sig_s = BigUint::from_str(sig_s_str).unwrap();
-        let neg_sig_s = field_to_bn(&-bn_to_field::<Fr>(&sig_s));
 
         // Do not remove following prints as they are used in zkwasm sdk tests
         println!("msghash is {:?}", BigUint::to_u64_digits(&c));
         println!("sig_s is {:?}, {:?}", BigUint::to_u64_digits(&sig_s), sig_s);
-        println!("neg_sig_s s {:?}", field_to_bn(&-bn_to_field::<Fr>(&sig_s)));
 
         // 0 = c . vk + R -S . P_G that requires all points to be in the same group
         let lhs = pk.mul_scalar(&c);
         println!("first round {:?}", lhs);
         let lhs = lhs.add(&sig_r);
         println!("second round {:?}", lhs);
-        let rhs = p_g.mul_scalar(&neg_sig_s);
-        // println!("lhs x={},y={}",lhs.x,lhs.y);
-        // println!("rhs x={},y={}",rhs.x,rhs.y);
-        println!("third round {:?}", lhs.add(&rhs));
-        //assert_eq!(lhs,rhs)
+        let rhs = p_g_neg.mul_scalar(&sig_s);
+        let rst = lhs.add(&rhs);
+        println!("third round {:?}", rst);
+        // assert_eq!(lhs,rhs)
+        assert_eq!(Point::identity(),rst);
     }
 }

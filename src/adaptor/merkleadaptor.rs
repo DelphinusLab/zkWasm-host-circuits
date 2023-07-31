@@ -227,10 +227,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             |mut region| {
                 let mut offset = 0;
                 let mut round = 0;
-                const DEFAULT_ROOT_HASH_BYTES: [u8; 32] = [
-                    73, 83, 87, 90, 86, 12, 245, 204, 26, 115, 174, 210, 71, 149, 39, 167, 187, 3,
-                    97, 202, 100, 149, 65, 101, 59, 11, 239, 93, 150, 126, 33, 11,
-                ];
 
                 let config = self.config.clone();
                 self.initialize(&config, &mut region, &mut offset)?;
@@ -312,13 +308,14 @@ mod tests {
     use crate::utils::field_to_bytes;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
+    use crate::MERKLE_DEPTH;
 
     #[test]
     fn generate_kvpair_input_get_set() {
-        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[20]));
-        let index = 2_u64.pow(20) - 1;
+        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[MERKLE_DEPTH]));
+        let index = 2_u64.pow(MERKLE_DEPTH as u32) - 1;
         let data = Fr::from(0x1000 as u64);
-        let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
+        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct([0u8; 32], DEFAULT_HASH_VEC[MERKLE_DEPTH].clone());
         let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);
@@ -338,11 +335,11 @@ mod tests {
 
     #[test]
     fn generate_kvpair_input_gets_set() {
-        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[20]));
-        let index = 2_u64.pow(20) - 1;
+        let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[MERKLE_DEPTH]));
+        let index = 2_u64.pow(MERKLE_DEPTH as u32) - 1;
         let data = Fr::from(0x1000 as u64);
 
-        let mut mt = MongoMerkle::<20>::construct([0u8; 32], DEFAULT_HASH_VEC[20].clone());
+        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct([0u8; 32], DEFAULT_HASH_VEC[MERKLE_DEPTH].clone());
         let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);

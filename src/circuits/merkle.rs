@@ -164,6 +164,7 @@ impl<const D: usize> MerkleChip<Fr, D> {
         //println!("offset for position is: {:?}", c.value);
         self.config
             .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
+
         // position = 0 means assist is at right else assist is at left
         let initial_hash = self.data_hasher_chip.get_permute_result(
             region,

@@ -5,6 +5,7 @@ mod adaptor;
 pub mod circuits;
 pub mod host;
 pub mod utils;
+pub const MERKLE_DEPTH: usize = 32;
 
 /*
 use crate::{
@@ -261,13 +262,13 @@ fn main() {
             prover.create_proof(cache_folder.as_path(), k);
         }
         OpType::MERKLE => {
-            let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, 20>> {
+            let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, MERKLE_DEPTH>> {
                 shared_operands,
                 shared_opcodes,
                 shared_index,
                 _marker: PhantomData,
             };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> =
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, MERKLE_DEPTH>>> =
                 HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);

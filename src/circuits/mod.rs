@@ -187,12 +187,14 @@ impl CommonGateConfig {
         offset: &mut usize,
         limb: &Limb<F>,
         limbs: &mut Vec<Limb<F>>,
-        limbsize: usize,
+        limbsizeraw: usize,
     ) -> Result<(), Error> {
+        let limbsize = (limbsizeraw + 3) & (!3);
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
         bool_limbs.truncate(limbsize);
         bool_limbs.resize_with(limbsize, || 0);
         bool_limbs.reverse();
+        //FIXME: ensure the first v is zero
         let mut v = F::zero();
         for i in 0..(limbsize / 4) {
             let l0 = F::from_u128(bool_limbs[4 * i] as u128);
@@ -232,6 +234,7 @@ impl CommonGateConfig {
             limbs.append(&mut l.to_vec()[0..4].to_vec());
             v = v_next;
         }
+
         // constraint that limb.value is equal v_next so that the above limbs is
         // a real decompose of the limb.value
         self.assign_line(
@@ -294,6 +297,7 @@ impl CommonGateConfig {
             )?;
         }
 
+        limbs.truncate(limbsizeraw);
         Ok(())
     }
 

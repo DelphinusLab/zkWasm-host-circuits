@@ -202,6 +202,31 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
         Ok(())
     }
+
+    fn generate_default_node(
+        &self,
+        index: u32,
+        hash: &[u8; 32],
+    ) -> Result<Self::Node, MerkleError> {
+        let height = (index + 1).ilog2();
+        let default = self.get_default_hash(height as usize)?;
+        let child_hash = if height == Self::height() as u32 {
+            [0; 32]
+        } else {
+            self.get_default_hash((height + 1) as usize)?
+        };
+        if default == *hash {
+            Ok(MerkleRecord {
+                index,
+                hash: default,
+                data: [0; 32],
+                left: child_hash,
+                right: child_hash,
+            })
+        } else {
+            Err(MerkleError::new(*hash, index, MerkleErrorCode::InvalidHash))
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -388,24 +413,14 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
-        let height = (index + 1).ilog2();
-        let default = self.get_default_hash(height as usize)?;
-        let child_hash = if height == Self::height() as u32 {
-            [0; 32]
-        } else {
-            self.get_default_hash((height + 1) as usize)?
-        };
-        if default == *hash {
-            Ok(MerkleRecord {
-                index,
-                hash: default,
-                data: [0; 32],
-                left: child_hash,
-                right: child_hash,
-            })
-        } else {
-            Err(MerkleError::new(*hash, index, MerkleErrorCode::InvalidHash))
-        }
+        let v = self.get_record(index, hash).expect("Unexpected DB Error");
+        v.map_or_else(
+            || self.generate_default_node(index, hash),
+            |x| {
+                assert_eq!(x.index, index);
+                Ok(x)
+            },
+        )
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
@@ -430,7 +445,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             .expect("Unexpected DB Error")
             .map_or_else(
                 || -> Result<MerkleRecord, MerkleError> {
-                    Ok(self.get_node_with_hash(acc, &hash)?)
+                    Ok(self.generate_default_node(acc, &hash)?)
                 },
                 |x| -> Result<MerkleRecord, MerkleError> {
                     parent_in_db = true;
@@ -457,7 +472,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
                         .map_or_else(
                             || -> Result<MerkleRecord, MerkleError> {
                                 parent_in_db = false;
-                                Ok(self.get_node_with_hash(acc, &hash)?)
+                                Ok(self.generate_default_node(acc, &hash)?)
                             },
                             |x| -> Result<MerkleRecord, MerkleError> {
                                 assert_eq!(x.index, acc);
@@ -465,7 +480,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
                             },
                         )?
                 } else {
-                    self.get_node_with_hash(acc, &hash)?
+                    self.generate_default_node(acc, &hash)?
                 };
                 Ok(sibling_hash)
             })

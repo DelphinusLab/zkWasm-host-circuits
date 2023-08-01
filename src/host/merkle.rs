@@ -165,7 +165,39 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     fn get_leaf_with_proof(
         &self,
         index: u32,
-    ) -> Result<(Self::Node, MerkleProof<H, D>), MerkleError>;
+    ) -> Result<(Self::Node, MerkleProof<H, D>), MerkleError> {
+        self.leaf_check(index)?;
+        let paths = self.get_path(index)?.to_vec();
+        // We push the search from the top
+        let hash = self.get_root_hash();
+        let mut acc = 0;
+        let mut acc_node = self.get_node_with_hash(acc, &hash)?;
+        let assist: Vec<H> = paths
+            .into_iter()
+            .map(|child| {
+                let (hash, sibling_hash) = if (acc + 1) * 2 == child + 1 {
+                    // left child
+                    (acc_node.left().unwrap(), acc_node.right().unwrap())
+                } else {
+                    assert!((acc + 1) * 2 == child);
+                    (acc_node.right().unwrap(), acc_node.left().unwrap())
+                };
+                acc = child;
+                acc_node = self.get_node_with_hash(acc, &hash)?;
+                Ok(sibling_hash)
+            })
+            .collect::<Result<Vec<H>, _>>()?;
+        let hash = acc_node.hash();
+        Ok((
+            acc_node,
+            MerkleProof {
+                source: hash,
+                root: self.get_root_hash(),
+                assist: assist.try_into().unwrap(),
+                index,
+            },
+        ))
+    }
 
     fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H, D>, MerkleError> {
         let index = leaf.index();
@@ -224,7 +256,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::merkle::{MerkleError, MerkleNode, MerkleProof, MerkleTree};
+    use crate::host::merkle::{MerkleError, MerkleNode, MerkleTree};
     struct MerkleAsArray {
         data: [u64; 127], // 2^7-1 and depth = 6
         root_hash: u64,
@@ -370,43 +402,6 @@ mod tests {
                 }
             }
             Ok(())
-        }
-
-        fn get_leaf_with_proof(
-            &self,
-            index: u32,
-        ) -> Result<(Self::Node, MerkleProof<u64, 6>), MerkleError> {
-            self.leaf_check(index)?;
-            let paths = self.get_path(index)?.to_vec();
-            // We push the search from the top
-            let hash = self.get_root_hash();
-            let mut acc = 0;
-            let mut acc_node = self.get_node_with_hash(acc, &hash)?;
-            let assist: Vec<u64> = paths
-                .into_iter()
-                .map(|child| {
-                    let (hash, sibling_hash) = if (acc + 1) * 2 == child + 1 {
-                        // left child
-                        (acc_node.left().unwrap(), acc_node.right().unwrap())
-                    } else {
-                        assert_eq!((acc + 1) * 2, child);
-                        (acc_node.right().unwrap(), acc_node.left().unwrap())
-                    };
-                    acc = child;
-                    acc_node = self.get_node_with_hash(acc, &hash)?;
-                    Ok(sibling_hash)
-                })
-                .collect::<Result<Vec<u64>, _>>()?;
-            let hash = acc_node.hash();
-            Ok((
-                acc_node,
-                MerkleProof {
-                    source: hash,
-                    root: self.get_root_hash(),
-                    assist: assist.try_into().unwrap(),
-                    index,
-                },
-            ))
         }
     }
 

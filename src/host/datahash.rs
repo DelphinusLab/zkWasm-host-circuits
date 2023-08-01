@@ -102,10 +102,13 @@ impl MongoDataHash {
         r.map_or_else(
             || {
                 //println!("Do update record to DB for hash: {:?}", record.hash);
-                collection.insert_one(record, None)?;
+                collection.insert_one(record.clone(), None)?;
                 Ok(())
             },
-            |_| Ok(()),
+            |bytes| {
+                assert_eq!(record.data, bytes.data);
+                Ok(())
+            },
         )
     }
 }

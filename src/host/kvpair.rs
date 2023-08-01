@@ -1,6 +1,6 @@
 use crate::host::cache::{get_cache_key, MERKLE_CACHE};
 use crate::host::db;
-use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
+use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
 use ff::PrimeField;
@@ -388,33 +388,24 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
-        let v = self.get_record(index, hash).expect("Unexpected DB Error");
         let height = (index + 1).ilog2();
-        v.map_or_else(
-            || {
-                let default = self.get_default_hash(height as usize)?;
-                let child_hash = if height == Self::height() as u32 {
-                    [0; 32]
-                } else {
-                    self.get_default_hash((height + 1) as usize)?
-                };
-                if default == *hash {
-                    Ok(MerkleRecord {
-                        index,
-                        hash: self.get_default_hash(height as usize)?,
-                        data: [0; 32],
-                        left: child_hash,
-                        right: child_hash,
-                    })
-                } else {
-                    Err(MerkleError::new(*hash, index, MerkleErrorCode::InvalidHash))
-                }
-            },
-            |x| {
-                assert!(x.index == index);
-                Ok(x)
-            },
-        )
+        let default = self.get_default_hash(height as usize)?;
+        let child_hash = if height == Self::height() as u32 {
+            [0; 32]
+        } else {
+            self.get_default_hash((height + 1) as usize)?
+        };
+        if default == *hash {
+            Ok(MerkleRecord {
+                index,
+                hash: default,
+                data: [0; 32],
+                left: child_hash,
+                right: child_hash,
+            })
+        } else {
+            Err(MerkleError::new(*hash, index, MerkleErrorCode::InvalidHash))
+        }
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
@@ -422,6 +413,73 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         self.update_record(leaf.clone())
             .expect("Unexpected DB Error");
         Ok(())
+    }
+
+    fn get_leaf_with_proof(
+        &self,
+        index: u32,
+    ) -> Result<(Self::Node, MerkleProof<[u8; 32], DEPTH>), MerkleError> {
+        self.leaf_check(index)?;
+        let paths = self.get_path(index)?.to_vec();
+        // We push the search from the top
+        let hash = self.get_root_hash();
+        let mut acc = 0;
+        let mut parent_in_db = false;
+        let mut acc_node = self
+            .get_record(acc, &hash)
+            .expect("Unexpected DB Error")
+            .map_or_else(
+                || -> Result<MerkleRecord, MerkleError> {
+                    Ok(self.get_node_with_hash(acc, &hash)?)
+                },
+                |x| -> Result<MerkleRecord, MerkleError> {
+                    parent_in_db = true;
+                    assert_eq!(x.index, acc);
+                    Ok(x)
+                },
+            )?;
+
+        let assist: Vec<[u8; 32]> = paths
+            .into_iter()
+            .map(|child| {
+                let (hash, sibling_hash) = if (acc + 1) * 2 == child + 1 {
+                    // left child
+                    (acc_node.left().unwrap(), acc_node.right().unwrap())
+                } else {
+                    assert_eq!((acc + 1) * 2, child);
+                    (acc_node.right().unwrap(), acc_node.left().unwrap())
+                };
+                acc = child;
+                // acc_node = self.get_node_with_hash(acc, &hash)?;
+                acc_node = if parent_in_db {
+                    self.get_record(acc, &hash)
+                        .expect("Unexpected DB Error")
+                        .map_or_else(
+                            || -> Result<MerkleRecord, MerkleError> {
+                                parent_in_db = false;
+                                Ok(self.get_node_with_hash(acc, &hash)?)
+                            },
+                            |x| -> Result<MerkleRecord, MerkleError> {
+                                assert_eq!(x.index, acc);
+                                Ok(x)
+                            },
+                        )?
+                } else {
+                    self.get_node_with_hash(acc, &hash)?
+                };
+                Ok(sibling_hash)
+            })
+            .collect::<Result<Vec<[u8; 32]>, _>>()?;
+        let hash = acc_node.hash();
+        Ok((
+            acc_node,
+            MerkleProof {
+                source: hash,
+                root: self.get_root_hash(),
+                assist: assist.try_into().unwrap(),
+                index,
+            },
+        ))
     }
 }
 

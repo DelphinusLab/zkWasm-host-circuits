@@ -435,14 +435,8 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u32, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
-        let v = self.get_record(index, hash).expect("Unexpected DB Error");
-        v.map_or_else(
-            || self.generate_default_node(index, hash),
-            |x| {
-                assert_eq!(x.index, index);
-                Ok(x)
-            },
-        )
+        let (node, _) = self.check_generate_default_node(index, hash)?;
+        Ok(node)
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {

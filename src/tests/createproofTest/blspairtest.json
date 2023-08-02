@@ -1,0 +1,732 @@
+[
+  {
+    "op": 1,
+    "value": 14029504326581719,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 12519889918004293,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 9580007689150689,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 15450206128710631,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 10406404946637777,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 2509481592827380,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 14617932026910408,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 4,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 14812600847665576,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 8526685996550264,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 2474308952754290,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 12247465927321798,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 15396219707064579,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 9576219252220314,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 5742472982429585,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 5,
+    "is_ret": false
+  },
+  {
+    "op": 1,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 16963956603861847,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 16980168170900919,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 17891634286003048,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 7864950501704331,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 9018760812567325,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 12626374128485323,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 1291916638592505,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 11333305197830812,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 5928339704172753,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 12034571873511290,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 2936495524161208,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 7337149556785198,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 8797115337687516,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 7916209819913974,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 3168150563001823,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 5772394518502008,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 16486752260459483,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 1249391307259127,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 9002392825288310,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 4005755750732725,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 3145450743643930,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 2928381807198894,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 6233804678416893,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 5608562915126407,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 13352884875821610,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 5996813762439475,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 14035732787364785,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 13559572095223984,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 2,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3803593849894764,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 8429248871876563,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 518885758578942,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2644540847260864,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14151560137463292,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6078140575696003,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 5350909156246361,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 787093311241555,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17249155934168838,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11897988163283465,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6845418435643217,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 10568977794219608,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15997348469479224,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11601494259732829,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 5,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 16849598805113727,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14292827220776034,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2447342712164336,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3782815540443122,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 9915627846251591,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17665408427976007,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 12061816758875329,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15894933131669552,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 16070634416919211,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 1929874475533079,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 5049128417376694,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15815982423190854,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3258019611499640,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2410813252368038,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6511491114454382,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 7281430191225455,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 12719091024393279,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11574226837115903,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15928174565851895,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15934047460979111,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17667319692410522,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 1610730817678388,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14015726568682494,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14849710235201827,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6175811877644013,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 5090121365083972,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3391241463488802,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2271714029652671,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 1228183110842907,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17082011451830390,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17473493447056543,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 12928143686582627,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11197885078049615,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14798679211282772,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 9084677284288980,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 1,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17174982045918884,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11459304050250705,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 7539580095315656,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15388194704855548,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6309587383341731,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 9748781747249025,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4967334232162157,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 1,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15434463150922376,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4067507956261166,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17722733512518682,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 10396841147806983,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 15033219388393780,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3147012023963696,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4391615486634262,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4655401973716285,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11165449544804452,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3715576211257093,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 10890343269787820,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 4588374262800137,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 10787186372250213,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 8683386411869940,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 2,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 16941540705440251,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 7347216081924718,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 7255730912532105,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11352258070787078,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11096178408571851,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 8597788586147646,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14511405907371684,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 0,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 17767620037208287,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 13720691892112487,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 6226200664222490,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 8489413058683432,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 14545922803143908,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 11376855041535414,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 3576238384405036,
+    "is_ret": false
+  },
+  {
+    "op": 3,
+    "value": 0,
+    "is_ret": false
+  }
+]

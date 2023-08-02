@@ -5,6 +5,7 @@ mod adaptor;
 pub mod circuits;
 pub mod host;
 pub mod utils;
+pub mod controller;
 
 /*
 use crate::{
@@ -16,6 +17,10 @@ use crate::{
 };
 */
 
+use actix_web::middleware::Logger;
+use actix_web::{App as ActixApp, HttpServer};
+use actix_cors::Cors;
+use serde::Deserialize;
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -50,8 +55,8 @@ struct ArgOpName {
     #[clap(arg_enum)]
     t: OpType,
 }
-#[derive(clap::ArgEnum, Clone, Debug)]
-enum OpType {
+#[derive(clap::ArgEnum, Deserialize, Clone, Debug)]
+pub enum OpType {
     BLS381PAIR,
     BLS381SUM,
     BN256PAIR,
@@ -162,118 +167,147 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
         .clone()
 }
 
+fn server_mode<'a>() -> Arg<'a> {
+    arg!(-s --server "Run in server mode").takes_value(false)
+}
+
+fn is_server_mode(matches: &ArgMatches) -> bool {
+    matches.get_many::<String>("server").map_or(false, |_| true)
+}
+
+#[actix_web::main]
 #[allow(clippy::many_single_char_names)]
-fn main() {
+async fn main() -> std::io::Result<()> {
     let clap_app = App::new("hostcircuit")
         .arg(input_file())
         .arg(output_folder())
-        .arg(opname());
+        .arg(opname())
+        .arg(server_mode());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
     let cache_folder = parse_output_folder(&matches);
     let opname = parse_opname(&matches);
+    let is_server_mode = is_server_mode(&matches);
 
-    let file = File::open(input_file).expect("File does not exist");
-    let v: host::ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
-        Err(e) => {
-            println!("load json error {:?}", e);
-            unreachable!();
-        }
-        Ok(o) => o,
-    };
+    if is_server_mode {
+        // REST server mode
+        HttpServer::new(move || {
+            let cors = Cors::default()
+                .allow_any_header()
+                .allow_any_method()
+                .allow_any_origin()
+                .send_wildcard();
+            ActixApp::new()
+                .wrap(cors)
+                .wrap(Logger::default())
+                .service(controller::createproof)
+        })
+        .bind(("127.0.0.1", 8080))?
+        .run()
+        .await
+    } else {
+        let file = File::open(input_file).expect("File does not exist");
+        let v: host::ExternalHostCallEntryTable = match serde_json::from_reader(BufReader::new(file)) {
+            Err(e) => {
+                println!("load json error {:?}", e);
+                unreachable!();
+            }
+            Ok(o) => o,
+        };
 
-    // ANCHOR: test-circuit
-    // The number of rows in our circuit cannot exceed 2^k. Since our example
-    // circuit is very small, we can pick a very small value here.
-    let k = 22;
+        // ANCHOR: test-circuit
+        // The number of rows in our circuit cannot exceed 2^k. Since our example
+        // circuit is very small, we can pick a very small value here.
+        let k = 22;
 
-    // Prepare the private and public inputs to the circuit!
-    let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
-    let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
-    let shared_index =
-        v.0.iter()
-            .enumerate()
-            .map(|(i, _)| Fr::from(i as u64))
-            .collect();
+        // Prepare the private and public inputs to the circuit!
+        let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
+        let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
+        let shared_index =
+            v.0.iter()
+                .enumerate()
+                .map(|(i, _)| Fr::from(i as u64))
+                .collect();
 
-    // Instantiate the circuit with the private inputs.
-    // Given the correct public input, our circuit will verify.
-    match opname {
-        OpType::BLS381PAIR => {
-            let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> =
-                HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-        OpType::BLS381SUM => {
-            let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> =
-                HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-        OpType::BN256PAIR => {
-            let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> =
-                HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-        OpType::BN256SUM => {
-            let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> =
-                HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-        OpType::POSEIDONHASH => {
-            let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr, 9, 8>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
-                HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-        OpType::MERKLE => {
-            let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, 20>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
-            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> =
-                HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
-            prover.mock_proof(k);
-            prover.create_proof(cache_folder.as_path(), k);
-        }
-    };
-
-    //circuit_info.mock_proof(k);
-    println!("Mock Verify Pass.");
+        // Instantiate the circuit with the private inputs.
+        // Given the correct public input, our circuit will verify.
+        match opname {
+            OpType::BLS381PAIR => {
+                let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> =
+                    HostCircuitInfo::new(bls381pair_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+            OpType::BLS381SUM => {
+                let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> =
+                    HostCircuitInfo::new(bls381sum_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+            OpType::BN256PAIR => {
+                let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> =
+                    HostCircuitInfo::new(bn256pair_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+            OpType::BN256SUM => {
+                let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> =
+                    HostCircuitInfo::new(bn256sum_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+            OpType::POSEIDONHASH => {
+                let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr, 9, 8>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
+                    HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+            OpType::MERKLE => {
+                let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, 20>> {
+                    shared_operands,
+                    shared_opcodes,
+                    shared_index,
+                    _marker: PhantomData,
+                };
+                let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, 20>>> =
+                    HostCircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![]);
+                prover.mock_proof(k);
+                prover.create_proof(cache_folder.as_path(), k);
+            }
+        };
+        //circuit_info.mock_proof(k);
+        println!("Mock Verify Pass.");
+        Ok(())
+    }
 }

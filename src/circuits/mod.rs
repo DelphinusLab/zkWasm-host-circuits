@@ -189,6 +189,7 @@ impl CommonGateConfig {
         limbs: &mut Vec<Limb<F>>,
         limbsizeraw: usize,
     ) -> Result<(), Error> {
+        let initsize = limbs.len();
         let limbsize = (limbsizeraw + 3) & (!3);
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
         bool_limbs.truncate(limbsize);
@@ -297,7 +298,7 @@ impl CommonGateConfig {
             )?;
         }
 
-        limbs.truncate(limbsizeraw);
+        limbs.truncate(initsize + limbsizeraw);
         Ok(())
     }
 

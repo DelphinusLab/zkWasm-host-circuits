@@ -99,7 +99,7 @@ impl HostOpConfig {
             let merged_op_n = self.get_expr(meta, HostOpConfig::merged_op_n());
             let cur_op = self.get_expr(meta, HostOpConfig::filtered_operand());
             let indicator = self.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
+            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))] // merged_op_n * indicator + cur_op == merged_op ???
         });
 
         /* enable is continuous with pattern 1,1,1,1,1,0,0,0,0 when sel is active */
@@ -133,7 +133,7 @@ impl HostOpConfig {
         &self,
         region: &mut Region<Fr>,
         offset: &mut usize,
-        values: Vec<&((Fr, Fr), Fr)>,
+        values: Vec<&((Fr, Fr), Fr)>, //(operand, opcode), index
         indicator: Fr,
         enable: bool,
     ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
@@ -141,7 +141,7 @@ impl HostOpConfig {
         let len = values.len();
         rev.reverse();
         let mut merged_ops = vec![];
-        let mut merged_acc = Fr::zero();
+        let mut merged_acc = Fr::zero(); // accumulator
         for c in rev.iter() {
             merged_acc = c.0 .0 + merged_acc * indicator;
             merged_ops.push(merged_acc);

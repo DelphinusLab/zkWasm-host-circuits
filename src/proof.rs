@@ -6,6 +6,7 @@ use crate::circuits::{
     bn256::Bn256SumChip,
     host::{HostOpChip, HostOpConfig, HostOpSelector},
     merkle::MerkleChip,
+    keccak256::KeccakChip,
     poseidon::PoseidonChip,
 };
 use halo2_proofs::{
@@ -41,6 +42,7 @@ pub enum OpType {
     BN256PAIR,
     BN256SUM,
     POSEIDONHASH,
+    KECCAKHASH,
     MERKLE,
     JUBJUBSUM,
 }
@@ -301,6 +303,28 @@ pub fn exec_create_host_proof(
                 K_PARAMS_CACHE.lock().as_mut().unwrap(),
             );
         }
+        OpType::KECCAKHASH => {
+            let keccak_circuit = build_host_circuit::<KeccakChip<Fr>>(&v);
+            let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, KeccakChip<Fr>>> = CircuitInfo::new(
+                keccak_circuit,
+                format!("{}.{:?}", name, opname),
+                vec![],
+                k,
+                Poseidon,
+            );
+            prover.mock_proof(k as u32);
+            println!("mock proof for jubjub success");
+            prover.proofloadinfo.save(&cache_folder.as_path());
+            prover.exec_create_proof(
+                cache_folder.as_path(),
+                param_folder.as_path(),
+                PKEY_CACHE.lock().as_mut().unwrap(),
+                0,
+                K_PARAMS_CACHE.lock().as_mut().unwrap(),
+            );
+
+        }
+
     };
     println!("Proof generated.");
 }

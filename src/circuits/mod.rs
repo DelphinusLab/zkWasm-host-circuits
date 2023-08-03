@@ -8,6 +8,7 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
+pub mod keccak256;
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 

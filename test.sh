@@ -1,2 +1,2 @@
-cargo test generate_poseidon_input_multi
-cargo run --release --features cuda -- --input blssumtest.json --opname bls381sum --output output --param params
+cargo test generate_keccak_input_multi
+cargo run --release -- --input keccak256_test_multi.json --opname keccakhash --output output --param params

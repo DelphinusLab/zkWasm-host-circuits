@@ -1,12 +1,14 @@
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::pairing::bls12_381::Fr as Scalar;
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
     pairing::bls12_381::G1Affine,
     plonk::{ConstraintSystem, Error},
 };
-use halo2ecc_s::circuit::base_chip::BaseChipOps;
+use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
+use halo2ecc_s::circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps};
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use std::cell::RefCell;
 use std::marker::PhantomData;
@@ -14,7 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
-use halo2ecc_s::assign::{AssignedCondition, AssignedFq, Cell as ContextCell};
+use halo2ecc_s::assign::{AssignedCondition, AssignedFq, Cell as ContextCell, AssignedInteger};
 use halo2ecc_s::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::circuit::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps};
@@ -76,6 +78,18 @@ pub fn fr_to_bool(f: &Fr) -> bool {
     return bytes[0] == 1u8;
 }
 
+fn assigned_cells_to_fr(
+    a: &Vec<Limb<Fr>>, //Fr (3)
+    start: usize,
+) -> BigUint {
+    let mut bn = BigUint::from(0 as u64);
+    for i in start..start + 3 {
+        let shift = BigUint::from(2 as u32).pow(108 * (i - start) as u32);
+        bn.add_assign(fr_to_bn(&a[i].value).mul(shift.clone()));
+    }
+    bn
+}
+
 fn assigned_cells_to_bn381(
     a: &Vec<Limb<Fr>>, //G1 (4 * 2 + 1)
     start: usize,
@@ -86,6 +100,15 @@ fn assigned_cells_to_bn381(
         bn.add_assign(fr_to_bn(&a[i].value).mul(shift.clone()));
     }
     bn
+}
+
+fn get_scalar_from_cell(
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
+    a: &Vec<Limb<Fr>>
+) -> AssignedInteger<Scalar, Fr> {
+    let bn = assigned_cells_to_fr(a, 0);
+    let fr= ctx.scalar_integer_ctx.assign_w(&bn);
+    fr
 }
 
 fn get_g1_from_cells(
@@ -139,6 +162,20 @@ fn get_cell_of_ctx(
     cells[cell.region as usize][cell.col][cell.row]
         .clone()
         .unwrap()
+}
+
+fn enable_fr_permute(
+    region: &mut Region<'_, Fr>,
+    cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
+    fr: &AssignedInteger<Scalar, Fr>,
+    input: &Vec<Limb<Fr>>,
+) -> Result<(), Error> {
+    for i in 0..3 {
+        let limb = fr.limbs_le[i].cell;
+        let limb_assigned = get_cell_of_ctx(cells, &limb);
+        region.constrain_equal(input[i].get_the_cell().cell(), limb_assigned.cell())?;
+    }
+    Ok(())
 }
 
 fn enable_fq_permute(
@@ -372,50 +409,60 @@ impl Bls381SumChip<Fr> {
 
     pub fn load_bls381_sum_circuit(
         &self,
-        ls: &Vec<Limb<Fr>>,  // Vec<G1> (4 * 2 + 1) * k
-        sum: &Vec<Limb<Fr>>, // G1 (4 * 2 + 1)
+        ls: &Vec<Limb<Fr>>,  // n * (new, fr , g1, sum)
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);
 
-        let g1s: Vec<AssignedPoint<_, _>> = ls
-            .chunks(9)
-            .map(|l| get_g1_from_cells(&mut ctx, &l.to_vec()))
-            .collect();
+        let mut ais = vec![];
+        let mut g1s = vec![];
+        let mut sums = vec![];
+        let identity = ctx.assign_identity();
+        let mut sum = identity.clone();
+        for group in ls.chunks_exact(22) {
+            // using constraint to fix if to reset
+            let lhs = if group.get(0).unwrap().value != Fr::zero() {
+                identity.clone()
+            } else {
+                sum
+            };
+            let a = get_scalar_from_cell(&mut ctx, &group.get(1..4).unwrap().to_vec());
+            ais.push(a.clone());
+            let g = get_g1_from_cells(&mut ctx, &group.get(4..13).unwrap().to_vec());
+            let rhs = ctx.ecc_mul(&g, a);
+            let sum_ret = ctx.ecc_add(&lhs, &rhs);
+            let sum_ret = ctx.ecc_reduce(&sum_ret);
+            ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.x.limbs_le[0]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.x.limbs_le[1]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.x.limbs_le[2]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.x.limbs_le[3]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.y.limbs_le[0]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.y.limbs_le[1]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.y.limbs_le[2]);
+            ctx.native_ctx
+                .borrow_mut()
+                .enable_permute(&sum_ret.y.limbs_le[3]);
+            sum = ctx.to_point_with_curvature(sum_ret.clone());
+            g1s.push(g);
+            sums.push(sum_ret);
+        }
 
-        let g0 = ctx.assign_identity();
-        let sum_ret = g1s.iter().fold(g0, |acc, x| {
-            let p = ctx.ecc_add(&acc, &x);
-            ctx.to_point_with_curvature(p)
-        });
-        let sum_ret = sum_ret.to_point();
-        let sum_ret = ctx.ecc_reduce(&sum_ret);
-        ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.x.limbs_le[0]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.x.limbs_le[1]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.x.limbs_le[2]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.x.limbs_le[3]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.y.limbs_le[0]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.y.limbs_le[1]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.y.limbs_le[2]);
-        ctx.native_ctx
-            .borrow_mut()
-            .enable_permute(&sum_ret.y.limbs_le[3]);
         let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
             .unwrap()
             .into_inner()
@@ -430,15 +477,15 @@ impl Bls381SumChip<Fr> {
                     &self.range_chip,
                     &self.point_select_chip,
                 )?;
-                let ls = ls
-                    .chunks(9)
-                    .into_iter()
-                    .map(|x| x.to_vec())
-                    .collect::<Vec<_>>();
-                g1s.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(&mut region, &cells, x, &ls[i]).unwrap()
+                ais.iter().enumerate().for_each(|(i, x)| {
+                    enable_fr_permute(&mut region, &cells, x, &ls[22*i+1..22*i+4].to_vec()).unwrap()
                 });
-                enable_g1affine_permute(&mut region, &cells, &sum_ret, sum)?;
+                g1s.iter().enumerate().for_each(|(i, x)| {
+                    enable_g1affine_permute(&mut region, &cells, x, &ls[22*i+4..22*i+13].to_vec()).unwrap()
+                });
+                sums.iter().enumerate().for_each(|(i, x)| {
+                    enable_g1affine_permute(&mut region, &cells, x, &ls[22*i+13..22*i+22].to_vec()).unwrap()
+                });
                 end_timer!(timer);
                 Ok(())
             },

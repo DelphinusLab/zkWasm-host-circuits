@@ -24,9 +24,11 @@ pub struct ExternalHostCallEntry {
 #[derive(clap::ArgEnum, Clone, Copy, Debug)]
 pub enum ForeignInst {
     Log = 0,
-    BlspairG1,
-    BlspairG2,
-    BlspairG3,
+    BlsPairG1,
+    BlsPairG2,
+    BlsPairG3,
+    BlsSumNew,
+    BlsSumScalar,
     BlsSumG1,
     BlsSumResult,
     Bn254PairG1,

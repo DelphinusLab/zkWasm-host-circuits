@@ -147,13 +147,13 @@ impl<F: FieldExt> AnemoiState<F>{
 
         for i in 0..NUM_COLUMNS {
             let y_square = self.mul(config, region, offset, &y[i].clone(), &y[i].clone())?;
-            let g_y_square = self.mul_by_generator(config, region, offset, &y_square.value)?;
+            let g_y_square = self.mul_by_generator(config, region, offset, &y_square.clone())?;
             let xi = x[i].clone().value - g_y_square.clone().value;
             let xi_f = config.assign_line(region, &mut (), offset, 
                 [
-                Some(Limb::new(None, x[i].clone().value)),
+                Some(x[i].clone()),
                 Some(Limb::new(None, xi)),
-                Some(Limb::new(None, g_y_square.clone().value)),
+                Some(g_y_square.clone()),
                 None, 
                 None,
                 None
@@ -169,8 +169,6 @@ impl<F: FieldExt> AnemoiState<F>{
         for i in 0..NUM_COLUMNS {
             let xi_inv_alpha = self.exp_inv_alpha(config, region, offset, &x[i].clone())?;
             t[i] = xi_inv_alpha;
-            // let xi_inv_alpha = self.exp_inv(&x[i].clone().value);
-            // t[i] = Limb::new(None, xi_inv_alpha);
         }
 
         // compute y after sbox
@@ -178,9 +176,9 @@ impl<F: FieldExt> AnemoiState<F>{
             let yi = y[i].value.clone() - t[i].clone().value;
             let yi_f = config.assign_line( region, &mut (), offset, 
                 [
-                Some(Limb::new(None, y[i].value.clone())),
+                Some(y[i].clone()),
                 Some(Limb::new(None, yi)),
-                Some(Limb::new(None, t[i].clone().value)),
+                Some(t[i].clone()),
                 None, 
                 None,
                 None
@@ -194,13 +192,13 @@ impl<F: FieldExt> AnemoiState<F>{
         // compute x after sbox
         for i in 0..NUM_COLUMNS {
             let yi_square = self.mul(config, region, offset, &y[i].clone(), &y[i].clone())?;
-            let g_yi_square = self.mul_by_generator(config, region, offset, &yi_square.clone().value)?;
+            let g_yi_square = self.mul_by_generator(config, region, offset, &yi_square.clone())?;
             let xi_t = x[i].clone().value + g_yi_square.clone().value;
             let xi_f = config.assign_line( region, &mut (), offset, 
                 [
-                Some(Limb::new(None, x[i].clone().value)),
+                Some(x[i].clone()),
                 Some(Limb::new(None, xi_t)),
-                Some(Limb::new(None, g_yi_square.clone().value)),
+                Some(g_yi_square.clone()),
                 None, 
                 None,
                 None
@@ -303,8 +301,8 @@ impl<F: FieldExt> AnemoiState<F>{
         let rhs_f = a.clone().value + b.clone().value;
         let rhs = config.assign_line(region, &mut (), offset,
             [
-                Some(Limb::new(None, a.clone().value)),
-                Some(Limb::new(None, b.clone().value)),
+                Some(a.clone()),
+                Some(b.clone()),
                 None,
                 Some(Limb::new(None, rhs_f.clone())),
                 None,
@@ -646,10 +644,10 @@ impl<F: FieldExt> AnemoiState<F>{
         let result_t = a.clone().value * b.clone().value;
         let result_f = config.assign_line(region, &mut (), offset, 
         [
-            Some(Limb::new(None, a.clone().value)),
+            Some(a.clone()),
             Some(Limb::new(None, result_t)),
             None,
-            Some(Limb::new(None, b.clone().value)),
+            Some(b.clone()),
             None,
             None,
         ], 
@@ -667,14 +665,14 @@ impl<F: FieldExt> AnemoiState<F>{
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-        x: &F, 
+        x: &Limb<F>, 
     ) -> Result<Limb<F>, Error> {
-        let x2_f = x.clone() + x.clone() + x.clone();
+        let x2_f = x.value.clone() + x.value.clone() + x.value.clone();
         let rhs = config.assign_line(region, &mut (), offset,
         [
-            Some(Limb::new(None, x.clone())),
-            Some(Limb::new(None, x.clone())),
-            Some(Limb::new(None, x.clone())),
+            Some(x.clone()),
+            Some(x.clone()),
+            Some(x.clone()),
             Some(Limb::new(None, x2_f.clone())),
             None,
             None,
@@ -1134,8 +1132,6 @@ mod tests {
             Ok(())
         }
     }
-
-    // SBOX Test Passed
 
     #[test]
     fn test_anemoi_circuit_00() {

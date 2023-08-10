@@ -8,7 +8,10 @@ use mongodb::bson::{spec::BinarySubtype, Bson};
 const MONGODB_URI: &str = "mongodb://localhost:27017";
 
 lazy_static::lazy_static! {
-    pub static ref CLIENT: Client= Client::with_uri_str(MONGODB_URI).expect("Unexpected DB Error");
+    pub static ref CLIENT: Client= {
+        let mongo_uri = std::env::var("ZKWASM_MONGO").unwrap_or(String::from(MONGODB_URI));
+        Client::with_uri_str(&mongo_uri).expect("Unexpected DB Error")
+    };
 }
 
 pub fn get_collection<T>(

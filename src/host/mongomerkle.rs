@@ -280,19 +280,19 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_u64_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u64_as_binary")]
-    index: u64,
+    pub index: u64,
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    hash: [u8; 32],
+    pub hash: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    left: [u8; 32],
+    pub left: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    right: [u8; 32],
+    pub right: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    data: [u8; 32],
+    pub data: [u8; 32],
 }
 
 impl MerkleNode<[u8; 32]> for MerkleRecord {

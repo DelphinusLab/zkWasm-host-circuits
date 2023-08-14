@@ -1,4 +1,4 @@
-use crate::host::cache::{get_cache_key, MERKLE_CACHE};
+use crate::host::cache::MERKLE_CACHE;
 use crate::host::db;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
@@ -105,18 +105,17 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
         let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let cache_key = get_cache_key(cname.clone(), index, hash);
         let mut cache = MERKLE_CACHE.lock().unwrap();
-        if let Some(record) = cache.get(&cache_key) {
-            Ok(Some(record.clone()))
+        if let Some(record) = cache.get(&(index, *hash)) {
+            Ok(record.clone())
         } else {
             let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
             let mut filter = doc! {};
             filter.insert("index", u64_to_bson(index));
             filter.insert("hash", db::u256_to_bson(hash));
             let record = collection.find_one(filter, None);
-            if let Ok(Some(value)) = record.clone() {
-                cache.push(cache_key, value);
+            if let Ok(value) = record.clone() {
+                cache.push((index, *hash), value);
             };
             record
         }
@@ -134,8 +133,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         //Check Cache first
         let mut cache = MERKLE_CACHE.lock().unwrap();
         for record in records.iter() {
-            let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
-            if let Some(r) = cache.get(&cache_key) {
+            if let Some(Some(r)) = cache.get(&(record.index, record.hash)) {
                 find.push(r.clone());
                 notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
             }
@@ -167,8 +165,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
             //Update Cache
             for record in find_in_db_only.iter() {
-                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
-                cache.push(cache_key, record.clone());
+                cache.push((record.index, record.hash), Some(record.clone()));
             }
         }
         Ok((find, notfind))
@@ -188,9 +185,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                 r.map_or_else(
                     || {
                         //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
-                        let cache_key = get_cache_key(cname, record.index, &record.hash);
                         let mut cache = MERKLE_CACHE.lock().unwrap();
-                        cache.push(cache_key, record.clone());
+                        cache.push((record.index, record.hash), Some(record.clone()));
                         collection.insert_one(record, None)?;
                         Ok(())
                     },
@@ -218,8 +214,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         if new_records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
             for record in new_records.iter() {
-                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
-                cache.push(cache_key, record.clone());
+                cache.push((record.index, record.hash), Some(record.clone()));
             }
 
             collection.insert_many(new_records, None)?;
@@ -525,7 +520,7 @@ mod tests {
     use super::db::get_collection;
     use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
     use crate::host::merkle::{MerkleNode, MerkleTree};
-    use crate::utils::{field_to_bytes, bytes_to_u64};
+    use crate::utils::{bytes_to_u64, field_to_bytes};
     use halo2_proofs::pairing::bn256::Fr;
     use mongodb::bson::doc;
 
@@ -542,7 +537,10 @@ mod tests {
         const TEST_ADDR: [u8; 32] = [1; 32];
         let index = 2_u64.pow(DEPTH as u32) - 1;
         let data = Fr::from(0x1000 as u64);
-        println!("depth 32 default root is {:?}", bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH]));
+        println!(
+            "depth 32 default root is {:?}",
+            bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])
+        );
 
         let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone());
         let dbname: String = MongoMerkle::<DEPTH>::get_db_name();

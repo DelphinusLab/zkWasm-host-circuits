@@ -60,7 +60,7 @@ pub struct MerkleProof<H: Debug + Clone + PartialEq, const D: usize> {
     pub index: u64,
 }
 
-fn get_offset(index: u64) -> u64 {
+pub fn get_offset(index: u64) -> u64 {
     let height = (index + 1).ilog2();
     let full = (1u64 << height) - 1;
     index - full

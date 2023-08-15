@@ -61,14 +61,14 @@ where
     binary.serialize(serializer)
 }
 
-fn u64_to_bson(x: u64) -> Bson {
+pub fn u64_to_bson(x: u64) -> Bson {
     Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
         bytes: x.to_le_bytes().to_vec(),
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MongoMerkle<const DEPTH: usize> {
     contract_address: [u8; 32],
     root_hash: [u8; 32],
@@ -91,10 +91,10 @@ impl PartialEq for MerkleRecord {
 }
 
 impl<const DEPTH: usize> MongoMerkle<DEPTH> {
-    fn get_collection_name(&self) -> String {
+    pub fn get_collection_name(&self) -> String {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
-    fn get_db_name() -> String {
+    pub fn get_db_name() -> String {
         return "zkwasm-mongo-merkle".to_string();
     }
 
@@ -222,7 +222,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         Ok(())
     }
 
-    fn generate_default_node(&self, index: u64) -> Result<MerkleRecord, MerkleError> {
+    pub fn generate_default_node(&self, index: u64) -> Result<MerkleRecord, MerkleError> {
         let height = (index + 1).ilog2();
         let default = self.get_default_hash(height as usize)?;
         let child_hash = if height == Self::height() as u32 {
@@ -240,7 +240,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         })
     }
 
-    fn check_generate_default_node(
+    pub fn check_generate_default_node(
         &self,
         index: u64,
         hash: &[u8; 32],

@@ -1,8 +1,8 @@
-use crate::host::db;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 //use lazy_static;
 use crate::host::cache::DATA_CACHE;
+use crate::host::db::{MongoDB, TreeDB};
 use crate::host::poseidon::POSEIDON_HASHER;
 use mongodb::bson::doc;
 use mongodb::bson::{spec::BinarySubtype, Bson};
@@ -10,6 +10,8 @@ use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn deserialize_u256_from_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
@@ -53,9 +55,8 @@ fn hash_to_bson(x: &[u8; 32]) -> Bson {
 }
 */
 
-#[derive(Debug)]
 pub struct MongoDataHash {
-    contract_address: [u8; 32],
+    db: Rc<RefCell<dyn TreeDB>>,
 }
 
 impl PartialEq for DataHashRecord {
@@ -68,16 +69,9 @@ impl PartialEq for DataHashRecord {
 }
 
 impl MongoDataHash {
-    fn get_collection_name(&self) -> String {
-        format!("DATAHASH_{}", hex::encode(&self.contract_address))
-    }
-    fn get_db_name() -> String {
-        return "zkwasm-mongo-merkle".to_string();
-    }
-
-    pub fn construct(addr: [u8; 32]) -> Self {
+    pub fn construct(addr: [u8; 32], db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self {
         MongoDataHash {
-            contract_address: addr,
+            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr)))),
         }
     }
 
@@ -89,12 +83,7 @@ impl MongoDataHash {
         if let Some(record) = cache.get(hash) {
             Ok(record.clone())
         } else {
-            let dbname = Self::get_db_name();
-            let cname = self.get_collection_name();
-            let collection = db::get_collection::<DataHashRecord>(dbname, cname)?;
-            let mut filter = doc! {};
-            filter.insert("hash", db::u256_to_bson(hash));
-            let record = collection.find_one(filter, None);
+            let record = self.db.borrow().get_data_record(hash);
             if let Ok(value) = record.clone() {
                 cache.push(*hash, value);
             };
@@ -103,15 +92,11 @@ impl MongoDataHash {
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
-    pub fn update_record(&self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let collection = db::get_collection::<DataHashRecord>(dbname, cname.clone())?;
+    pub fn update_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
         let r: Option<DataHashRecord> = self.get_record(&record.hash)?;
         r.map_or_else(
             || {
-                //println!("Do update record to DB for hash: {:?}", record.hash);
-                collection.insert_one(record.clone(), None)?;
+                self.db.borrow_mut().set_data_record(record.clone())?;
                 let mut cache = DATA_CACHE.lock().unwrap();
                 cache.push(record.hash, Some(record.clone()));
                 Ok(())

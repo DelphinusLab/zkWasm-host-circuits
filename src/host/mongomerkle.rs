@@ -1,5 +1,6 @@
 use crate::host::cache::MERKLE_CACHE;
 use crate::host::db;
+use crate::host::db::{MongoDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
@@ -13,6 +14,8 @@ use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn deserialize_u64_as_binary<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
@@ -61,18 +64,10 @@ where
     binary.serialize(serializer)
 }
 
-pub fn u64_to_bson(x: u64) -> Bson {
-    Bson::Binary(mongodb::bson::Binary {
-        subtype: BinarySubtype::Generic,
-        bytes: x.to_le_bytes().to_vec(),
-    })
-}
-
-#[derive(Debug, Clone)]
 pub struct MongoMerkle<const DEPTH: usize> {
-    contract_address: [u8; 32],
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
+    db: Rc<RefCell<dyn TreeDB>>,
 }
 
 pub fn drop_collection<T>(database: String, name: String) -> Result<(), mongodb::error::Error> {
@@ -91,29 +86,16 @@ impl PartialEq for MerkleRecord {
 }
 
 impl<const DEPTH: usize> MongoMerkle<DEPTH> {
-    pub fn get_collection_name(&self) -> String {
-        format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
-    }
-    pub fn get_db_name() -> String {
-        return "zkwasm-mongo-merkle".to_string();
-    }
-
     pub fn get_record(
         &self,
         index: u64,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
         let mut cache = MERKLE_CACHE.lock().unwrap();
         if let Some(record) = cache.get(&(index, *hash)) {
             Ok(record.clone())
         } else {
-            let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
-            let mut filter = doc! {};
-            filter.insert("index", u64_to_bson(index));
-            filter.insert("hash", db::u256_to_bson(hash));
-            let record = collection.find_one(filter, None);
+            let record = self.db.borrow().get_merkle_record(index, hash);
             if let Ok(value) = record.clone() {
                 cache.push((index, *hash), value);
             };
@@ -121,61 +103,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
     }
 
-    pub fn batch_get_records(
-        &self,
-        records: &Vec<MerkleRecord>,
-    ) -> Result<(Vec<MerkleRecord>, Vec<MerkleRecord>), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let mut find: Vec<MerkleRecord> = vec![];
-        let mut notfind: Vec<MerkleRecord> = records.clone();
-
-        //Check Cache first
-        let mut cache = MERKLE_CACHE.lock().unwrap();
-        for record in records.iter() {
-            if let Some(Some(r)) = cache.get(&(record.index, record.hash)) {
-                find.push(r.clone());
-                notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
-            }
-        }
-
-        if notfind.len() > 0 {
-            //Check DB
-            let mut find_in_db_only: Vec<MerkleRecord> = vec![];
-            let mut docs: Vec<mongodb::bson::Document> = vec![];
-            for record in notfind.iter() {
-                let mut and_doc: Vec<mongodb::bson::Document> = vec![];
-                and_doc.push(doc! {"index": u64_to_bson(record.index)});
-                and_doc.push(doc! {"hash": db::u256_to_bson(&record.hash)});
-                docs.push(doc! {"$and": and_doc});
-            }
-            let filter = doc! {
-                "$or": docs
-            };
-
-            let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
-            let mut cursor = collection.find(filter, None)?;
-
-            while let Some(record) = cursor.next() {
-                let r = record.unwrap();
-                find.push(r.clone());
-                find_in_db_only.push(r.clone());
-                notfind.remove(notfind.iter().position(|x| x.clone() == r.clone()).unwrap());
-            }
-
-            //Update Cache
-            for record in find_in_db_only.iter() {
-                cache.push((record.index, record.hash), Some(record.clone()));
-            }
-        }
-        Ok((find, notfind))
-    }
-
     /* We always insert new record as there might be uncommitted update to the merkle tree */
-    pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
+    pub fn update_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let exists: Result<Option<MerkleRecord>, mongodb::error::Error> =
             self.get_record(record.index, &record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
@@ -187,7 +116,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                         //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
                         let mut cache = MERKLE_CACHE.lock().unwrap();
                         cache.push((record.index, record.hash), Some(record.clone()));
-                        collection.insert_one(record, None)?;
+                        self.db.borrow_mut().set_merkle_record(record)?;
                         Ok(())
                     },
                     |_| Ok(()),
@@ -197,27 +126,16 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     pub fn batch_update_records(
-        &self,
+        &mut self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
-        let cname = self.get_collection_name();
-        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
-        let (_, new_records) = self.batch_get_records(&records)?;
-        /*
-        println!(
-            "records size is: {:?}, new record size is : {:?}",
-            records.len(),
-            new_records.len()
-        );*/
-
-        if new_records.len() > 0 {
+        if records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
-            for record in new_records.iter() {
+            for record in records.iter() {
                 cache.push((record.index, record.hash), Some(record.clone()));
             }
 
-            collection.insert_many(new_records, None)?;
+            self.db.borrow_mut().set_merkle_records(records)?;
         }
         Ok(())
     }
@@ -395,11 +313,11 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     type Root = [u8; 32];
     type Node = MerkleRecord;
 
-    fn construct(addr: Self::Id, root: Self::Root) -> Self {
+    fn construct(addr: Self::Id, root: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self {
         MongoMerkle {
-            contract_address: addr,
             root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
+            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr)))),
         }
     }
 
@@ -517,8 +435,9 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
 
 #[cfg(test)]
 mod tests {
-    use super::db::get_collection;
+    use super::db::{get_collection, MongoDB};
     use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
+    use crate::host::db::{get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::{bytes_to_u64, field_to_bytes};
     use halo2_proofs::pairing::bn256::Fr;
@@ -542,10 +461,11 @@ mod tests {
             bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])
         );
 
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone());
-        let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
-        let cname = mt.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
+        let mut mt =
+            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
+        let collection =
+            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         let (mut leaf, proof) = mt.get_leaf_with_proof(index).unwrap();
@@ -573,10 +493,11 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone());
-        let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
-        let cname = mt.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
+        let mut mt =
+            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
+        let collection =
+            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         // 2
@@ -590,7 +511,7 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a);
+        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -615,10 +536,11 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone());
-        let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
-        let cname = mt.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
+        let mut mt =
+            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
+        let collection =
+            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         // 2
@@ -632,7 +554,7 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a);
+        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -668,10 +590,10 @@ mod tests {
         ];
 
         // 1
-        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, DEFAULT_HASH_VEC[DEPTH]);
-        let dbname: String = MongoMerkle::<DEPTH>::get_db_name();
-        let cname = mt.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(dbname, cname).unwrap();
+        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, DEFAULT_HASH_VEC[DEPTH], None);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
+        let collection =
+            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
@@ -703,7 +625,7 @@ mod tests {
 
         // 5
         let root = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, root);
+        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);

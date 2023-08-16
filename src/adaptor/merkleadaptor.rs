@@ -9,14 +9,14 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 
 use crate::circuits::merkle::MerkleChip;
-use crate::circuits::CommonGateConfig;
 use crate::circuits::poseidon::PoseidonGateConfig;
+use crate::circuits::CommonGateConfig;
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
+use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::host::mongomerkle::MongoMerkle;
 use crate::host::mongomerkle::DEFAULT_HASH_VEC;
-use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::utils::bytes_to_u64;
 use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
@@ -47,12 +47,7 @@ fn kvpair_to_host_call_table(
     let mut r = vec![];
     for (addr, root, value, op) in inputs.into_iter() {
         r.push(kvpair_new(*addr));
-        r.push(crate::adaptor::fr_to_args(
-            *root,
-            4,
-            64,
-            MerkleSetRoot,
-        ));
+        r.push(crate::adaptor::fr_to_args(*root, 4, 64, MerkleSetRoot));
         for v in value.iter() {
             r.push(crate::adaptor::fr_to_args(*v, 2, 64, *op));
         }
@@ -267,6 +262,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         mt = Some(MongoMerkle::construct(
                             [0u8; 32],
                             field_to_bytes(&arg_group[1].value),
+                            None,
                         ));
 
                         let (_, proof) = mt
@@ -298,24 +294,28 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 #[cfg(test)]
 mod tests {
     use super::kvpair_to_host_call_table;
+    use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::mongomerkle::MongoMerkle;
     use crate::host::mongomerkle::DEFAULT_HASH_VEC;
-    use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{MerkleGet, MerkleSet};
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
+    use crate::MERKLE_DEPTH;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
-    use crate::MERKLE_DEPTH;
 
     #[test]
     fn generate_kvpair_input_get_set() {
         let root_default = Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[MERKLE_DEPTH]));
         let index = 2_u64.pow(MERKLE_DEPTH as u32) - 1;
         let data = Fr::from(0x1000 as u64);
-        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct([0u8; 32], DEFAULT_HASH_VEC[MERKLE_DEPTH].clone());
+        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct(
+            [0u8; 32],
+            DEFAULT_HASH_VEC[MERKLE_DEPTH].clone(),
+            None,
+        );
         let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);
@@ -339,7 +339,11 @@ mod tests {
         let index = 2_u64.pow(MERKLE_DEPTH as u32) - 1;
         let data = Fr::from(0x1000 as u64);
 
-        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct([0u8; 32], DEFAULT_HASH_VEC[MERKLE_DEPTH].clone());
+        let mut mt = MongoMerkle::<MERKLE_DEPTH>::construct(
+            [0u8; 32],
+            DEFAULT_HASH_VEC[MERKLE_DEPTH].clone(),
+            None,
+        );
         let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
         println!("bytes_data is {:?}", bytesdata);

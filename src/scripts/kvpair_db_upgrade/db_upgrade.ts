@@ -50,7 +50,7 @@ async function addIndexHashIndex(collection: mongoDB.Collection) {
                 "hash": -1
             },
             {
-                unique: true,
+                unique: false,
                 name: INDEX_NAME
             }
         );

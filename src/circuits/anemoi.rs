@@ -101,9 +101,6 @@ impl<F: FieldExt> AnemoiChip<F> {
             self.anemoi_state.apply_permutation(&self.config, region, offset)?;
         };
 
-        
-        // self.anemoi_state.add_constant_one(&self.config, region, offset)?;
-        // println!("{:?}", self.anemoi_state.state);
         // check result
         assert!(self.anemoi_state.state[0].value == result.value);
         Ok(())
@@ -141,9 +138,6 @@ impl<F: FieldExt> AnemoiState<F>{
         // copy first half of state into x, 2nd half into y
         x[0] = config.select(region, &mut (), offset, &Limb::new(None, F::zero()), &self.state[0].clone(), &Limb::new(None, F::zero()), 0)?;
         y[0] = config.select(region, &mut (), offset, &Limb::new(None, F::zero()), &self.state[1].clone(), &Limb::new(None, F::zero()), 0)?;
-        // println!("{:?}", x);
-        // println!("{:?}", y);
-
 
         for i in 0..NUM_COLUMNS {
             let y_square = self.mul(config, region, offset, &y[i].clone(), &y[i].clone())?;
@@ -162,8 +156,6 @@ impl<F: FieldExt> AnemoiState<F>{
                 0,
             )?[1].clone();
             x[i] = xi_f;
-
-            // x[i].value = x[i].clone().value - g_y_square.clone();
         }
 
         for i in 0..NUM_COLUMNS {
@@ -227,10 +219,7 @@ impl<F: FieldExt> AnemoiState<F>{
         offset: &mut usize,
     ) -> Result<(), Error>{
         self.state[1] = self.add(config, region, offset, &self.state[1].clone(), &self.state[0].clone())?;
-        // constrain needed, or just assign added_x?
         self.state[0] = self.add(config, region, offset, &self.state[0].clone(), &self.state[1].clone())?;
-
-
         
         Ok(())
     }
@@ -282,7 +271,6 @@ impl<F: FieldExt> AnemoiState<F>{
 
         for i in 0..NUM_HASH_ROUNDS {
             self.apply_round(config, region, offset, i)?;
-            // println!("{:?}", self.state[0].value)
         }
     
         self.apply_linear_layer(config, region, offset)?;
@@ -682,9 +670,6 @@ impl<F: FieldExt> AnemoiState<F>{
         )?[3].clone();
         *offset += 1;
         Ok(rhs)
-
-        // let x2_f = x.double() + x;
-        // Ok(Limb::new(None, x2_f))
     }
 
 }

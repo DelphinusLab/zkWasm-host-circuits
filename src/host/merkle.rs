@@ -261,6 +261,8 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 mod tests {
     use crate::host::db::TreeDB;
     use crate::host::merkle::{MerkleError, MerkleNode, MerkleTree};
+    use std::cell::RefCell;
+    use std::rc::Rc;
     struct MerkleAsArray {
         data: [u64; 127], // 2^7-1 and depth = 6
         root_hash: u64,
@@ -320,7 +322,11 @@ mod tests {
         type Id = String;
         type Root = String;
         type Node = MerkleU64Node;
-        fn construct(_addr: Self::Id, _id: Self::Root, _db: Option<Box<dyn TreeDB>>) -> Self {
+        fn construct(
+            _addr: Self::Id,
+            _id: Self::Root,
+            _db: Option<Rc<RefCell<dyn TreeDB>>>,
+        ) -> Self {
             MerkleAsArray {
                 data: [0 as u64; 127],
                 root_hash: 0,

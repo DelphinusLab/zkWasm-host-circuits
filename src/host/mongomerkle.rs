@@ -456,7 +456,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
 
 #[cfg(test)]
 mod tests {
-    use super::db::{get_collection, MongoDB};
+    use super::db::get_collection;
     use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
     use crate::host::db::{get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
     use crate::host::merkle::{MerkleNode, MerkleTree};
@@ -516,7 +516,7 @@ mod tests {
         // 1
         let mut mt =
             MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
-        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
         let collection =
             get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);
@@ -559,7 +559,7 @@ mod tests {
         // 1
         let mut mt =
             MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
-        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
         let collection =
             get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
         let _ = collection.delete_many(doc! {}, None);

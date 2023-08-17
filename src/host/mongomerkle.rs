@@ -125,7 +125,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         )
     }
 
-    pub fn batch_update_records(
+    //the input records must be in one leaf path
+    pub fn update_leaf_path_records(
         &mut self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
@@ -394,7 +395,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             .to_vec();
 
         records.push(leaf.clone());
-        self.batch_update_records(&records)
+        self.update_leaf_path_records(&records)
             .expect("Unexpected DB Error when update records.");
 
         Ok(())

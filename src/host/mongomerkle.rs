@@ -129,13 +129,34 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         &mut self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
-        if records.len() > 0 {
+        // sort records by index to ensure the parent node is processed before its child nodes.
+        let mut sort_records: Vec<MerkleRecord> = records.clone();
+        sort_records.sort_by(|r1, r2| r1.index.cmp(&r2.index));
+
+        let mut new_records: Vec<MerkleRecord> = vec![];
+        let mut check = true;
+        for record in sort_records {
+            // figure out whether a parent node had been added or not,
+            // to save the cache/db reading for its child nodes for optimizing.
+            if check {
+                match self.get_record(record.index, &record.hash) {
+                    Ok(Some(_)) => {}
+                    _ => {
+                        check = false;
+                        new_records.push(record);
+                    }
+                }
+            } else {
+                new_records.push(record);
+            }
+        }
+
+        if new_records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
-            for record in records.iter() {
+            for record in new_records.iter() {
                 cache.push((record.index, record.hash), Some(record.clone()));
             }
-
-            self.db.borrow_mut().set_merkle_records(records)?;
+            self.db.borrow_mut().set_merkle_records(&new_records)?;
         }
         Ok(())
     }

@@ -1,6 +1,9 @@
+use crate::host::db::TreeDB;
+use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 /*
 const LEAF_SIG: u8 = 0u8;
@@ -73,7 +76,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
-    fn construct(addr: Self::Id, id: Self::Root) -> Self;
+    fn construct(addr: Self::Id, id: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self;
 
     fn hash(a: &H, b: &H) -> H;
     fn set_parent(&mut self, index: u64, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
@@ -256,7 +259,10 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
 #[cfg(test)]
 mod tests {
+    use crate::host::db::TreeDB;
     use crate::host::merkle::{MerkleError, MerkleNode, MerkleTree};
+    use std::cell::RefCell;
+    use std::rc::Rc;
     struct MerkleAsArray {
         data: [u64; 127], // 2^7-1 and depth = 6
         root_hash: u64,
@@ -316,7 +322,11 @@ mod tests {
         type Id = String;
         type Root = String;
         type Node = MerkleU64Node;
-        fn construct(_addr: Self::Id, _id: Self::Root) -> Self {
+        fn construct(
+            _addr: Self::Id,
+            _id: Self::Root,
+            _db: Option<Rc<RefCell<dyn TreeDB>>>,
+        ) -> Self {
             MerkleAsArray {
                 data: [0 as u64; 127],
                 root_hash: 0,
@@ -407,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_merkle_path() {
-        let mut mt = MerkleAsArray::construct("test".to_string(), "test".to_string());
+        let mut mt = MerkleAsArray::construct("test".to_string(), "test".to_string(), None);
         let (mut leaf, _) = mt.get_leaf_with_proof(2_u64.pow(6) - 1).unwrap();
         leaf.value = 1;
         let _proof = mt.set_leaf_with_proof(&leaf).unwrap();

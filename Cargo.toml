@@ -41,11 +41,3 @@ default = ["mongo-tokio-sync"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]
 cuda = ["halo2_proofs/cuda"]
-
-
-[patch.'https://github.com/junyu0312/halo2']
-halo2_proofs = { path = '/home/xgao/batcher/halo2/halo2_proofs' }
-
-
-[patch.'https://github.com/DelphinusLab/continuation-batcher.git']
-circuits-batcher = { path = '/home/xgao/batcher/' }

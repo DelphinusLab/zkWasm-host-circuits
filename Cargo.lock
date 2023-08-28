@@ -441,6 +441,7 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git#172f96d318fb7bda31f8175fb8a5140df17054de"
 dependencies = [
  "anyhow",
  "ark-std",
@@ -1178,6 +1179,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.1.0-beta.1"
+source = "git+https://github.com/junyu0312/halo2?branch=gpu#49f0c26b2e60d8886bb9513c26d16b6edd3c369f"
 dependencies = [
  "ark-std",
  "blake2b_simd",

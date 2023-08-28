@@ -23,6 +23,7 @@ use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{Circuit, ConstraintSystem, Error},
 };
+use crate::circuits::babyjub::AltJubChip;
 
 use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
@@ -60,6 +61,7 @@ enum OpType {
     BN256SUM,
     POSEIDONHASH,
     MERKLE,
+    JUBJUBSUM,
 }
 
 #[derive(Clone)]
@@ -277,8 +279,23 @@ fn main() {
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, MERKLE_DEPTH>>> =
                 CircuitInfo::new(merkle_circuit, format!("{:?}", opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
+            prover.proofloadinfo.save(&cache_folder.as_path());
             prover.create_proof(cache_folder.as_path(), 0);
         }
+        OpType::JUBJUBSUM => {
+            let jubjub_circuit = HostOpCircuit::<Fr, AltJubChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData,
+            };
+            let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, AltJubChip<Fr>>> =
+                CircuitInfo::new(jubjub_circuit, format!("{:?}", opname), vec![], k, Poseidon);
+            //prover.mock_proof(k as u32);
+            prover.proofloadinfo.save(&cache_folder.as_path());
+            prover.create_proof(cache_folder.as_path(), 0);
+        }
+
     };
     println!("Proof generated.");
 }

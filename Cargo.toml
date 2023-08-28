@@ -19,10 +19,11 @@ strum = "0.24.1"
 strum_macros = "0.24.1"
 ff = "0.12"
 halo2_proofs = { git = "https://github.com/junyu0312/halo2", branch = "gpu", default-features = true }
-halo2aggregator-s = { git = "https://github.com/DelphinusLab/halo2aggregator-s.git", tag = "bisect-lookup-0.3.2", features = ["unsafe"] }
+halo2aggregator-s = { git = "https://github.com/DelphinusLab/halo2aggregator-s.git", branch = "main", features = ["unsafe"] }
 halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.3.2"}
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/lanbones/poseidon" }
+circuits-batcher = { git = "https://github.com/DelphinusLab/continuation-batcher.git" }
 rand = "0.8"
 ark-std = { version = "0.3.0", features = ["print-trace"] }
 serde = { version = "1.0", features = ["serde_derive"] }
@@ -39,3 +40,12 @@ lru = "0.11.0"
 default = ["mongo-tokio-sync"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]
+cuda = ["halo2_proofs/cuda"]
+
+
+[patch.'https://github.com/junyu0312/halo2']
+halo2_proofs = { path = '/home/xgao/batcher/halo2/halo2_proofs' }
+
+
+[patch.'https://github.com/DelphinusLab/continuation-batcher.git']
+circuits-batcher = { path = '/home/xgao/batcher/' }

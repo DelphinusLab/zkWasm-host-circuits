@@ -491,11 +491,11 @@ mod tests {
         let _ = collection.delete_many(doc! {}, None);
 
         let (mut leaf, proof) = mt.get_leaf_with_proof(index).unwrap();
-        assert_eq!(mt.verify_proof(proof).unwrap(), true);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
         let bytesdata = field_to_bytes(&data).to_vec();
         leaf.set(&bytesdata);
         let proof = mt.set_leaf_with_proof(&leaf).unwrap();
-        assert_eq!(mt.verify_proof(proof).unwrap(), true);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 
     #[test]
@@ -533,12 +533,12 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
-        assert_eq!(mt.verify_proof(proof).unwrap(), true);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 
     #[test]
@@ -576,12 +576,12 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
-        assert_eq!(mt.verify_proof(proof).unwrap(), true);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 
     /* Tests for 32 height m tree with updating multple leaves
@@ -647,19 +647,19 @@ mod tests {
 
         // 5
         let root = mt.get_root_hash();
-        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
+        let mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data, LEAF1_DATA);
-        assert!(mt.verify_proof(proof).unwrap());
+        assert!(mt.verify_proof(&proof).unwrap());
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX2).unwrap();
         assert_eq!(leaf.index, INDEX2);
         assert_eq!(leaf.data, LEAF2_DATA);
-        assert!(mt.verify_proof(proof).unwrap());
+        assert!(mt.verify_proof(&proof).unwrap());
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX3).unwrap();
         assert_eq!(leaf.index, INDEX3);
         assert_eq!(leaf.data, LEAF3_DATA);
-        assert!(mt.verify_proof(proof).unwrap());
+        assert!(mt.verify_proof(&proof).unwrap());
     }
 
     #[test]

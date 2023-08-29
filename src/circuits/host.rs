@@ -179,17 +179,16 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
     }
 
     pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
-        let witness = [0; 8].map(|i| {
-            if i==0 {
-                cs.named_advice_column("shared_operands".to_string())
-            } else if i==1 {
-                cs.named_advice_column("shared_opcodes".to_string())
-            } else if i==2 {
-                cs.named_advice_column("shared_index".to_string())
-            } else {
-                cs.advice_column()
-            }
-        });
+        let witness = [
+                cs.named_advice_column("shared_operands".to_string()),
+                cs.named_advice_column("shared_opcodes".to_string()),
+                cs.named_advice_column("shared_index".to_string()),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+        ];
         witness.map(|x| cs.enable_equality(x));
         let fixed = [cs.fixed_column(), cs.fixed_column()];
         let selector = [];

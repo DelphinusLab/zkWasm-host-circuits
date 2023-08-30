@@ -441,7 +441,7 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git#815c4b93bcf161d98cb64bd7dcb2f3930eebde22"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git#2fad6d521e19b816ed1fc89f1937185d6093a4a7"
 dependencies = [
  "anyhow",
  "ark-std",
@@ -1179,7 +1179,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.1.0-beta.1"
-source = "git+https://github.com/junyu0312/halo2?branch=gpu#1944d4c03bf7a936690665537ae3fede776c76fe"
+source = "git+https://github.com/junyu0312/halo2?branch=gpu#8dbcacf1a9374b64d2e1450db5754fa2ae2b829f"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -1206,7 +1206,7 @@ dependencies = [
 [[package]]
 name = "halo2aggregator-s"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?branch=main#11a5ca4f8ae7329775339b697c0a1cdc4ad82ac9"
+source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?branch=main#d93544206963b916bf074383a7ff2d403fd21ba0"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -3312,7 +3312,6 @@ dependencies = [
  "clap",
  "ff",
  "halo2_proofs",
- "halo2aggregator-s",
  "halo2ecc-s",
  "hex",
  "lazy_static",

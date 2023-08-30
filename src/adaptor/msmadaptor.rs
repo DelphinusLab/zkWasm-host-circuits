@@ -19,7 +19,7 @@ use crate::utils::Limb;
 const MERGE_SIZE: usize = 4;
 const CHUNK_SIZE: usize = 1 + (2 + 1 + 2) * MERGE_SIZE;
 
-const TOTAL_CONSTRUCTIONS: usize = 2;
+const TOTAL_CONSTRUCTIONS: usize = 400;
 
 fn msm_new(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {

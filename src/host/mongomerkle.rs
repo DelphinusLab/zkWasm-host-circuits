@@ -64,6 +64,7 @@ where
     binary.serialize(serializer)
 }
 
+#[derive(Clone)]
 pub struct MongoMerkle<const DEPTH: usize> {
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,

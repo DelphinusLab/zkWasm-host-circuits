@@ -18,8 +18,8 @@ path = "src/main.rs"
 strum = "0.24.1"
 strum_macros = "0.24.1"
 ff = "0.12"
-halo2_proofs = { git = "https://github.com/junyu0312/halo2", branch = "gpu", default-features = true }
-halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.3.2"}
+halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", default-features = true }
+halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.3.3"}
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/lanbones/poseidon" }
 circuits-batcher = { git = "https://github.com/DelphinusLab/continuation-batcher.git" }

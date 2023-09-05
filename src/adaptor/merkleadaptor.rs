@@ -297,7 +297,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
                         proof
                     };
-                    println!("assign proof ... ");
                     /*
                     println!("assist: {:?}", bytes_to_field::<Fr>(&proof.assist[0]));
                     println!("root: {:?}", bytes_to_field::<Fr>(&proof.root));
@@ -313,7 +312,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         &new_root,
                         [&value0, &value1],
                     )?;
-                    println!("finish assign proof ...");
                 }
                 Ok(())
             },

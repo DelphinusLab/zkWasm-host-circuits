@@ -55,6 +55,7 @@ fn hash_to_bson(x: &[u8; 32]) -> Bson {
 }
 */
 
+#[derive(Clone)]
 pub struct MongoDataHash {
     db: Rc<RefCell<dyn TreeDB>>,
 }

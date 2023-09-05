@@ -101,5 +101,5 @@ fn main() {
     let opname = parse_opname(&matches);
     let k = parse_circuits_k(&matches);
 
-    gen_host_proof("host", k as usize, read_host_call_table(input_file), opname, cache_folder, param_folder);
+    gen_host_proof("host", k as usize, &read_host_call_table(input_file), opname, &cache_folder, &param_folder);
 }

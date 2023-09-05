@@ -122,10 +122,10 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
 pub fn gen_host_proof(
     name: &str,
     k: usize,
-    v: ExternalHostCallEntryTable,
+    v: &ExternalHostCallEntryTable,
     opname: OpType,
-    cache_folder: PathBuf,
-    param_folder: PathBuf,
+    cache_folder: &PathBuf,
+    param_folder: &PathBuf,
 ) {
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();

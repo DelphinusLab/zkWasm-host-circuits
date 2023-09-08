@@ -331,7 +331,7 @@ mod tests {
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
-    use crate::MERKLE_DEPTH;
+    use crate::proof::MERKLE_DEPTH;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 

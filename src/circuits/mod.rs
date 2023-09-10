@@ -77,8 +77,15 @@ impl CommonGateConfig {
     pub fn configure<F: FieldExt, LC: LookupAssistConfig>(
         cs: &mut ConstraintSystem<F>,
         lookup_assist_config: &LC,
+        shared_advices: &Vec<Column<Advice>>
     ) -> Self {
-        let witness = [0; 5].map(|_| cs.advice_column());
+        let witness = [
+            shared_advices[0].clone(),
+            shared_advices[1].clone(),
+            shared_advices[2].clone(),
+            shared_advices[3].clone(),
+            shared_advices[4].clone(),
+        ];
         witness.map(|x| cs.enable_equality(x));
         let fixed = [0; 13].map(|_| cs.fixed_column());
         let selector = [];

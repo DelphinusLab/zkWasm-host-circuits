@@ -4,7 +4,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::plonk::Error;
+use halo2_proofs::plonk::{Error, Column, Advice};
 
 use crate::circuits::babyjub::{AltJubChip, Point as CircuitPoint};
 use crate::circuits::CommonGateConfig;
@@ -19,7 +19,8 @@ use crate::utils::Limb;
 const MERGE_SIZE: usize = 4;
 const CHUNK_SIZE: usize = 1 + (2 + 1 + 2) * MERGE_SIZE;
 
-const TOTAL_CONSTRUCTIONS: usize = 400;
+//const TOTAL_CONSTRUCTIONS: usize = 400;
+const TOTAL_CONSTRUCTIONS: usize = 4;
 
 fn msm_new(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
@@ -48,27 +49,31 @@ fn msm_to_host_call_table<F: FieldExt>(inputs: &Vec<(Point, F)>) -> Vec<External
 
 impl HostOpSelector for AltJubChip<Fr> {
     type Config = CommonGateConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        AltJubChip::<Fr>::configure(meta)
+    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advice: &Vec<Column<Advice>>) -> Self::Config {
+        AltJubChip::<Fr>::configure(meta, shared_advice)
     }
 
     fn construct(c: Self::Config) -> Self {
         AltJubChip::new(c)
     }
 
+    fn opcodes() -> Vec<Fr> {
+        vec![
+            Fr::from(JubjubSumNew as u64),
+            Fr::from(JubjubSumPush as u64),
+            Fr::from(JubjubSumResult as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(JubjubSumNew as u64),
-            Fr::from(JubjubSumPush as u64),
-            Fr::from(JubjubSumResult as u64),
-        ];
-
+        let opcodes = Self::opcodes();
         let entries = shared_operands
             .clone()
             .into_iter()
@@ -81,7 +86,6 @@ impl HostOpSelector for AltJubChip<Fr> {
 
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
 
-        let mut offset = 0;
         let mut r = vec![];
 
         for group in selected_entries.chunks_exact(CHUNK_SIZE) {
@@ -90,7 +94,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
             let (limb, _) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -109,7 +113,7 @@ impl HostOpSelector for AltJubChip<Fr> {
             {
                 let (limb, _) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     true,
@@ -132,7 +136,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
             let (limb, _) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -151,7 +155,7 @@ impl HostOpSelector for AltJubChip<Fr> {
             {
                 let (limb, _) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     false,
@@ -165,6 +169,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
     fn synthesize(
         &mut self,
+        offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -172,17 +177,16 @@ impl HostOpSelector for AltJubChip<Fr> {
         layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
-                let mut offset = 0;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut offset)?;
+                self.initialize(&config, &mut region, offset)?;
                 // arg_cells format 1 + 2 + 1 + 2
                 for arg_group in arg_cells.chunks_exact(6).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_incremental_msm(
                         &mut region,
-                        &mut offset,
+                        offset,
                         &CircuitPoint {
                             x: args[1].clone(),
                             y: args[2].clone(),

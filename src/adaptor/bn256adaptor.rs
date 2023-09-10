@@ -5,7 +5,7 @@ use halo2_proofs::pairing::group::Group;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region},
-    plonk::{ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error, Column, Advice},
 };
 
 pub const BN256FR_SIZE: usize = 4;
@@ -104,7 +104,7 @@ fn bn256_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bn256PairChip<Fr> {
     type Config = Bn256ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advice: &Vec<Column<Advice>>) -> Self::Config {
         Bn256PairChip::<Fr>::configure(meta)
     }
 
@@ -112,18 +112,23 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         Bn256PairChip::construct(c)
     }
 
+    fn opcodes() -> Vec<Fr> {
+        vec![
+            Fr::from(ForeignInst::Bn254PairG1 as u64),
+            Fr::from(ForeignInst::Bn254PairG2 as u64),
+            Fr::from(ForeignInst::Bn254PairG3 as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(ForeignInst::Bn254PairG1 as u64),
-            Fr::from(ForeignInst::Bn254PairG2 as u64),
-            Fr::from(ForeignInst::Bn254PairG3 as u64),
-        ];
+        let opcodes = Self::opcodes();
 
         let entries = shared_operands
             .clone()
@@ -371,6 +376,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
     fn synthesize(
         &mut self,
+        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -386,7 +392,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
 impl HostOpSelector for Bn256SumChip<Fr> {
     type Config = Bn256ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
         Bn256SumChip::<Fr>::configure(meta)
     }
 
@@ -394,19 +400,24 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         Bn256SumChip::construct(c)
     }
 
+    fn opcodes() -> Vec<Fr> {
+         vec![
+            Fr::from(ForeignInst::Bn254SumNew as u64),
+            Fr::from(ForeignInst::Bn254SumScalar as u64),
+            Fr::from(ForeignInst::Bn254SumG1 as u64),
+            Fr::from(ForeignInst::Bn254SumResult as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(ForeignInst::Bn254SumNew as u64),
-            Fr::from(ForeignInst::Bn254SumScalar as u64),
-            Fr::from(ForeignInst::Bn254SumG1 as u64),
-            Fr::from(ForeignInst::Bn254SumResult as u64),
-        ];
+        let opcodes = Self::opcodes();
 
         let entries = shared_operands
             .clone()
@@ -579,6 +590,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
 
     fn synthesize(
         &mut self,
+        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {

@@ -1,4 +1,6 @@
 use halo2_proofs::arithmetic::FieldExt;
+use halo2_proofs::plonk::Advice;
+use halo2_proofs::plonk::Column;
 
 use crate::circuits::{
     CommonGateConfig,
@@ -73,8 +75,8 @@ impl<F: FieldExt> AnemoiChip<F> {
         Ok(())
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &())
+    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advices: &Vec<Column<Advice>>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &(), shared_advices)
     }
 
     pub fn hash(
@@ -1083,10 +1085,17 @@ mod tests {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Felt>) -> Self::Config {
+        fn configure(cs: &mut ConstraintSystem<Felt>) -> Self::Config {
+            let witness = vec![
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+            ];
             Self::Config {
-               anemoiconfig: AnemoiChip::<Felt>::configure(meta),
-               helperconfig: HelperChip::configure(meta),
+               anemoiconfig: AnemoiChip::<Felt>::configure(cs, &witness),
+               helperconfig: HelperChip::configure(cs),
             }
         }
 

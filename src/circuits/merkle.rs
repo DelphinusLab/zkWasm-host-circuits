@@ -5,6 +5,8 @@ use crate::utils::bytes_to_field;
 use crate::utils::field_to_bytes;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Chip, Region};
+use halo2_proofs::plonk::Advice;
+use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 use std::marker::PhantomData;
@@ -94,8 +96,8 @@ impl<const D: usize> MerkleChip<Fr, D> {
         self.data_hasher_chip.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> (CommonGateConfig, PoseidonGateConfig) {
-        let config = CommonGateConfig::configure(cs, &());
+    pub fn configure(cs: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> (CommonGateConfig, PoseidonGateConfig) {
+        let config = CommonGateConfig::configure(cs, &(), shared_advices);
         let extend = PoseidonGateConfig::configure(cs, &config);
         (config, extend)
     }

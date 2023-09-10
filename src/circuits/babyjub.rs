@@ -3,7 +3,7 @@ use crate::circuits::{CommonGateConfig, Limb};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region},
-    plonk::{ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error, Advice, Column},
 };
 use std::marker::PhantomData;
 
@@ -129,8 +129,8 @@ impl<F: FieldExt> AltJubChip<F> {
         Ok(())
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &())
+    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advice: &Vec<Column<Advice>>) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, &(), shared_advice)
     }
 
     pub fn add(
@@ -732,10 +732,17 @@ mod tests {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let witness = vec![
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+            ];
             Self::Config {
-                altjubconfig: AltJubChip::<Fr>::configure(meta),
-                helperconfig: HelperChip::configure(meta),
+                altjubconfig: AltJubChip::<Fr>::configure(cs, &witness),
+                helperconfig: HelperChip::configure(cs),
             }
         }
 
@@ -802,10 +809,17 @@ mod tests {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let witness = vec![
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+            ];
             Self::Config {
-                altjubconfig: AltJubChip::<Fr>::configure(meta),
-                helperconfig: HelperChip::configure(meta),
+                altjubconfig: AltJubChip::<Fr>::configure(cs, &witness),
+                helperconfig: HelperChip::configure(cs),
             }
         }
 

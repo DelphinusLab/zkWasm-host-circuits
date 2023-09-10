@@ -195,8 +195,8 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         self.poseidon_state.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>) -> (CommonGateConfig, PoseidonGateConfig) {
-        let config = CommonGateConfig::configure(cs, &());
+    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advices: &Vec<Column<Advice>>) -> (CommonGateConfig, PoseidonGateConfig) {
+        let config = CommonGateConfig::configure(cs, &(), shared_advices);
         let extend = PoseidonGateConfig::configure(cs, &config);
         (config, extend)
     }
@@ -670,12 +670,20 @@ mod tests {
             Self::default()
         }
 
-        fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-            let (commonconfig, poseidonconfig)  = PoseidonChip::<Fr, 9, 8>::configure(meta);
+        fn configure(cs: &mut ConstraintSystem<Fr>) -> Self::Config {
+            let witness = vec![
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+                cs.advice_column(),
+            ];
+
+            let (commonconfig, poseidonconfig)  = PoseidonChip::<Fr, 9, 8>::configure(cs, &witness);
             Self::Config {
                 commonconfig,
                 poseidonconfig,
-                helperconfig: HelperChip::configure(meta),
+                helperconfig: HelperChip::configure(cs),
             }
         }
 

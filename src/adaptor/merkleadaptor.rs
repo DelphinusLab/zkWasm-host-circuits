@@ -7,6 +7,8 @@ use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
+use halo2_proofs::plonk::Advice;
+use halo2_proofs::plonk::Column;
 
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
@@ -59,29 +61,33 @@ fn kvpair_to_host_call_table(
 
 impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        MerkleChip::<Fr, DEPTH>::configure(meta)
+    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+        MerkleChip::<Fr, DEPTH>::configure(meta, shared_advices)
     }
 
     fn construct(c: Self::Config) -> Self {
         MerkleChip::new(c.0, c.1)
     }
 
-    fn assign(
-        region: &mut Region<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-        config: &HostOpConfig,
-    ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
+    fn opcodes() -> Vec<Fr> {
+        vec![
             Fr::from(MerkleSetRoot as u64),
             Fr::from(MerkleGetRoot as u64),
             Fr::from(MerkleAddress as u64),
             Fr::from(MerkleSet as u64),
             Fr::from(MerkleGet as u64),
-        ];
+        ]
+    }
 
+    fn assign(
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        shared_index: &Vec<Fr>,
+        config: &HostOpConfig,
+    ) -> Result<Vec<Limb<Fr>>, Error> {
+        let opcodes = Self::opcodes();
         let entries = shared_operands
             .clone()
             .into_iter()
@@ -94,7 +100,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
 
-        let mut offset = 0;
         let mut r = vec![];
 
         for group in selected_entries.chunks_exact(CHUNK_SIZE) {
@@ -105,7 +110,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let (limb, op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -120,7 +125,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let (limb, _) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![&group[1], &group[2], &group[3], &group[4]],
                 Fr::from_u128(1u128 << 64),
                 true,
@@ -129,7 +134,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let (limb_new_root, _) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![&group[9], &group[10], &group[11], &group[12]],
                 Fr::from_u128(1u128 << 64),
                 true,
@@ -143,7 +148,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             {
                 let (limb, op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     true,
@@ -174,7 +179,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let (limb, op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -188,7 +193,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let (limb, _) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![
                     &default_entries[1],
                     &default_entries[2],
@@ -203,7 +208,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             // new root does not change
             let (limb, _) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![
                     &default_entries[1],
                     &default_entries[2],
@@ -222,7 +227,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             {
                 let (limb, op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     false,
@@ -238,6 +243,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
     fn synthesize(
         &mut self,
+        offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -246,9 +252,8 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
-                let mut offset = 0;
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut offset)?;
+                self.initialize(&config, &mut region, offset)?;
                 // Initialize the mongodb
                 // 0: address
                 // 1: root
@@ -304,7 +309,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                     */
                     self.assign_proof(
                         &mut region,
-                        &mut offset,
+                        offset,
                         &proof,
                         &opcode,
                         &address,

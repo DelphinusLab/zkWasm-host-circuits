@@ -12,7 +12,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::plonk::{Error, Expression, VirtualCells};
+use halo2_proofs::plonk::{Error, Expression, VirtualCells, Column, Advice};
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 
@@ -63,27 +63,31 @@ const TOTAL_CONSTRUCTIONS: usize = 2048;
 
 impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        PoseidonChip::<Fr, 9, 8>::configure(meta)
+    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+        PoseidonChip::<Fr, 9, 8>::configure(meta, shared_advices)
     }
 
     fn construct(c: Self::Config) -> Self {
         PoseidonChip::construct(c.0, c.1, POSEIDON_HASHER_SPEC.clone())
     }
 
+    fn opcodes() -> Vec<Fr> {
+        vec![
+            Fr::from(ForeignInst::PoseidonNew as u64),
+            Fr::from(ForeignInst::PoseidonPush as u64),
+            Fr::from(ForeignInst::PoseidonFinalize as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(ForeignInst::PoseidonNew as u64),
-            Fr::from(ForeignInst::PoseidonPush as u64),
-            Fr::from(ForeignInst::PoseidonFinalize as u64),
-        ];
-
+        let opcodes = Self::opcodes();
         let entries = shared_operands
             .clone()
             .into_iter()
@@ -96,7 +100,6 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 
         let total_used_instructions = selected_entries.len() / (1 + 8 * 4 + 4);
 
-        let mut offset = 0;
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
@@ -106,7 +109,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 
             let (limb, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -125,7 +128,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
             {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     true,
@@ -161,7 +164,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 
             let (limb, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -180,7 +183,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
             {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     false,
@@ -194,6 +197,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 
     fn synthesize(
         &mut self,
+        offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -201,16 +205,15 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
-                let mut offset = 0;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut offset)?;
+                self.initialize(&config, &mut region, offset)?;
                 for arg_group in arg_cells.chunks_exact(10).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_permute(
                         &mut region,
-                        &mut offset,
+                        offset,
                         &args[1..9].to_vec().try_into().unwrap(),
                         &args[0],
                         &args[9],

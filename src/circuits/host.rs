@@ -18,12 +18,12 @@ use crate::constant_from;
 
 #[rustfmt::skip]
 customized_circuits!(HostOpConfig, 2, 8, 2, 0,
-    | shared_operand | shared_opcode | shared_index | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
-    | nil            | nil           | nil          | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
+    | shared_operand | shared_opcode | shared_index   | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
+    | nil            | nil           | shared_index_n | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
 );
 
 impl HostOpConfig {
-    pub fn configure<F: FieldExt>(&self, cs: &mut ConstraintSystem<F>) {
+    pub fn configure<F: FieldExt>(&self, cs: &mut ConstraintSystem<F>, _opcodes: &Vec<Fr>) {
         cs.lookup_any("filter-shared-ops", |meta| {
             let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
             let soper = self.get_expr(meta, HostOpConfig::shared_operand());
@@ -32,6 +32,8 @@ impl HostOpConfig {
             let fopc = self.get_expr(meta, HostOpConfig::filtered_opcode());
             let foper = self.get_expr(meta, HostOpConfig::filtered_operand());
             let fidx = self.get_expr(meta, HostOpConfig::filtered_index());
+            let sel = self.get_expr(meta, HostOpConfig::sel());
+            let enable = enable * sel;
             vec![
                 (fidx * enable.clone(), sidx),
                 (foper * enable.clone(), soper),
@@ -47,6 +49,7 @@ impl HostOpConfig {
             vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
         });
 
+        /* enable is continuous with pattern 1,1,1,1,1,0,0,0,0 when sel is active */
         cs.create_gate("enable consistant", |meta| {
             let enable = self.get_expr(meta, HostOpConfig::enable());
             let enable_n = self.get_expr(meta, HostOpConfig::enable_n());
@@ -134,10 +137,12 @@ impl HostOpConfig {
 
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config;
+    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advice: &Vec<Column<Advice>>) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
+    fn opcodes() -> Vec<Fr>;
     fn assign(
         region: &mut Region<Fr>,
+        offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
@@ -145,6 +150,7 @@ pub trait HostOpSelector {
     ) -> Result<Vec<Limb<Fr>>, Error>;
     fn synthesize(
         &mut self,
+        offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error>;
@@ -178,29 +184,30 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         }
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
+    pub fn configure(cs: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> <Self as Chip<Fr>>::Config {
         let witness = [
                 cs.named_advice_column("shared_operands".to_string()),
                 cs.named_advice_column("shared_opcodes".to_string()),
                 cs.named_advice_column("shared_index".to_string()),
-                cs.advice_column(),
-                cs.advice_column(),
-                cs.advice_column(),
-                cs.advice_column(),
-                cs.advice_column(),
+                shared_advices[0].clone(),
+                shared_advices[1].clone(),
+                shared_advices[2].clone(),
+                shared_advices[3].clone(),
+                shared_advices[4].clone(),
         ];
         witness.map(|x| cs.enable_equality(x));
         let fixed = [cs.fixed_column(), cs.fixed_column()];
         let selector = [];
 
         let config = HostOpConfig::new(witness, fixed, selector);
-        config.configure(cs);
+        config.configure(cs, &S::opcodes());
         config
     }
 
     pub fn assign(
         &self,
         layouter: &mut impl Layouter<Fr>,
+        arg_offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
@@ -253,6 +260,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 }
                 arg_cells = Some(S::assign(
                     &mut region,
+                    arg_offset,
                     shared_operands,
                     shared_opcodes,
                     shared_index,

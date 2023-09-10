@@ -4,7 +4,7 @@ use halo2_proofs::pairing::bls12_381::pairing;
 use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine};
 use halo2_proofs::{
     circuit::{Layouter, Region},
-    plonk::{ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error, Advice, Column},
 };
 
 pub const BLS381FR_SIZE: usize = 5;
@@ -101,7 +101,7 @@ fn bls381_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bls381PairChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
         Bls381PairChip::<Fr>::configure(meta)
     }
 
@@ -109,18 +109,23 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         Bls381PairChip::construct(c)
     }
 
+    fn opcodes() -> Vec<Fr> {
+        vec![
+            Fr::from(ForeignInst::BlsPairG1 as u64),
+            Fr::from(ForeignInst::BlsPairG2 as u64),
+            Fr::from(ForeignInst::BlsPairG3 as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(ForeignInst::BlsPairG1 as u64),
-            Fr::from(ForeignInst::BlsPairG2 as u64),
-            Fr::from(ForeignInst::BlsPairG3 as u64),
-        ];
+        let opcodes = Self::opcodes();
 
         let entries = shared_operands
             .clone()
@@ -278,6 +283,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
     fn synthesize(
         &mut self,
+        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -292,7 +298,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
 impl HostOpSelector for Bls381SumChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
         Bls381SumChip::<Fr>::configure(meta)
     }
 
@@ -300,19 +306,24 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         Bls381SumChip::construct(c)
     }
 
+    fn opcodes() -> Vec<Fr> {
+        vec![
+            Fr::from(ForeignInst::BlsSumNew as u64),
+            Fr::from(ForeignInst::BlsSumScalar as u64),
+            Fr::from(ForeignInst::BlsSumG1 as u64),
+            Fr::from(ForeignInst::BlsSumResult as u64),
+        ]
+    }
+
     fn assign(
         region: &mut Region<Fr>,
+        _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
-            Fr::from(ForeignInst::BlsSumNew as u64),
-            Fr::from(ForeignInst::BlsSumScalar as u64),
-            Fr::from(ForeignInst::BlsSumG1 as u64),
-            Fr::from(ForeignInst::BlsSumResult as u64),
-        ];
+        let opcodes = Self::opcodes();
 
         let entries = shared_operands
             .clone()
@@ -485,6 +496,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
 
     fn synthesize(
         &mut self,
+        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {

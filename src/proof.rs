@@ -79,10 +79,17 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     }
 
     fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
+        let shared_advices = vec![
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+        ];
         // We create the two advice columns that FieldChip uses for I/O.
         HostCircuitConfig {
-            hostconfig: HostOpChip::<Fr, S>::configure(meta),
-            selectconfig: S::configure(meta),
+            hostconfig: HostOpChip::<Fr, S>::configure(meta, &shared_advices),
+            selectconfig: S::configure(meta, &shared_advices),
         }
     }
 
@@ -93,8 +100,10 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     ) -> Result<(), Error> {
         let host_op_chip =
             HostOpChip::<Fr, S>::construct(config.hostconfig.clone(), config.selectconfig.clone());
+        let mut offset = 0;
         let all_arg_cells = host_op_chip.assign(
             &mut layouter,
+            &mut offset,
             &self.shared_operands,
             &self.shared_opcodes,
             &self.shared_index,
@@ -102,7 +111,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
         //all_arg_cells.retain(|x| x.value().is_some());
         let mut selector_chip = S::construct(config.selectconfig);
         println!("arg cell num is: {:?}", all_arg_cells.len());
-        selector_chip.synthesize(&all_arg_cells, &mut layouter)?;
+        selector_chip.synthesize(&mut offset, &all_arg_cells, &mut layouter)?;
         Ok(())
     }
 }
@@ -202,7 +211,7 @@ pub fn exec_create_host_proof(
             let jubjub_circuit = build_host_circuit::<AltJubChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, AltJubChip<Fr>>> =
                 CircuitInfo::new(jubjub_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
-            //prover.mock_proof(k as u32);
+            prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }

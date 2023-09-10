@@ -9,7 +9,7 @@ use std::ops::{Div, Mul};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region},
-    plonk::{ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error, Advice, Column},
 };
 use num_bigint::BigUint;
 use std::marker::PhantomData;
@@ -85,8 +85,9 @@ impl<F: FieldExt> ModExpChip<F> {
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         range_check_config: &RangeCheckConfig,
+        shared_advices: &Vec<Column<Advice>>
     ) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, range_check_config)
+        CommonGateConfig::configure(cs, range_check_config, shared_advices)
     }
 
     fn assign_constant_number(
@@ -806,8 +807,16 @@ mod tests {
 
                 fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
                     let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
+
+                    let witness = vec![
+                        meta.advice_column(),
+                        meta.advice_column(),
+                        meta.advice_column(),
+                        meta.advice_column(),
+                        meta.advice_column(),
+                    ];
                     Self::Config {
-                        modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig),
+                        modexpconfig: ModExpChip::<Fr>::configure(meta, &rangecheckconfig, &witness),
                         helperconfig: HelperChip::configure(meta),
                         rangecheckconfig,
                     }

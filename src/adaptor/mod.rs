@@ -1,7 +1,7 @@
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
 use crate::utils::field_to_bn;
-use halo2_proofs::arithmetic::BaseExt;
+use halo2_proofs::arithmetic::{BaseExt, FieldExt};
 use num_bigint::BigUint;
 
 pub mod bls381adaptor;
@@ -36,3 +36,28 @@ pub fn fr_to_args<F: BaseExt>(
     }
     ret
 }
+
+pub fn get_selected_entries<Fr: FieldExt>(
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        opcodes: &Vec<Fr>,
+    ) -> Vec<((Fr, Fr), Fr)> {
+        let entries = shared_operands
+            .clone()
+            .into_iter()
+            .zip(shared_opcodes.clone());
+
+        let v = entries
+            .filter(|(_operand, opcode)| opcodes.contains(opcode))
+            .collect::<Vec<(Fr, Fr)>>();
+
+        let shared_index: Vec<Fr> =
+            v.iter()
+            .enumerate()
+            .map(|(i, _)| Fr::from(i as u64))
+            .collect();
+
+        v.into_iter().zip(shared_index).collect::<Vec<((Fr, Fr), Fr)>>()
+}
+
+

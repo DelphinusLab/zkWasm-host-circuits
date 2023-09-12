@@ -17,6 +17,7 @@ use crate::circuits::{
 };
 
 use circuits_batcher::proof::CircuitInfo;
+use circuits_batcher::proof::Prover;
 use circuits_batcher::args::HashType::Poseidon;
 
 use crate::host::ExternalHostCallEntryTable;
@@ -48,7 +49,6 @@ pub enum OpType {
 pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
-    shared_index: Vec<F>,
     _marker: PhantomData<(F, S)>,
 }
 
@@ -57,7 +57,6 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
         HostOpCircuit {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
-            shared_index: Vec::<F>::default(),
             _marker: PhantomData,
         }
     }
@@ -106,7 +105,6 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             &mut offset,
             &self.shared_operands,
             &self.shared_opcodes,
-            &self.shared_index,
         )?;
         //all_arg_cells.retain(|x| x.value().is_some());
         let mut selector_chip = S::construct(config.selectconfig);
@@ -134,16 +132,10 @@ pub fn build_host_circuit<S: HostOpSelector>(
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
     let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
-    let shared_index =
-        v.0.iter()
-            .enumerate()
-            .map(|(i, _)| Fr::from(i as u64))
-            .collect();
 
     HostOpCircuit::<Fr, S> {
         shared_operands,
         shared_opcodes,
-        shared_index,
         _marker: PhantomData,
     }
 }

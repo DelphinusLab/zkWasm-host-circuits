@@ -17,9 +17,9 @@ use halo2_proofs::{
 use crate::constant_from;
 
 #[rustfmt::skip]
-customized_circuits!(HostOpConfig, 2, 8, 2, 0,
-    | shared_operand | shared_opcode | shared_index   | enable   | filtered_operand   | filtered_opcode  | filtered_index | merged_op   | indicator | sel
-    | nil            | nil           | shared_index_n | enable_n | filtered_operand_n | nil              | nil            | merged_op_n | nil       | nil
+customized_circuits!(HostOpConfig, 2, 8, 4, 0,
+    | shared_operand | shared_opcode | shared_index   | p1  | p2  | enable   | filtered_operand   | merged_op   | indicator | filtered_index | filtered_opcode  | sel
+    | nil            | nil           | shared_index_n | nil | nil | enable_n | filtered_operand_n | merged_op_n | nil       | nil            | nil              | nil
 );
 
 impl HostOpConfig {
@@ -145,7 +145,6 @@ pub trait HostOpSelector {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error>;
     fn synthesize(
@@ -196,7 +195,12 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 shared_advices[4].clone(),
         ];
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [cs.fixed_column(), cs.fixed_column()];
+        let fixed = [
+            cs.fixed_column(),
+            cs.fixed_column(),
+            cs.fixed_column(),
+            cs.fixed_column(),
+        ];
         let selector = [];
 
         let config = HostOpConfig::new(witness, fixed, selector);
@@ -210,7 +214,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         arg_offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let mut arg_cells = None;
         layouter.assign_region(
@@ -218,6 +221,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             |mut region| {
                 println!("assign_region");
                 let mut offset = 0;
+                let mut index = 0;
                 self.config.assign_cell(
                     &mut region,
                     offset,
@@ -238,6 +242,9 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 )?;
                 offset += 1;
                 for opcode in shared_opcodes {
+                    if S::opcodes().contains(&opcode) {
+                        index += 1;
+                     }
                     self.config.assign_cell(
                         &mut region,
                         offset,
@@ -254,7 +261,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                         &mut region,
                         offset,
                         &HostOpConfig::shared_index(),
-                        shared_index[offset-1],
+                        Fr::from(index as u64),
                     )?;
                     offset += 1;
                 }
@@ -263,7 +270,6 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                     arg_offset,
                     shared_operands,
                     shared_opcodes,
-                    shared_index,
                     &self.config,
                 )?);
                 Ok(())

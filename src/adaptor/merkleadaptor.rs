@@ -9,13 +9,11 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
-
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
-
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
-
+use crate::adaptor::get_selected_entries;
 use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::host::mongomerkle::MongoMerkle;
 use crate::host::mongomerkle::DEFAULT_HASH_VEC;
@@ -84,19 +82,10 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
 

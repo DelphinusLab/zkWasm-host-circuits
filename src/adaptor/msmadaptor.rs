@@ -5,14 +5,12 @@ use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::{Error, Column, Advice};
-
 use crate::circuits::babyjub::{AltJubChip, Point as CircuitPoint};
 use crate::circuits::CommonGateConfig;
 use crate::host::ForeignInst::{JubjubSumNew, JubjubSumPush, JubjubSumResult};
-
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
-
 use crate::adaptor::field_to_bn;
+use crate::adaptor::get_selected_entries;
 use crate::host::jubjub::Point;
 use crate::utils::Limb;
 
@@ -70,20 +68,10 @@ impl HostOpSelector for AltJubChip<Fr> {
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
-
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
 
         let mut r = vec![];

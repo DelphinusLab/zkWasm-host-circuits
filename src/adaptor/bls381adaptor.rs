@@ -21,6 +21,7 @@ use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::utils::Limb;
 
 use crate::host::{ExternalHostCallEntry, ForeignInst};
+use super::get_selected_entries;
 
 const TOTAL_CONSTRUCTIONS_PAIR: usize = 1;
 const TOTAL_CONSTRUCTIONS_SUM: usize = 16;
@@ -122,20 +123,11 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
 
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
         assert!(selected_entries.len() % BLSPAIR_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BLSPAIR_SIZE;
@@ -320,20 +312,10 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
-
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
         assert!(selected_entries.len() % BLSSUM_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BLSSUM_SIZE;

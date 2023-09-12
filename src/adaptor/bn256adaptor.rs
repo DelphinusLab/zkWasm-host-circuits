@@ -7,6 +7,7 @@ use halo2_proofs::{
     circuit::{Layouter, Region},
     plonk::{ConstraintSystem, Error, Column, Advice},
 };
+use super::get_selected_entries;
 
 pub const BN256FR_SIZE: usize = 4;
 //pub const BN256FQ_SIZE: usize = 5;
@@ -125,20 +126,10 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
-
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
         assert!(selected_entries.len() % BN256PAIR_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BN256PAIR_SIZE;
@@ -414,21 +405,10 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let opcodes = Self::opcodes();
-
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
-
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
         assert!(selected_entries.len() % BN256SUM_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BN256SUM_SIZE;
 

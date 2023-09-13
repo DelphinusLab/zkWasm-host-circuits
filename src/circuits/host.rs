@@ -216,7 +216,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         shared_opcodes: &Vec<Fr>,
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let mut arg_cells = None;
-        layouter.assign_region(
+        *arg_offset = layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
                 println!("assign_region");
@@ -265,14 +265,15 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                     )?;
                     offset += 1;
                 }
+                let mut local_offset = *arg_offset; 
                 arg_cells = Some(S::assign(
                     &mut region,
-                    arg_offset,
+                    &mut local_offset,
                     shared_operands,
                     shared_opcodes,
                     &self.config,
                 )?);
-                Ok(())
+                Ok(local_offset)
             },
         )?;
         Ok(arg_cells.unwrap())

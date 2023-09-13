@@ -70,6 +70,7 @@ impl HostOpSelector for AltJubChip<Fr> {
         shared_opcodes: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
+        println!("host op assign {}!", offset);
         let opcodes = Self::opcodes();
         let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
@@ -161,20 +162,22 @@ impl HostOpSelector for AltJubChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        println!("total args is {}", arg_cells.len());
-        layouter.assign_region(
+        println!("msm adaptor total args is {}", arg_cells.len());
+        *offset = layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
+                println!("msm adaptor starting offset is {}", offset);
+                let mut local_offset = *offset;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, offset)?;
+                self.initialize(&config, &mut region, &mut local_offset)?;
                 // arg_cells format 1 + 2 + 1 + 2
                 for arg_group in arg_cells.chunks_exact(6).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_incremental_msm(
                         &mut region,
-                        offset,
+                        &mut local_offset,
                         &CircuitPoint {
                             x: args[1].clone(),
                             y: args[2].clone(),
@@ -188,7 +191,7 @@ impl HostOpSelector for AltJubChip<Fr> {
                     )?;
                 }
                 end_timer!(timer);
-                Ok(())
+                Ok(local_offset)
             },
         )?;
         Ok(())

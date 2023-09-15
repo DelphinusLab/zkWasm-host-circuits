@@ -54,7 +54,7 @@ pub fn get_selected_entries<Fr: FieldExt>(
         let shared_index: Vec<Fr> =
             v.iter()
             .enumerate()
-            .map(|(i, _)| Fr::from(i as u64))
+            .map(|(i, _)| Fr::from(i as u64 + 1))
             .collect();
 
         v.into_iter().zip(shared_index).collect::<Vec<((Fr, Fr), Fr)>>()

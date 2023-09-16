@@ -16,7 +16,7 @@ use crate::circuits::{
     poseidon::PoseidonChip,
 };
 
-use circuits_batcher::proof::{CircuitInfo, Prover};
+use circuits_batcher::proof::CircuitInfo;
 use circuits_batcher::args::HashType::Poseidon;
 
 use crate::host::ExternalHostCallEntryTable;
@@ -45,7 +45,7 @@ pub enum OpType {
 }
 
 #[derive(Clone)]
-struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
+pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
     shared_index: Vec<F>,
@@ -64,7 +64,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
 }
 
 #[derive(Clone)]
-struct HostCircuitConfig<C: Clone> {
+pub struct HostCircuitConfig<C: Clone> {
     hostconfig: HostOpConfig,
     selectconfig: C,
 }
@@ -119,14 +119,9 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
     v
 }
 
-pub fn gen_host_proof(
-    name: &str,
-    k: usize,
+pub fn build_host_circuit<S: HostOpSelector>(
     v: &ExternalHostCallEntryTable,
-    opname: OpType,
-    cache_folder: &PathBuf,
-    param_folder: &PathBuf,
-) {
+) -> HostOpCircuit<Fr, S> {
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
     let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
@@ -136,99 +131,80 @@ pub fn gen_host_proof(
             .map(|(i, _)| Fr::from(i as u64))
             .collect();
 
+    HostOpCircuit::<Fr, S> {
+        shared_operands,
+        shared_opcodes,
+        shared_index,
+        _marker: PhantomData,
+    }
+}
+
+pub fn exec_create_host_proof(
+    name: &str,
+    k: usize,
+    v: &ExternalHostCallEntryTable,
+    opname: OpType,
+    cache_folder: &PathBuf,
+    param_folder: &PathBuf,
+) {
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
     match opname {
         OpType::BLS381PAIR => {
-            let bls381pair_circuit = HostOpCircuit::<Fr, Bls381PairChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let bls381pair_circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> =
                 CircuitInfo::new(bls381pair_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::BLS381SUM => {
-            let bls381sum_circuit = HostOpCircuit::<Fr, Bls381SumChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let bls381sum_circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> =
                 CircuitInfo::new(bls381sum_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::BN256PAIR => {
-            let bn256pair_circuit = HostOpCircuit::<Fr, Bn256PairChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let bn256pair_circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> =
                 CircuitInfo::new(bn256pair_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::BN256SUM => {
-            let bn256sum_circuit = HostOpCircuit::<Fr, Bn256SumChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let bn256sum_circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> =
                 CircuitInfo::new(bn256sum_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::POSEIDONHASH => {
-            let poseidon_circuit = HostOpCircuit::<Fr, PoseidonChip<Fr, 9, 8>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let poseidon_circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
                 CircuitInfo::new(poseidon_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::MERKLE => {
-            let merkle_circuit = HostOpCircuit::<Fr, MerkleChip<Fr, MERKLE_DEPTH>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let merkle_circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, MERKLE_DEPTH>>> =
                 CircuitInfo::new(merkle_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
         OpType::JUBJUBSUM => {
-            let jubjub_circuit = HostOpCircuit::<Fr, AltJubChip<Fr>> {
-                shared_operands,
-                shared_opcodes,
-                shared_index,
-                _marker: PhantomData,
-            };
+            let jubjub_circuit = build_host_circuit::<AltJubChip<Fr>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, AltJubChip<Fr>>> =
                 CircuitInfo::new(jubjub_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             //prover.mock_proof(k as u32);
             prover.proofloadinfo.save(&cache_folder.as_path());
-            prover.create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
+            prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
 
     };

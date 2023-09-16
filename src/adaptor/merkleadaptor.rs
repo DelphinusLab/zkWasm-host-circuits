@@ -238,11 +238,12 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     ) -> Result<(), Error> {
         //println!("total args is {}", arg_cells.len());
         let default_index = 1u64 << DEPTH;
-        layouter.assign_region(
+        *offset = layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, offset)?;
+                let mut local_offset = *offset;
+                self.initialize(&config, &mut region, &mut local_offset)?;
                 // Initialize the mongodb
                 // 0: address
                 // 1: root
@@ -252,7 +253,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 let mut mt: Option<MongoMerkle<DEPTH>> = None;
                 for args in arg_cells.chunks_exact(6) {
                     let [address, root, new_root, value0, value1, opcode] = args else { unreachable!() };
-                    //println!("offset {} === op = {:?}", offset, opcode.value);
+                    //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
                     //println!("address is {}", address.value.get_lower_128());
                     //println!("root update is {:?} {:?}", root.value, new_root.value);
                     //println!("value is {:?} {:?}", value0.value, value1.value);
@@ -298,7 +299,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                     */
                     self.assign_proof(
                         &mut region,
-                        offset,
+                        &mut local_offset,
                         &proof,
                         &opcode,
                         &address,
@@ -307,7 +308,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         [&value0, &value1],
                     )?;
                 }
-                Ok(())
+                Ok(local_offset)
             },
         )?;
         Ok(())

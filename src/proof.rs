@@ -187,7 +187,8 @@ pub fn exec_create_host_proof(
             let poseidon_circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
                 CircuitInfo::new(poseidon_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
-            //prover.mock_proof(k as u32);
+            prover.mock_proof(k as u32);
+            println!("mock proof for poseidon hash success");
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
@@ -195,7 +196,8 @@ pub fn exec_create_host_proof(
             let merkle_circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, MERKLE_DEPTH>>> =
                 CircuitInfo::new(merkle_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
-            //prover.mock_proof(k as u32);
+            prover.mock_proof(k as u32);
+            println!("mock proof for merkle success");
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }
@@ -204,6 +206,7 @@ pub fn exec_create_host_proof(
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, AltJubChip<Fr>>> =
                 CircuitInfo::new(jubjub_circuit, format!("{}.{:?}", name, opname), vec![], k, Poseidon);
             prover.mock_proof(k as u32);
+            println!("mock proof for jubjub success");
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(cache_folder.as_path(), param_folder.as_path(), 0);
         }

@@ -192,25 +192,26 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
-        layouter.assign_region(
+        *offset = layouter.assign_region(
             || "poseidon hash region",
             |mut region| {
+                let mut local_offset = *offset;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, offset)?;
+                self.initialize(&config, &mut region, &mut local_offset)?;
                 for arg_group in arg_cells.chunks_exact(10).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_permute(
                         &mut region,
-                        offset,
+                        &mut local_offset,
                         &args[1..9].to_vec().try_into().unwrap(),
                         &args[0],
                         &args[9],
                     )?;
                 }
                 end_timer!(timer);
-                Ok(())
+                Ok(local_offset)
             },
         )?;
         Ok(())

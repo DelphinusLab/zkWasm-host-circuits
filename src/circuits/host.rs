@@ -17,9 +17,9 @@ use halo2_proofs::{
 use crate::constant_from;
 
 #[rustfmt::skip]
-customized_circuits!(HostOpConfig, 2, 8, 4, 0,
-    | shared_operand | shared_opcode | shared_index   | p1  | p2  | enable   | filtered_operand   | merged_op   | indicator | filtered_index | filtered_opcode  | sel
-    | nil            | nil           | shared_index_n | nil | nil | enable_n | filtered_operand_n | merged_op_n | nil       | nil            | nil              | nil
+customized_circuits!(HostOpConfig, 2, 8, 3, 0,
+    | shared_operand | shared_opcode | shared_index   | filtered_opcode  | filtered_index | enable   | filtered_operand   | merged_op   | indicator | p1 | sel
+    | nil            | nil           | shared_index_n | nil | nil            | enable_n | filtered_operand_n | merged_op_n | nil       | nil              | nil
 );
 
 impl HostOpConfig {
@@ -199,8 +199,8 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             cs.fixed_column(),
             cs.fixed_column(),
             cs.fixed_column(),
-            cs.fixed_column(),
         ];
+        fixed.map(|x| cs.enable_equality(x));
         let selector = [];
 
         let config = HostOpConfig::new(witness, fixed, selector);

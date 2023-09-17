@@ -84,6 +84,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
             meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
+            meta.advice_column(),
         ];
         // We create the two advice columns that FieldChip uses for I/O.
         HostCircuitConfig {

@@ -51,10 +51,12 @@ pub fn get_selected_entries<Fr: FieldExt>(
             .filter(|(_operand, opcode)| opcodes.contains(opcode))
             .collect::<Vec<(Fr, Fr)>>();
 
+        let len = v.len();
+
         let shared_index: Vec<Fr> =
             v.iter()
             .enumerate()
-            .map(|(i, _)| Fr::from(i as u64 + 1))
+            .map(|(i, _)| Fr::from((len - i) as u64))
             .collect();
 
         v.into_iter().zip(shared_index).collect::<Vec<((Fr, Fr), Fr)>>()

@@ -112,6 +112,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
             let mut setget = op;
 
+            // address
             let (limb, _) = config.assign_merged_operands(
                 region,
                 offset,
@@ -121,15 +122,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             )?;
             r.push(limb);
 
-            let (limb_new_root, _) = config.assign_merged_operands(
-                region,
-                offset,
-                vec![&group[9], &group[10], &group[11], &group[12]],
-                Fr::from_u128(1u128 << 64),
-                true,
-            )?;
-            r.push(limb_new_root);
-
+            // setget
             for subgroup in group[5..9]
                 .into_iter()
                 .collect::<Vec<_>>()
@@ -145,6 +138,17 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 setget = op;
                 r.push(limb);
             }
+
+            // new root
+            let (limb_new_root, _) = config.assign_merged_operands(
+                region,
+                offset,
+                vec![&group[9], &group[10], &group[11], &group[12]],
+                Fr::from_u128(1u128 << 64),
+                true,
+            )?;
+            r.push(limb_new_root);
+
             r.push(setget);
         }
 
@@ -155,6 +159,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             [Fr::zero(), Fr::zero()],
             MerkleGet,
         )]);
+
 
         //let entries = default_table.
         let default_entries: Vec<((Fr, Fr), Fr)> = default_table
@@ -194,21 +199,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             )?;
             r.push(limb);
 
-            // new root does not change
-            let (limb, _) = config.assign_merged_operands(
-                region,
-                offset,
-                vec![
-                    &default_entries[1],
-                    &default_entries[2],
-                    &default_entries[3],
-                    &default_entries[4],
-                ],
-                Fr::from_u128(1u128 << 64),
-                false,
-            )?;
-            r.push(limb);
-
+            // set or get
             for subgroup in default_entries[5..9]
                 .iter()
                 .collect::<Vec<_>>()
@@ -224,6 +215,23 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 setget = op;
                 r.push(limb);
             }
+
+
+            // new root does not change
+            let (limb, _) = config.assign_merged_operands(
+                region,
+                offset,
+                vec![
+                    &default_entries[1],
+                    &default_entries[2],
+                    &default_entries[3],
+                    &default_entries[4],
+                ],
+                Fr::from_u128(1u128 << 64),
+                false,
+            )?;
+            r.push(limb);
+
             r.push(setget);
         }
 
@@ -252,7 +260,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 // 5: op_code
                 let mut mt: Option<MongoMerkle<DEPTH>> = None;
                 for args in arg_cells.chunks_exact(6) {
-                    let [address, root, new_root, value0, value1, opcode] = args else { unreachable!() };
+                    let [address, root, value0, value1, new_root, opcode] = args else { unreachable!() };
                     //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
                     //println!("address is {}", address.value.get_lower_128());
                     //println!("root update is {:?} {:?}", root.value, new_root.value);

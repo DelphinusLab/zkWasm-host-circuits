@@ -271,10 +271,8 @@ impl CommonGateConfig {
             ],
             0,
         )?;
-        /* todo
-         * constraint all the limbs to be either 1 or 0
-         */
 
+        // constraint all the limbs to be either 1 or 0:
         // apply eqn: (val * val) - val = 0,
         // by: (ws[1] * ws[2] * cs[7]) + (ws[0] * cs[0]) = 0,
         for i in 0..(limbs.len()) {
@@ -366,30 +364,33 @@ impl CommonGateConfig {
         coeffs: [Option<F>; 9],
         hint: u64, // the boundary limit of the first cell
     ) -> Result<Vec<Limb<F>>, Error> {
-        let ws = value
-            .clone()
-            .to_vec()
-            .iter()
-            .map(|x| x.clone().map_or(F::zero(), |x| x.value))
-            .collect::<Vec<F>>();
-        let cs = coeffs
-            .clone()
-            .to_vec()
-            .iter()
-            .map(|x| x.map_or(F::zero(), |x| x))
-            .collect::<Vec<F>>();
-        assert!(
-            ws[0] * cs[0]
-                + ws[1] * cs[1]
-                + ws[2] * cs[2]
-                + ws[3] * cs[3]
-                + ws[4] * cs[4]
-                + ws[5] * cs[5]
-                + ws[0] * ws[3] * cs[6]
-                + ws[1] * ws[2] * cs[7]
-                + cs[8]
-                == F::zero()
-        );
+        #[cfg(debug_assertions)]
+        {
+            let ws = value
+                .clone()
+                .to_vec()
+                .iter()
+                .map(|x| x.clone().map_or(F::zero(), |x| x.value))
+                .collect::<Vec<F>>();
+            let cs = coeffs
+                .clone()
+                .to_vec()
+                .iter()
+                .map(|x| x.map_or(F::zero(), |x| x))
+                .collect::<Vec<F>>();
+            assert!(
+                ws[0] * cs[0]
+                    + ws[1] * cs[1]
+                    + ws[2] * cs[2]
+                    + ws[3] * cs[3]
+                    + ws[4] * cs[4]
+                    + ws[5] * cs[5]
+                    + ws[0] * ws[3] * cs[6]
+                    + ws[1] * ws[2] * cs[7]
+                    + cs[8]
+                    == F::zero()
+            );
+        }
 
         let mut limbs = vec![];
         for i in 0..6 {

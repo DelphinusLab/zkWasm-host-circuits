@@ -123,7 +123,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _offset: &mut usize,
+        offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         config: &HostOpConfig,
@@ -134,7 +134,8 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         assert!(selected_entries.len() % BN256PAIR_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BN256PAIR_SIZE;
 
-        let mut offset = 0;
+        assert_eq!(*offset, 0);
+
         let mut r = vec![];
 
         for group in selected_entries.chunks_exact(BN256PAIR_SIZE) {
@@ -143,7 +144,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&group[5 * j + 2 * i], &group[5 * j + 2 * i + 1]],
                         Fr::from_u128(1u128 << 54),
                         true,
@@ -153,7 +154,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5 * j + 4).clone().unwrap();
                 let (p_2, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -169,7 +170,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let (g1zero, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -183,7 +184,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&group[5 * j + 2 * i + 11], &group[5 * j + 2 * i + 1 + 11]],
                         Fr::from_u128(1u128 << 54),
                         true,
@@ -193,7 +194,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5 * j + 4 + 11).clone().unwrap();
                 let (p_2, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -209,7 +210,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let (g2zero, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -223,7 +224,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (q, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&group[5 * j + 2 * i + 32], &group[5 * j + 2 * i + 1 + 32]],
                         Fr::from_u128(1u128 << 54),
                         true,
@@ -233,7 +234,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = *group.get(5 * j + 4 + 32).clone().unwrap();
                 let (q, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -261,7 +262,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&default_entries[5 * j + 2 * i], &default_entries[5 * j + 2 * i + 1]],
                         Fr::from_u128(1u128 << 54),
                         false,
@@ -271,7 +272,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = default_entries[5 * j + 4].clone();
                 let (p_2, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -287,7 +288,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let (g1zero, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -301,7 +302,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&default_entries[5 * j + 2 * i + 11], &default_entries[5 * j + 2 * i + 1 + 11]],
                         Fr::from_u128(1u128 << 54),
                         false,
@@ -311,7 +312,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = default_entries[5 * j + 4 + 11].clone();
                 let (p_2, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -327,7 +328,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
             let (g2zero, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -341,7 +342,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 for i in 0..2 {
                     let (q, _op) = config.assign_merged_operands(
                         region,
-                        &mut offset,
+                        offset,
                         vec![&default_entries[5 * j + 2 * i + 32], &default_entries[5 * j + 2 * i + 1 + 32]],
                         Fr::from_u128(1u128 << 54),
                         false,
@@ -351,7 +352,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                 let ((operand, opcode), index) = default_entries[5 * j + 4 + 32].clone();
                 let (q, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -402,7 +403,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _offset: &mut usize,
+        offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
         config: &HostOpConfig,
@@ -412,7 +413,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         assert!(selected_entries.len() % BN256SUM_SIZE == 0);
         let total_used_instructions = selected_entries.len() / BN256SUM_SIZE;
 
-        let mut offset = 0;
+        assert_eq!(*offset, 0);
         let mut r = vec![];
 
         for group in selected_entries.chunks_exact(BN256SUM_SIZE) {
@@ -420,7 +421,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             let (limb, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -433,7 +434,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             // Fr
             let (limb, _op) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![&group[1], &group[2], &group[3], &group[4]],
                 Fr::from_u128(1u128 << 64),
                 true,
@@ -446,7 +447,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                     for i in 0..2 {
                         let (p_01, _op) = config.assign_merged_operands(
                             region,
-                            &mut offset,
+                            offset,
                             vec![&group[5 + 5 * j + 2 * i + 11 * k], &group[5 + 5 * j + 2 * i + 11 * k + 1]],
                             Fr::from_u128(1u128 << 54),
                             true,
@@ -456,7 +457,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                     let ((operand, opcode), index) = *group.get(5 + 5 * j + 11 * k + 4).clone().unwrap();
                     let (p_2, _op) = config.assign_one_line(
                         region,
-                        &mut offset,
+                        offset,
                         operand,
                         opcode,
                         index,
@@ -471,7 +472,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                 let ((operand, opcode), index) = *group.get(15 + 11 * k).clone().unwrap();
                 let (limb, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -503,7 +504,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             let ((operand, opcode), index) = default_entries[0].clone();
             let (limb, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -516,7 +517,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             // Fr
             let (limb, _op) = config.assign_merged_operands(
                 region,
-                &mut offset,
+                offset,
                 vec![&default_entries[1], &default_entries[2], &default_entries[3], &default_entries[4]],
                 Fr::from_u128(1u128 << 64),
                 false,
@@ -529,7 +530,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                     for i in 0..2 {
                         let (p_01, _op) = config.assign_merged_operands(
                             region,
-                            &mut offset,
+                            offset,
                             vec![&default_entries[5 + 5 * j + 2 * i + 11 * k], &default_entries[5 + 5 * j + 2 * i + 11 * k + 1]],
                             Fr::from_u128(1u128 << 54),
                             false,
@@ -539,7 +540,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                     let ((operand, opcode), index) = default_entries[5 + 5 * j + 11 * k + 4].clone();
                     let (p_2, _op) = config.assign_one_line(
                         region,
-                        &mut offset,
+                        offset,
                         operand,
                         opcode,
                         index,
@@ -554,7 +555,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                 let ((operand, opcode), index) = default_entries[15 + 11 * k].clone();
                 let (limb, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,

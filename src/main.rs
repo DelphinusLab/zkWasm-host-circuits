@@ -6,6 +6,7 @@ pub mod circuits;
 pub mod host;
 pub mod utils;
 
+pub mod keccak;
 /*
 use crate::{
     customized_circuits,

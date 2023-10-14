@@ -1,21 +1,22 @@
 use halo2_proofs::pairing::bn256::Fr;
-
+use crate::keccak;
+use crate::keccak::Keccak;
 use crate::utils::Limb;
 
 /// The State is a 5x5 matrix of 64 bit lanes.
 pub type State = [[Limb<Fr>; T]; T];
 
-pub const b: usize = 1600;
-pub const c: usize = 512;
+pub const b: usize = (1600 / LANE_SIZE) as usize;
+pub const c: usize = (512 / LANE_SIZE) as usize;
 pub const l: usize = 6;
-pub const RATE: usize = 1088;
+pub const RATE: usize = (1088 / LANE_SIZE) as usize;
 pub const LANE_SIZE: u32 = 64;
 
 /// The range of x and y coordinates for the sponge state.
 pub const T: usize = 5;
 
 /// The number of rounds for the 1600 bits permutation used in Keccak-256.
-pub const N_R: usize = 24;
+pub const N_R: usize = T * T - 1;
 
 /// The number of next_inputs that are used inside the `absorb` circuit.
 pub const NEXT_INPUTS_LANES: usize = 17;
@@ -57,20 +58,23 @@ pub static ROTATION_CONSTANTS: [[u32; 5]; 5] = [
     [27, 20, 39, 8, 14],
 ];
 
-/* 
+lazy_static::lazy_static! {
+    pub static ref KECCAK_HASHER: keccak::Keccak<Fr, 5, 17> = Keccak::<Fr, 5, 17>::new();
+}
+
 #[cfg(test)]
 mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     #[test]
     fn test_keccak() {
         const ZERO_HASHER_SQUEEZE: &str =
-            "044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d"; //force the hasher is for fr field result.
-        //let mut hasher = super::keccak_hash;
-        //hasher.update(&[Fr::zero()]);
-        //let result = hasher.squeeze();
-        let result = web3::signing::keccak256(&[0u8]);
+            "0x044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d"; //force the hasher is for fr field result.
+        let mut hasher = super::KECCAK_HASHER.clone();
+        hasher.update(&[Fr::zero()]);
+        let result = hasher.squeeze();
+
         println!("hash result is {:?}", result);
-        assert_eq!(from_utf8(result), ZERO_HASHER_SQUEEZE);
+        assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
     }
 }
-*/
+

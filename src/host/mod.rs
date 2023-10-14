@@ -49,6 +49,9 @@ pub enum ForeignInst {
     JubjubSumNew,
     JubjubSumPush,
     JubjubSumResult,
+    Keccak256New,
+    Keccak256Push,
+    Keccak256Finalize,
 }
 
 pub enum ReduceRule<F: FieldExt> {
@@ -62,7 +65,7 @@ impl<F: FieldExt> ReduceRule<F> {
         match self {
             ReduceRule::Bytes(_, a) => *a, // a * u64
             ReduceRule::Field(_, _) => 4,  // 4 * u64
-            ReduceRule::U64(_) => 1,       // 4 * u64
+            ReduceRule::U64(_) => 1,       // 1 * u64
         }
     }
     fn reduce(&mut self, v: u64, offset: usize) {

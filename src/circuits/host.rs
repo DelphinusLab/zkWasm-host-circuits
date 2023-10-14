@@ -44,14 +44,14 @@ impl HostOpConfig {
             let merged_op_n = self.get_expr(meta, HostOpConfig::merged_op_n());
             let cur_op = self.get_expr(meta, HostOpConfig::filtered_operand());
             let indicator = self.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
+            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))] // merged_op_n * indicator + cur_op == merged_op ???
         });
 
         cs.create_gate("enable consistant", |meta| {
             let enable = self.get_expr(meta, HostOpConfig::enable());
             let enable_n = self.get_expr(meta, HostOpConfig::enable_n());
             let sel = self.get_expr(meta, HostOpConfig::sel());
-            vec![(enable - constant_from!(1 as u64)) * enable_n * sel]
+            vec![(enable - constant_from!(1 as u64)) * enable_n * sel] //only 0 1 1 is not allowed
         });
     }
 
@@ -59,7 +59,7 @@ impl HostOpConfig {
         &self,
         region: &mut Region<Fr>,
         offset: &mut usize,
-        values: Vec<&((Fr, Fr), Fr)>,
+        values: Vec<&((Fr, Fr), Fr)>, //(operand, opcode), index
         indicator: Fr,
         enable: bool,
     ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
@@ -67,7 +67,7 @@ impl HostOpConfig {
         let len = values.len();
         rev.reverse();
         let mut merged_ops = vec![];
-        let mut merged_acc = Fr::zero();
+        let mut merged_acc = Fr::zero(); // accumulator
         for c in rev.iter() {
             merged_acc = c.0 .0 + merged_acc * indicator;
             merged_ops.push(merged_acc);
@@ -200,7 +200,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
-                println!("asign_region");
+                println!("assign_region");
                 let mut offset = 0;
                 for opcode in shared_opcodes {
                     self.config.assign_cell(

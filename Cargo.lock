@@ -2939,6 +2939,7 @@ dependencies = [
  "num-bigint",
  "poseidon",
  "rand",
+ "rand_core",
  "ripemd",
  "serde",
  "serde_json",

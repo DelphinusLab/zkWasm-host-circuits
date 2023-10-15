@@ -1,4 +1,4 @@
-use crate::host::keccak256::*;
+use crate::host::keccak256::{ROUND_CONSTANTS,N_R,NEXT_INPUTS_LANES,ROTATION_CONSTANTS};
 use crate::utils::*;
 
 use halo2_proofs::arithmetic::FieldExt;

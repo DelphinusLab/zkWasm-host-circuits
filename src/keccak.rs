@@ -233,23 +233,112 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     }
 }
 
-//#[cfg(test)]
+#[test]
 use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::pairing::group::ff::Field;
+use crate::host::keccak256::N_R;
+use rand_core::OsRng;
 
-fn keccak256(msg: &[Fr]) -> Fr {
+fn keccak256() -> Fr {
+
     let mut keccak:Keccak<Fr, 5, 17>= Keccak::<Fr, 5, 17>::new();
-    keccak.update(msg);
+    let number_of_permutation = N_R / 24;
+    let number_of_inputs = 17 * number_of_permutation - 1;
+    let inputs = (0..number_of_inputs)
+        .map(|_| Fr::random(OsRng))
+        .collect::<Vec<Fr>>();
+
+    keccak.update(&inputs[..]);
     let a = keccak.squeeze();
 
     let mut keccak:Keccak<Fr, 5, 17>= Keccak::<Fr, 5, 17>::new();
-    for byte in msg {
-        keccak.update(&[*byte]);
+    let mut inputs = inputs.clone();
+    inputs.push(Fr::one()+Fr::from_u128(1u128 << 63));
+    assert_eq!(inputs.len() % 17, 0);
+
+    for chunk in inputs.chunks(17) {
+        keccak.spec.absorb(&mut keccak.state, &chunk);
+        keccak.spec.keccak_f.permute(&mut keccak.state)
     }
-    let b = keccak.squeeze();
+
+    let b = keccak.spec.result(&mut keccak.state);
 
     assert_eq!(a, b);
 
     a
+}
+
+fn keccak256_extra_permutation() -> Fr {
+
+    let mut keccak:Keccak<Fr, 5, 17>= Keccak::<Fr, 5, 17>::new();
+    let number_of_permutation = N_R / 24;
+    let number_of_inputs = 17 * number_of_permutation;
+    let inputs = (0..number_of_inputs)
+        .map(|_| Fr::random(OsRng))
+        .collect::<Vec<Fr>>();
+
+    keccak.update(&inputs[..]);
+    let a = keccak.squeeze();
+
+    let mut keccak:Keccak<Fr, 5, 17>= Keccak::<Fr, 5, 17>::new();
+    let mut inputs = inputs.clone();
+    let mut extra_padding = vec![Fr::zero(); 17];
+    extra_padding[0] = Fr::from_u128(1u128 << 63);
+    extra_padding[16] = Fr::one();
+
+    for chunk in inputs.chunks(17) {
+        keccak.spec.absorb(&mut keccak.state, &chunk);
+        keccak.spec.keccak_f.permute(&mut keccak.state)
+    }
+
+    let b = keccak.spec.result(&mut keccak.state);
+
+    assert_eq!(a, b);
+
+    a
+}
+
+fn run<const T: usize, const RATE: usize>() {
+    for number_of_iters in 1..25 {
+        let mut keccak: Keccak<Fr, T, RATE> = Keccak::<Fr, T, RATE>::new();
+
+        let mut inputs = vec![];
+        for number_of_inputs in 0..=number_of_iters {
+            let chunk = (0..number_of_inputs)
+                .map(|_| Fr::random(OsRng))
+                .collect::<Vec<Fr>>();
+            keccak.update(&chunk[..]);
+            inputs.extend(chunk);
+        }
+        let a = keccak.squeeze();
+
+        // Accept below as reference and check consistency
+        let mut keccak: Keccak<Fr, T, RATE> = Keccak::<Fr, T, RATE>::new();
+
+        let offset = inputs.len() % RATE;
+        if offset == 1 {
+            inputs.push(Fr::one()+Fr::from_u128(1u128 << 63));
+        } else {
+            inputs.push(Fr::from_u128(1u128 << 63));
+            inputs.extend(vec![Fr::zero(); RATE - offset - 2]);
+            inputs.push(Fr::one());
+        }
+
+        for chunk in inputs.chunks(RATE) {
+
+            keccak.spec.absorb(&mut keccak.state, &chunk);
+            keccak.spec.keccak_f.permute(&mut keccak.state)
+        }
+        let b = keccak.spec.result(&mut keccak.state);
+        assert_eq!(a, b);
+    }
+
+run::<5, 4>();
+run::<6, 5>();
+run::<7, 6>();
+run::<8, 7>();
+run::<9, 8>();
+run::<10, 9>();
 }
 
 /*
@@ -262,23 +351,23 @@ fn test_empty_input() {
     assert_eq!(keccak256(&[]), output);
 }
 
- */
+
 
 #[test]
 fn test_short_input() {
 
-    /*let output = [
+    let output = [
         56, 209, 138, 203, 103, 210, 92, 139, 185, 148, 39, 100, 182, 47, 24, 225, 112, 84, 246,
         106, 129, 123, 212, 41, 84, 35, 173, 249, 237, 152, 135, 62,
     ];
 
-     */
+
     let output = Fr::from(0x3e87a9d2cf);
     assert_eq!(keccak256(&[Fr::from(102), Fr::from(111), Fr::from(111), Fr::from(98), Fr::from(97),
         Fr::from(114)]), output);
 }
 
-/*
+
 #[test]
 fn test_long_input() {
     let input = [

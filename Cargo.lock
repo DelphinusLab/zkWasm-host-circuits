@@ -441,7 +441,7 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git#7eccb6358a3b68d13be901791bd0661f0545ea06"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git#7b486f9eef386c6262fe0d812cb62cc031c0c753"
 dependencies = [
  "anyhow",
  "ark-std",
@@ -456,6 +456,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
+ "lru",
  "md5",
  "num",
  "num-bigint",

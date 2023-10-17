@@ -1,7 +1,7 @@
 use crate::circuits::keccak256::KeccakChip;
 use crate::circuits::CommonGateConfig;
-use crate::circuits::LookupAssistChip;
-use crate::circuits::LookupAssistConfig;
+//use crate::circuits::LookupAssistChip;
+//use crate::circuits::LookupAssistConfig;
 
 use crate::host::ForeignInst::{Keccak256New, Keccak256Push, Keccak256Finalize};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
@@ -9,7 +9,7 @@ use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
-use halo2_proofs::plonk::ConstraintSystem;
+use halo2_proofs::plonk::{ConstraintSystem};
 use halo2_proofs::plonk::{Error};
 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
@@ -41,6 +41,7 @@ impl<F: FieldExt> LookupAssistChip<F> for () {
     }
 }
 */
+
 fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
         op: Keccak256New as usize,

@@ -63,53 +63,6 @@ impl<F: FieldExt> KeccakChip<F> {
         CommonGateConfig::configure(cs, &())
     }
 
-    /*
-    pub fn padding_field(input: &Vec<F>) -> Vec<Vec<Limb<F>>> {
-
-        let num_chunks = input.len() / RATE + 1;
-        let len_to_pad = RATE - input.len() % RATE;
-        dbg!(num_chunks);
-
-        let mut padded = vec![];
-        padded.push(F::from(1u64));
-
-        input.iter().map(|x| padded.push(x.clone()));
-
-        for i in 0..len_to_pad - 2 {
-            padded.push(F::from(0u64));
-        }
-
-        padded.push(F::from(1u64));
-
-        let mut result = vec![];
-
-        for i in 0..num_chunks {
-            let mut chunk = vec![];
-            for j in 0..RATE {
-                chunk.push(padded[i * RATE + j].clone());
-            }
-            let chunk_limb = Self::fvec_to_limbs(&chunk);
-            result.push(chunk_limb);
-        }
-
-        assert_eq!(num_chunks, result.len());
-
-        result
-    }
-
-    pub fn fvec_to_limbs(message: &Vec<F>) -> Vec<Limb<F>> {
-        let limb_total = message.len() / 64;
-        let mut limbs:Vec<Limb<F>> = vec![0; limb_total].iter().map(|x| Limb::new(None, F::zero())).collect();
-
-        for i in 0..limb_total {
-            for j in 0..64 {
-                limbs[i].value += F::from(field_to_u64(&message[i * 64 + j]) << j);
-
-            }
-        }
-        limbs
-    }
-*/
     // assign the r as witness to call the permutation function and constrain the result to be the same as the digest
     pub fn get_permute_result(
         &mut self,
@@ -127,8 +80,7 @@ impl<F: FieldExt> KeccakChip<F> {
         for (x,(y,default)) in (self.keccak_state.state.iter().zip(self.keccak_state.default.iter())).enumerate() {
             let state_row = y.clone().map(|y| {y}).to_vec();
 
-            //print!("state_col: {:?} ",state_row);
-
+            // absorb the input
             let mut xor_row = state_row.clone();
 
             for i in 0..5 {
@@ -144,15 +96,7 @@ impl<F: FieldExt> KeccakChip<F> {
                     )?;
                 }
             }
-            //print!("xor_row: {:?} ",xor_row);
 
-            /*let input = self.config.assign_witness(
-                region,
-                &mut (),
-                offset,
-                xor_row.try_into().unwrap(),
-                0,
-*/
             for i in 0..5 {
                 out[x][i] = self.config.select(
                     region,
@@ -175,12 +119,11 @@ impl<F: FieldExt> KeccakChip<F> {
         )?;
 
         let part0 = self.keccak_state.state[0][0].value.clone();
-        let part1 = self.keccak_state.state[0][1].value.clone();
-        let part2 = self.keccak_state.state[0][2].value.clone();
-        let part3 = self.keccak_state.state[0][3].value.clone();
+        let part1 = self.keccak_state.state[1][0].value.clone();
+        let part2 = self.keccak_state.state[2][0].value.clone();
+        let part3 = self.keccak_state.state[3][0].value.clone();
 
         // each part is 64bit and digest is 256bit
-
         let digest = ((part0 * F::from_u128(1u128 << 64) + part1)
             * F::from_u128(1u128 << 64) + part2)
             * F::from_u128(1u128 << 64) + part3;
@@ -241,19 +184,7 @@ impl<F: FieldExt> KeccakState<F> {
         lhs: &Limb<F>,
         rhs: &Limb<F>,
 ) -> Result<Limb<F>, Error> {
-        /* 
-        let res = Limb::new(None, F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)));
-        // a + b - 2 * a * b - c = 0
 
-        let xor_vec = config.assign_line(
-            region,
-            &mut (),
-            offset, [Some(lhs.clone()), Some(res.clone()), None, Some(rhs.clone()), None, None],
-            [Some(F::one()), Some(-F::one()), None, Some(F::one()), None, None, Some(F::from_u128(2)), None, None],
-            0,
-        )?;
-        Ok(xor_vec[1].clone()) // c
-        */
         let res = Limb::new(None, F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)));
 
         let mut bit_limb_lhs = vec![];
@@ -509,157 +440,6 @@ impl<F: FieldExt> KeccakState<F> {
 
         Ok(())
     }
-
-    /*
-    fn u8_to_bits(num: u8) -> Vec<bool> {
-        let mut result = Vec::with_capacity(8);
-        let mut n = num;
-        for _ in 0..8 {
-            result.push(n & 1 == 1);
-            n >>= 1;
-        }
-        result
-    }
-
-    fn bits_to_limbs(message: &Vec<bool>) -> Vec<Limb<F>> {
-        let limb_total = message.len() / 64;
-        let mut limbs:Vec<Limb<F>> = vec![0; limb_total].iter().map(|x| Limb::new(None, F::zero())).collect();
-
-        for i in 0..limb_total {
-            for j in 0..64 {
-                //TODO: convert bool to F
-                if message[i * 64 + j] {
-                    limbs[i].value += F::from_u128(1 << j);
-                }
-            }
-        }
-        limbs
-    }
-
-    fn padding_byte(input: &[u8]) -> Vec<Limb<F>> {
-
-        let chunk_size_in_bytes = 136; // 1088 bits (RATE) in bytes
-        let num_chunks = input.len() / chunk_size_in_bytes + 1;
-        let len_to_pad = chunk_size_in_bytes - input.len() % chunk_size_in_bytes;
-        dbg!(num_chunks);
-
-        let mut padded = vec![];
-        for i in 0..input.len() * 8 {
-            let bit: Vec<bool> = Self::u8_to_bits(input[i]).try_into().unwrap();
-            for x in 0..bit.len() {
-                padded.push(bit[x]);
-            }
-        }
-
-        padded.push(true);
-
-        for i in 0..len_to_pad * 8 - 2 {
-            padded.push(false);
-        }
-
-        padded.push(true);
-
-        let result = Self::bits_to_limbs(&padded);
-        assert_eq!(num_chunks, result.len());
-        result
-    }
-
-fn padding_bit(input: &[u8]) -> Vec<Limb<F>> {
-
-    let chunk_size_in_bytes = 136; // in bytes
-    let num_chunks = input.len() / chunk_size_in_bytes + 1;
-    let len_to_pad = chunk_size_in_bytes - input.len() % chunk_size_in_bytes;
-    dbg!(num_chunks);
-
-    let mut padded = vec![];
-    for i in 0..input.len() * 8 {
-        let bit: Vec<bool> = Self::u8_to_bits(input[i]).try_into().unwrap();
-        for x in 0..bit.len() {
-            padded.push(bit[x]);
-        }
-    }
-
-    padded.push(true);
-
-    for i in 0..len_to_pad * 8 - 2 {
-        padded.push(false);
-    }
-
-    padded.push(true);
-
-    let limb_total = padded.len();
-    let mut limbs:Vec<Limb<F>> = vec![0; limb_total].iter().map(|x| Limb::new(None, F::zero())).collect();
-
-    for i in 0..num_chunks * 8 {
-        //TODO: convert bool to F
-        for y in 0..1088 {
-            if padded[i] {
-            limbs[i].value = F::one();
-             }
-        }
-    assert!(num_chunks * 8 == limbs.len());
-    limbs
-
-    }
-}
-*/
-
-/*
-    pub fn absorb(
-        &mut self,
-        config: &CommonGateConfig,
-        region: &mut Region<F>,
-        offset: &mut usize,
-        inputs: &Vec<Vec<Limb<F>>>, //after padding
-    ) -> Result <[[Limb<F>;5];5], Error> {
-
-        let total_chunks = inputs.len();
-        let mut out = self.state.clone();
-        
-        for chunk_i in 0..total_chunks {
-            for x in 0..5 {
-                for y in 0..5 {
-                    let mut bit_array_limb = Vec::with_capacity(64);
-                    let mut bit_state = vec![];
-                    config.decompose_limb(region,&mut(), offset, &out[x][y], &mut bit_state, 64)?;
-
-                    for x in 0..64 {
-                        bit_array_limb.push(field_to_u64(&bit_state[x].value));
-                    }
-
-                    let mut bit_array_input = Vec::with_capacity(64);
-                    let mut bit_input = vec![];
-                    config.decompose_limb(region,&mut(), offset, &inputs[chunk_i][x * 5 + y], &mut bit_input, 64)?;
-
-                    for x in 0..64 {
-                        bit_array_input.push(field_to_u64(&bit_input[x].value));
-                    }
-
-                    for x in 0..64 {
-                        bit_array_limb[x] = bit_array_limb[x] ^ bit_array_input[x];
-                    }
-
-                    let mut xor_limb = Limb::new(None,F::zero());
-                    for x in bit_array_limb.iter() {
-                        xor_limb.value += F::from_u128(1 << x);
-                    }
-
-                    out[x][y] = xor_limb;
-                }
-            }
-            self.permute(
-                config,
-                region,
-                offset,
-                &out,
-            )?;
-
-        }
-
-        Ok(out)
-    }
-    */
-
 }
 
 mod tests {
@@ -778,92 +558,6 @@ mod tests {
 
     }
 
-    /*
-    pub fn padding(input: &Vec<Fr>) -> Vec<Vec<Fr>> {
-
-        let num_chunks = input.len() / 1088 + 1;
-        let len_to_pad = 1088 - input.len() % 1088;
-        dbg!(input.len());
-        dbg!(num_chunks);
-
-        let mut padded = vec![];
-        padded.push(Fr::from(1u64));
-
-        for i in 0..input.len() {
-            padded.push(input[i].clone());
-        }
-
-        for i in 0..len_to_pad - 2 {
-            padded.push(Fr::from(0u64));
-        }
-
-        padded.push(Fr::from(1u64));
-        println!("len_to_pad is {:?}", len_to_pad);
-        println!("padded is {:?}", padded.len());
-
-        let mut result = vec![];
-
-        for i in 0..num_chunks {
-            let mut chunk = vec![];
-            for j in 0..1088 {
-                chunk.push(padded[i * 1088 + j].clone());
-            }
-            result.push(chunk);
-        }
-
-        assert_eq!(num_chunks, result.len());
-
-        result.try_into().unwrap()
-    }
-
-    pub fn padding_field(input: &Vec<Fr>) -> [[Limb<Fr>;5];5] {
-
-        let num_chunks = input.len() / 1088 + 1;
-        let len_to_pad = 1088 - input.len() % 1088;
-        dbg!(num_chunks);
-
-        let mut padded = vec![];
-        padded.push(Fr::from(1u64));
-
-        input.iter().map(|x| padded.push(x.clone()));
-
-        for i in 0..len_to_pad - 2 {
-            padded.push(Fr::from(0u64));
-        }
-
-        padded.push(Fr::from(1u64));
-
-        let mut result = vec![];
-
-        for i in 0..num_chunks {
-            let mut chunk = vec![];
-            for j in 0..1088 {
-                chunk.push(padded[i * 1088 + j].clone());
-            }
-            let chunk_limb = fvec_to_limbs(&chunk);
-            result.push(chunk_limb);
-        }
-
-        assert_eq!(num_chunks, result.len());
-
-        result.try_into().unwrap()
-    }
-
-    pub fn fvec_to_limbs(message: &Vec<Fr>) -> [Limb<Fr>; 17] {
-        assert_eq!(message.len(), 1088);
-
-        let limb_total = message.len() / 64;
-        let mut limbs:Vec<Limb<Fr>> = vec![0; limb_total].iter().map(|x| Limb::new(None, Fr::zero())).collect();
-
-        for i in 0..limb_total {
-            for j in 0..64 {
-                limbs[i].value += Fr::from(field_to_u64(&message[i * 64 + j]) << j);
-
-            }
-        }
-        limbs.try_into().unwrap()
-    }
-*/
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {
         inputs: Vec<Fr>,

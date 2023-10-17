@@ -6,9 +6,9 @@ use crate::utils::Limb;
 /// The State is a 5x5 matrix of 64 bit lanes.
 pub type State = [[Limb<Fr>; T]; T];
 
-pub const b: usize = (1600 / LANE_SIZE) as usize;
-pub const c: usize = (512 / LANE_SIZE) as usize;
-pub const l: usize = 6;
+pub const BITRATE: usize = (1600 / LANE_SIZE) as usize;
+pub const CAPACITY: usize = (512 / LANE_SIZE) as usize;
+pub const L: usize = 6;
 pub const RATE: usize = (1088 / LANE_SIZE) as usize;
 pub const LANE_SIZE: u32 = 64;
 
@@ -68,9 +68,9 @@ mod tests {
     #[test]
     fn test_keccak() {
         const ZERO_HASHER_SQUEEZE: &str =
-            "0x044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d"; //force the hasher is for fr field result.
+            "0x1dc22e369bddd0e4b3803191c26cf1cb65079ae6acb12112f2b76c49f5b3f919"; //force the hasher is for fr field result.
         let mut hasher = super::KECCAK_HASHER.clone();
-        hasher.update(&[Fr::zero()]);
+        hasher.update(&[]);
         let result = hasher.squeeze();
 
         println!("hash result is {:?}", result);

@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use crate::common::*;
+use crate::host::keccak256::*;
 use itertools::Itertools;
 use halo2_proofs::arithmetic::FieldExt;
 use crate::utils::field_to_u64;
@@ -34,44 +34,15 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Keccak<F, T, RATE> {
 }
 
 impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
-    /*
     pub fn update(&mut self, input: &[F]) {
 
-        // offset for `input`
-        let mut offset = 0;
-
-        let absorbing_len = self.absorbing.len();
-        if absorbing_len > 0 && absorbing_len + input.len() >= RATE {
-            // concat absorbing and input up to the next full `rate`
-            offset = RATE - absorbing_len;
-            self.absorbing.extend(&input[0..offset]);
-            self.spec.absorb(&mut self.state, &self.absorbing);
-            self.absorbing.truncate(0);
-        }
-
-        let chunks_total = (input.len() - offset) / RATE;
-        if chunks_total != 0 {
-            // absorb all chunks
-            let tail = offset + (RATE * chunks_total);
-            self.spec.absorb(&mut self.state, &input[offset..tail]);
-            offset = tail;
-        }
-
-        if offset != input.len() {
-            // save the remainder
-            self.absorbing.extend(&input[offset..]);
-        }
-    }
-    */
-    pub fn update(&mut self, input: &[F]) {
-        // offset for `input`
         let mut input_elements = self.absorbing.clone();
         input_elements.extend_from_slice(input);
 
         for chunk in input_elements.chunks(RATE) {
             if chunk.len() < RATE {
-                // Must be the last iteration of this update. Feed unpermutaed inputs to the
-                // absorbation line
+                // Must be the last iteration of this update. Feed permuted inputs to the
+                // absorption line
                 self.absorbing = chunk.to_vec();
             } else {
                 // Add new chunk of inputs for the next permutation cycle.
@@ -124,7 +95,7 @@ pub struct KeccakF<F: FieldExt, const T: usize, const RATE: usize> {
 
 impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
     pub fn permute(&self, a: &mut State<F,T>) {
-        for rc in ROUND_CONSTANTS.iter().take(PERMUTATION) {
+        for rc in ROUND_CONSTANTS.iter().take(N_R) {
             *a = KeccakF::<F,T,RATE>::round_b(a.clone(), *rc);
         }
     }
@@ -222,9 +193,9 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     pub fn result(&self, state: &mut State<F, T>) -> F {
         let mut output = vec![];
         output.push(state.0[0][0]);
-        output.push(state.0[0][1]);
-        output.push(state.0[0][2]);
-        output.push(state.0[0][3]);
+        output.push(state.0[1][0]);
+        output.push(state.0[2][0]);
+        output.push(state.0[3][0]);
 
         let result = ((output[0] * F::from_u128(1u128 << 64) + output[1])
             * F::from_u128(1u128 << 64) + output[2])
@@ -233,7 +204,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     }
 }
 
-#[test]
+
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::group::ff::Field;
 use crate::host::keccak256::N_R;
@@ -281,7 +252,7 @@ fn keccak256_extra_permutation() -> Fr {
     let a = keccak.squeeze();
 
     let mut keccak:Keccak<Fr, 5, 17>= Keccak::<Fr, 5, 17>::new();
-    let mut inputs = inputs.clone();
+    let inputs = inputs.clone();
     let mut extra_padding = vec![Fr::zero(); 17];
     extra_padding[0] = Fr::from_u128(1u128 << 63);
     extra_padding[16] = Fr::one();

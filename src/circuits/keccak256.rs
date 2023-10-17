@@ -1,4 +1,4 @@
-use crate::host::keccak256::{ROUND_CONSTANTS,N_R,NEXT_INPUTS_LANES,ROTATION_CONSTANTS};
+use crate::host::keccak256::{ROUND_CONSTANTS, N_R, ROTATION_CONSTANTS, RATE_LANES};
 use crate::utils::*;
 
 use halo2_proofs::arithmetic::FieldExt;
@@ -25,13 +25,6 @@ pub struct KeccakChip<F:FieldExt> {
     round: u64,
     _marker: PhantomData<F>
 }
-
-/*
-pub struct Spec {
-    rate: usize,
-    capacity: usize,
-}
-*/
 
 impl<F: FieldExt> KeccakChip<F> {
     pub fn construct(config: CommonGateConfig) -> Self {
@@ -68,49 +61,50 @@ impl<F: FieldExt> KeccakChip<F> {
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
-        values: &[Limb<F>; NEXT_INPUTS_LANES],
+        values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
-        //println!("offset is: {:?}", offset);
-        //println!("input values: {:?}", values.iter().map(|x| x.value).collect::<Vec<_>>());
-        //let zero = self.config.assign_constant(region, &mut (), offset, &F::zero())?;
-        //let mut out = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));
-        let mut out = self.keccak_state.state.clone();
+        let zero = self.config.assign_constant(region, &mut (), offset, &F::zero())?;
+        let mut new_state = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));
 
-        for (x,(y,default)) in (self.keccak_state.state.iter().zip(self.keccak_state.default.iter())).enumerate() {
-            let state_row = y.clone().map(|y| {y}).to_vec();
 
-            // absorb the input
-            let mut xor_row = state_row.clone();
+        for (x,(y,default)) in (self
+            .keccak_state.state
+            .iter()
+            .zip(self.keccak_state.default.iter())).enumerate()
+        {
 
             for i in 0..5 {
-                if x*5 + i >= values.len(){
-                    break;
-                } else {
-                    xor_row[i] = self.keccak_state.xor(
-                        region,
-                        &self.config,
-                        offset,
-                        &state_row[i],
-                        &values[x * 5 + i],
-                    )?;
-                }
-            }
-
-            for i in 0..5 {
-                out[x][i] = self.config.select(
+                new_state[x][i] = self.config.select(
                     region,
                     &mut (),
                     offset,
                     &reset,
-                    &xor_row[i],
+                    &y[i],
                     &default[i],
                     self.round
                 )?;
             }
         }
 
-        self.keccak_state.state = out;
+        let mut x = 0;
+        let mut y = 0;
+
+        for i in 0..RATE_LANES {
+            if i % 5 == 0 && i != 0 {
+                y += 1;
+                x = 0;
+            }
+            new_state[x][y] = self.keccak_state.xor(
+                region,
+                &self.config,
+                offset,
+                &self.keccak_state.state[x][y],
+                &values[i],
+            )?;
+            x += 1;
+        }
+        self.keccak_state.state = new_state;
 
         self.keccak_state.permute(
             &self.config,
@@ -144,7 +138,7 @@ impl<F: FieldExt> KeccakChip<F> {
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
-        values: &[Limb<F>; NEXT_INPUTS_LANES],
+        values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
@@ -200,15 +194,16 @@ impl<F: FieldExt> KeccakState<F> {
         let mut bit_array_limb_res = Vec::with_capacity(64);
 
         for x in 0..64 {
-            bit_array_limb_lhs.push(field_to_u64(&bit_limb_lhs[x].value));
-            bit_array_limb_rhs.push(field_to_u64(&bit_limb_rhs[x].value));
-            bit_array_limb_res.push(field_to_u64(&bit_limb_res[x].value));
+            bit_array_limb_lhs.push(field_to_u64(&bit_limb_lhs[63-x].value));
+            bit_array_limb_rhs.push(field_to_u64(&bit_limb_rhs[63-x].value));
+            bit_array_limb_res.push(field_to_u64(&bit_limb_res[63-x].value));
         }
 
         let mut res_limb = Limb::new(None,F::zero());
         let mut lhs_limb = Limb::new(None,F::zero());
         let mut rhs_limb = Limb::new(None,F::zero());
 
+        /*
         for x in 0..8 {
             for y in 0..8 {
                 res_limb.value += F::from_u128(1 << bit_array_limb_res[x * 8 + y]);
@@ -216,6 +211,18 @@ impl<F: FieldExt> KeccakState<F> {
                 rhs_limb.value += F::from_u128(1 << bit_array_limb_rhs[x * 8 + y]);
             }
         }
+        */
+
+        for (i, &bit) in bit_array_limb_res.iter().rev().enumerate() {
+            res_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
+        }
+        for (i, &bit) in bit_array_limb_lhs.iter().rev().enumerate() {
+            lhs_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
+        }
+        for (i, &bit) in bit_array_limb_rhs.iter().rev().enumerate() {
+            rhs_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
+        }
+
         let encode_limb = Limb::new(None,lhs_limb.value * F::from_u128(1 << 16) + rhs_limb.value * F::from_u128(1 << 8) + res_limb.value);
 
         let res_vec = config.assign_line(region, &mut (), offset,
@@ -236,7 +243,7 @@ impl<F: FieldExt> KeccakState<F> {
         let mut bit_limb = vec![];
         config.decompose_limb(region,&mut(), offset, &input, &mut bit_limb, 64)?;
         let mut bit_array_limb = Vec::with_capacity(64);
-            
+
         for x in 0..64 {
             bit_array_limb.push(field_to_u64(&bit_limb[x].value));
         }
@@ -373,7 +380,7 @@ impl<F: FieldExt> KeccakState<F> {
                 config.decompose_limb(region,&mut(), offset, &out[(x + 1) % 5][y], &mut bit_state, 64)?;
 
                 for x in 0..64 {
-                    bit_array_limb.push(field_to_u64(&bit_state[x].value));
+                    bit_array_limb.push(field_to_u64(&bit_state[63-x].value));
                 }
 
                 let mut not_limb = Limb::new(None,F::zero());
@@ -413,10 +420,6 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
         rc: u64,
     ) -> Result<(), Error> {
-
-        //let out = self.state.clone();
-        //let mut bit_state = vec![];
-        //out.map(|f| f.map(|x| config.decompose_limb(region,&mut(), offset, &x, &mut bit_state, 64)));
         
         self.theta(config, region, offset)?;
         self.rho(config, region, offset)?;

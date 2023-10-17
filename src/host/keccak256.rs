@@ -19,7 +19,7 @@ pub const T: usize = 5;
 pub const N_R: usize = T * T - 1;
 
 /// The number of next_inputs that are used inside the `absorb` circuit.
-pub const NEXT_INPUTS_LANES: usize = 17;
+pub const RATE_LANES: usize = 17;
 
 /// The Keccak [round constants](https://github.com/Legrandin/pycryptodome/blob/016252bde04456614b68d4e4e8798bc124d91e7a/src/keccak.c#L257-L282)
 pub static ROUND_CONSTANTS: [u64; N_R] = [

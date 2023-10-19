@@ -322,170 +322,149 @@ fn isogeny_map_in_context(
 ) -> (AssignedFq2<Fq, Fr>, AssignedFq2<Fq, Fr>) {
     let k_1_0_re_bn = BigUint::from_str("889424345604814976315064405719089812568196182208668418962679585805340366775741747653930584250892369786198727235542").unwrap();
     let k_1_0_im_bn = BigUint::from_str("889424345604814976315064405719089812568196182208668418962679585805340366775741747653930584250892369786198727235542").unwrap();
-    let k_1_0_re: Fq = bn_to_field(&k_1_0_re_bn);
-    let k_1_0_im: Fq = bn_to_field(&k_1_0_im_bn);
-    let k_1_0 = gseccc.fq2_assign_constant((k_1_0_re, k_1_0_im));
+    let k_1_0_re_fq: Fq = bn_to_field(&k_1_0_re_bn);
+    let k_1_0_im_fq: Fq = bn_to_field(&k_1_0_im_bn);
+    let k_1_0: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_1_0_re_fq, k_1_0_im_fq));
 
-    let k_1_1_re = Fq::zero();
+    let k_1_1_re_fq = Fq::zero();
     let k_1_1_im_bn = BigUint::from_str("2668273036814444928945193217157269437704588546626005256888038757416021100327225242961791752752677109358596181706522").unwrap();
-    let k_1_1_im: Fq = bn_to_field(&k_1_1_im_bn);
-    let k_1_1 = gseccc.fq2_assign_constant((k_1_1_re, k_1_1_im));
+    let k_1_1_im_fq: Fq = bn_to_field(&k_1_1_im_bn);
+    let k_1_1: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_1_1_re_fq, k_1_1_im_fq));
     
     let k_1_2_re_bn = BigUint::from_str("2668273036814444928945193217157269437704588546626005256888038757416021100327225242961791752752677109358596181706526").unwrap();
     let k_1_2_im_bn = BigUint::from_str("1334136518407222464472596608578634718852294273313002628444019378708010550163612621480895876376338554679298090853261").unwrap();
-    let k_1_2_re: Fq = bn_to_field(&k_1_2_re_bn);
-    let k_1_2_im: Fq = bn_to_field(&k_1_2_im_bn);
-    let k_1_2 = gseccc.fq2_assign_constant((k_1_2_re, k_1_2_im));
-    
+    let k_1_2_re_fq: Fq = bn_to_field(&k_1_2_re_bn);
+    let k_1_2_im_fq: Fq = bn_to_field(&k_1_2_im_bn);
+    let k_1_2: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_1_2_re_fq, k_1_2_im_fq));
 
     let k_1_3_re_bn = BigUint::from_str("3557697382419259905260257622876359250272784728834673675850718343221361467102966990615722337003569479144794908942033").unwrap();
-    let k_1_3_re: Fq = bn_to_field(&k_1_3_re_bn);
-    let k_1_3_im = Fq::zero();
-    let k_1_3 = gseccc.fq2_assign_constant((k_1_3_re, k_1_3_im));
+    let k_1_3_re_fq: Fq = bn_to_field(&k_1_3_re_bn);
+    let k_1_3_im_fq = Fq::zero();
+    let k_1_3: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_1_3_re_fq, k_1_3_im_fq));
     
-
     // Constants used to compute x_den:
-    let k_2_0_re = Fq::zero();
+    let k_2_0_re_fq = Fq::zero();
     let k_2_0_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559715").unwrap();
-    let k_2_0_im: Fq = bn_to_field(&k_2_0_im_bn);
-    let k_2_0 = gseccc.fq2_assign_constant((k_2_0_re, k_2_0_im));
+    let k_2_0_im_fq: Fq = bn_to_field(&k_2_0_im_bn);
+    let k_2_0: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_2_0_re_fq, k_2_0_im_fq));
 
     let k_2_1_re_bn = BigUint::from_str("12").unwrap();
-    let k_2_1_re: Fq = bn_to_field(&k_2_1_re_bn);
+    let k_2_1_re_fq: Fq = bn_to_field(&k_2_1_re_bn);
     let k_2_1_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559775").unwrap();
-    let k_2_1_im: Fq = bn_to_field(&k_2_1_im_bn);
-    let k_2_1 = gseccc.fq2_assign_constant((k_2_1_re, k_2_1_im));
+    let k_2_1_im_fq: Fq = bn_to_field(&k_2_1_im_bn);
+    let k_2_1: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_2_1_re_fq, k_2_1_im_fq));
 
     // Constants used to compute y_num:
     let k_3_0_re_bn = BigUint::from_str("3261222600550988246488569487636662646083386001431784202863158481286248011511053074731078808919938689216061999863558").unwrap();
-    let k_3_0_re: Fq = bn_to_field(&k_3_0_re_bn);
+    let k_3_0_re_fq: Fq = bn_to_field(&k_3_0_re_bn);
     let k_3_0_im_bn = BigUint::from_str("3261222600550988246488569487636662646083386001431784202863158481286248011511053074731078808919938689216061999863558").unwrap();
-    let k_3_0_im: Fq = bn_to_field(&k_3_0_im_bn);
-    let k_3_0 = gseccc.fq2_assign_constant((k_3_0_re, k_3_0_im));
+    let k_3_0_im_fq: Fq = bn_to_field(&k_3_0_im_bn);
+    let k_3_0: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_3_0_re_fq, k_3_0_im_fq));
     
-    let k_3_1_re = Fq::zero();
+    let k_3_1_re_fq = Fq::zero();
     let k_3_1_im_bn = BigUint::from_str("889424345604814976315064405719089812568196182208668418962679585805340366775741747653930584250892369786198727235518").unwrap();
-    let k_3_1_im: Fq = bn_to_field(&k_3_1_im_bn);
-    let k_3_1 = gseccc.fq2_assign_constant((k_3_1_re, k_3_1_im));
+    let k_3_1_im_fq: Fq = bn_to_field(&k_3_1_im_bn);
+    let k_3_1: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_3_1_re_fq, k_3_1_im_fq));
 
     let k_3_2_re_bn = BigUint::from_str("2668273036814444928945193217157269437704588546626005256888038757416021100327225242961791752752677109358596181706524").unwrap();
-    let k_3_2_re: Fq = bn_to_field(&k_3_2_re_bn);
+    let k_3_2_re_fq: Fq = bn_to_field(&k_3_2_re_bn);
     let k_3_2_im_bn = BigUint::from_str("1334136518407222464472596608578634718852294273313002628444019378708010550163612621480895876376338554679298090853263").unwrap();
-    let k_3_2_im: Fq = bn_to_field(&k_3_2_im_bn);
-    let k_3_2 = gseccc.fq2_assign_constant((k_3_2_re, k_3_2_im));
+    let k_3_2_im_fq: Fq = bn_to_field(&k_3_2_im_bn);
+    let k_3_2: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_3_2_re_fq, k_3_2_im_fq));
 
     let k_3_3_re_bn = BigUint::from_str("2816510427748580758331037284777117739799287910327449993381818688383577828123182200904113516794492504322962636245776").unwrap();
-    let k_3_3_re: Fq = bn_to_field(&k_3_3_re_bn);
-    let k_3_3_im = Fq::zero();
-    let k_3_3 = gseccc.fq2_assign_constant((k_3_3_re, k_3_3_im));
+    let k_3_3_re_fq: Fq = bn_to_field(&k_3_3_re_bn);
+    let k_3_3_im_fq = Fq::zero();
+    let k_3_3: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_3_3_re_fq, k_3_3_im_fq));
 
     // Constants used to compute y_den:
     let k_4_0_re_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559355").unwrap();
-    let k_4_0_re: Fq = bn_to_field(&k_4_0_re_bn);
+    let k_4_0_re_fq: Fq = bn_to_field(&k_4_0_re_bn);
     let k_4_0_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559355").unwrap();
-    let k_4_0_im: Fq = bn_to_field(&k_4_0_im_bn);
-    let k_4_0 = gseccc.fq2_assign_constant((k_4_0_re, k_4_0_im));
+    let k_4_0_im_fq: Fq = bn_to_field(&k_4_0_im_bn);
+    let k_4_0: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_4_0_re_fq, k_4_0_im_fq));
 
-    let k_4_1_re = Fq::zero();
+    let k_4_1_re_fq = Fq::zero();
     let k_4_1_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559571").unwrap();
-    let k_4_1_im: Fq = bn_to_field(&k_4_1_im_bn);
-    let k_4_1 = gseccc.fq2_assign_constant((k_4_1_re, k_4_1_im));
+    let k_4_1_im_fq: Fq = bn_to_field(&k_4_1_im_bn);
+    let k_4_1: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_4_1_re_fq, k_4_1_im_fq));
 
     let k_4_2_re_bn = BigUint::from_str("18").unwrap();
-    let k_4_2_re: Fq = bn_to_field(&k_4_2_re_bn);
+    let k_4_2_re_fq: Fq = bn_to_field(&k_4_2_re_bn);
     let k_4_2_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559769").unwrap();
-    let k_4_2_im: Fq = bn_to_field(&k_4_2_im_bn);
-    let k_4_2 = gseccc.fq2_assign_constant((k_4_2_re, k_4_2_im));
+    let k_4_2_im_fq: Fq = bn_to_field(&k_4_2_im_bn);
+    let k_4_2: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_4_2_re_fq, k_4_2_im_fq));
 
-    // For testing: in final version we should be able to do this with an
-    // arbitrary AssignedFq2 input.
-    let x_prime_re_bn = BigUint::from_str("3942339120143403995959884458065911863622623490130179671696530864527894030375709350085997343451924840375271949093332").unwrap();
-    let x_prime_im_bn = BigUint::from_str("3523381697296058645143708860912139218718520142948191822158638626523448297128525915027995335789050238781038107799201").unwrap();
-    // let x_prime_re = bn_to_field(&x_prime_re_bn);
-    // let x_prime_im = bn_to_field(&x_prime_im_bn);
-    let x_prime: AssignedFq2<Fq, Fr> = (
-        gseccc.base_integer_ctx.assign_w(&x_prime_re_bn),
-        gseccc.base_integer_ctx.assign_w(&x_prime_im_bn),
-    );
-
-    let y_prime_re_bn = BigUint::from_str("1842813153358560687634500333570189006426514559071004676715031705637331861897467026112259097700599015948196491964104").unwrap();
-    let y_prime_im_bn = BigUint::from_str("1919560373509329990190398196596248904228486898136222165059580822353869402983639316101175960854421770934878934628156").unwrap();
-    // let y_prime_re = bn_to_field(&y_prime_re_bn);
-    // let y_prime_im = bn_to_field(&y_prime_im_bn);
-    let y_prime: AssignedFq2<Fq, Fr> = (
-        gseccc.base_integer_ctx.assign_w(&y_prime_re_bn),
-        gseccc.base_integer_ctx.assign_w(&y_prime_im_bn),
-    );
-
-    let x_prime_squared = gseccc.fq2_square(&x_prime);
-    let x_prime_cubed = gseccc.fq2_mul(&x_prime_squared, &x_prime);
+    let x_prime_squared: AssignedFq2<Fq, Fr> = gseccc.fq2_square(&x_prime);
+    let x_prime_cubed: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&x_prime_squared, &x_prime);
 
     // Calculates x_num
-    let x_num_constant_term = k_1_0;
-    let x_num_degree_one_term = gseccc.fq2_mul(&k_1_1, &x_prime);
-    let x_num_degree_two_term = gseccc.fq2_mul(&k_1_2, &x_prime_squared);
-    let x_num_degree_three_term = gseccc.fq2_mul(&k_1_3, &x_prime_cubed);
+    let x_num_constant_term: AssignedFq2<Fq, Fr> = k_1_0;
+    let x_num_degree_one_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_1_1, &x_prime);
+    let x_num_degree_two_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_1_2, &x_prime_squared);
+    let x_num_degree_three_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_1_3, &x_prime_cubed);
 
-    let mut x_num = gseccc.fq2_assign_zero();
+    let mut x_num: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_zero();
     x_num = gseccc.fq2_add(&x_num, &x_num_constant_term);
     x_num = gseccc.fq2_add(&x_num, &x_num_degree_one_term);
     x_num = gseccc.fq2_add(&x_num, &x_num_degree_two_term);
     x_num = gseccc.fq2_add(&x_num, &x_num_degree_three_term);
 
     // Calculates x_den
-    let x_den_constant_term = k_2_0;
-    let x_den_degree_one_term = gseccc.fq2_mul(&k_2_1, &x_prime);
-    let x_den_degree_two_term = x_prime_squared.clone(); // TODO: Constrain this!
+    let x_den_constant_term: AssignedFq2<Fq, Fr> = k_2_0;
+    let x_den_degree_one_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_2_1, &x_prime);
+    let x_den_degree_two_term: AssignedFq2<Fq, Fr> = x_prime_squared.clone();
+    gseccc.fq2_assert_equal(&x_den_degree_two_term, &x_prime_squared);
 
-    let mut x_den = gseccc.fq2_assign_zero();
+    let mut x_den: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_zero();
     x_den = gseccc.fq2_add(&x_den, &x_den_constant_term);
     x_den = gseccc.fq2_add(&x_den, &x_den_degree_one_term);
     x_den = gseccc.fq2_add(&x_den, &x_den_degree_two_term);
 
     // Calculates y_num
-    let y_num_constant_term = k_3_0;
-    let y_num_degree_one_term = gseccc.fq2_mul(&k_3_1, &x_prime);
-    let y_num_degree_two_term = gseccc.fq2_mul(&k_3_2, &x_prime_squared);
-    let y_num_degree_three_term = gseccc.fq2_mul(&k_3_3, &x_prime_cubed);
+    let y_num_constant_term: AssignedFq2<Fq, Fr> = k_3_0;
+    let y_num_degree_one_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_3_1, &x_prime);
+    let y_num_degree_two_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_3_2, &x_prime_squared);
+    let y_num_degree_three_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_3_3, &x_prime_cubed);
 
-    let mut y_num = gseccc.fq2_assign_zero();
+    let mut y_num: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_zero();
     y_num = gseccc.fq2_add(&y_num, &y_num_constant_term);
     y_num = gseccc.fq2_add(&y_num, &y_num_degree_one_term);
     y_num = gseccc.fq2_add(&y_num, &y_num_degree_two_term);
     y_num = gseccc.fq2_add(&y_num, &y_num_degree_three_term);
 
     // Calculates y_den
-    let y_den_constant_term = k_4_0;
-    let y_den_degree_one_term = gseccc.fq2_mul(&k_4_1, &x_prime);
-    let y_den_degree_two_term = gseccc.fq2_mul(&k_4_2, &x_prime_squared);
-    let y_den_degree_three_term = x_prime_cubed;
+    let y_den_constant_term: AssignedFq2<Fq, Fr> = k_4_0;
+    let y_den_degree_one_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_4_1, &x_prime);
+    let y_den_degree_two_term: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&k_4_2, &x_prime_squared);
+    let y_den_degree_three_term: AssignedFq2<Fq, Fr> = x_prime_cubed;
 
-    let mut y_den = gseccc.fq2_assign_zero();
+    let mut y_den: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_zero();
     y_den = gseccc.fq2_add(&y_den, &y_den_constant_term);
     y_den = gseccc.fq2_add(&y_den, &y_den_degree_one_term);
     y_den = gseccc.fq2_add(&y_den, &y_den_degree_two_term);
     y_den = gseccc.fq2_add(&y_den, &y_den_degree_three_term);
 
     // Calculates x
-    let x_den_inverse = gseccc.fq2_unsafe_invert(&x_den);
-    let x = gseccc.fq2_mul(&x_num, &x_den_inverse);
-    let x_re = gseccc.base_integer_ctx.get_w(&x.0);
-    let x_im = gseccc.base_integer_ctx.get_w(&x.1);
-    println!("x = {:?} \n + I * {:?}", x_re, x_im);
+    let x_den_inverse: AssignedFq2<Fq, Fr> = gseccc.fq2_unsafe_invert(&x_den);
+    let x: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&x_num, &x_den_inverse);
+    let x_re_fq = gseccc.base_integer_ctx.get_w(&x.0);
+    let x_im_fq = gseccc.base_integer_ctx.get_w(&x.1);
+    // println!("x = {:?} \n + I * {:?}", x_re_fq, x_im_fq);
 
     // Calculates y
-    let y_den_inverse = gseccc.fq2_unsafe_invert(&y_den);
-    let y_num_over_y_den = gseccc.fq2_mul(&y_num, &y_den_inverse);
-    let y = gseccc.fq2_mul(&y_prime, &y_num_over_y_den);
-    let y_re = gseccc.base_integer_ctx.get_w(&y.0);
-    let y_im = gseccc.base_integer_ctx.get_w(&y.1);
-    println!("y = {:?} \n + I * {:?}", y_re, y_im);
+    let y_den_inverse: AssignedFq2<Fq, Fr> = gseccc.fq2_unsafe_invert(&y_den);
+    let y_num_over_y_den: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&y_num, &y_den_inverse);
+    let y: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&y_prime, &y_num_over_y_den);
+    let y_re_fq = gseccc.base_integer_ctx.get_w(&y.0);
+    let y_im_fq = gseccc.base_integer_ctx.get_w(&y.1);
+    // println!("y = {:?} \n + I * {:?}", y_re_fq, y_im_fq);
 
     (x, y)
 }
 
 #[test]
-fn simplified_swu_outputs_correct_test_vectors() {
+fn simplified_swu_outputs_correct_test_vector() {
     let mut gseccc = GeneralScalarEccContext::<G1Affine, Fr>::new(
         Rc::new(
             RefCell::new(
@@ -522,6 +501,53 @@ fn simplified_swu_outputs_correct_test_vectors() {
     let y_re_fq = gseccc.base_integer_ctx.get_w(&y.0);
     let y_im_fq = gseccc.base_integer_ctx.get_w(&y.1);
 
+    assert_eq!(should_be_x_re_fq, x_re_fq);
+    assert_eq!(should_be_x_im_fq, x_im_fq);
+    assert_eq!(should_be_y_re_fq, y_re_fq);
+    assert_eq!(should_be_y_im_fq, y_im_fq);
+}
+
+#[test]
+fn isogeny_map_outputs_correct_test_vector() {
+    let mut gseccc = GeneralScalarEccContext::<G1Affine, Fr>::new(
+        Rc::new(
+            RefCell::new(
+                Context::new()
+            )
+        )
+    );
+
+    let x_prime_re_bn = BigUint::from_str("3942339120143403995959884458065911863622623490130179671696530864527894030375709350085997343451924840375271949093332").unwrap();
+    let x_prime_im_bn = BigUint::from_str("3523381697296058645143708860912139218718520142948191822158638626523448297128525915027995335789050238781038107799201").unwrap();
+    let x_prime: AssignedFq2<Fq, Fr> = (
+        gseccc.base_integer_ctx.assign_w(&x_prime_re_bn),
+        gseccc.base_integer_ctx.assign_w(&x_prime_im_bn),
+    );
+
+    let y_prime_re_bn = BigUint::from_str("1842813153358560687634500333570189006426514559071004676715031705637331861897467026112259097700599015948196491964104").unwrap();
+    let y_prime_im_bn = BigUint::from_str("1919560373509329990190398196596248904228486898136222165059580822353869402983639316101175960854421770934878934628156").unwrap();
+    let y_prime: AssignedFq2<Fq, Fr> = (
+        gseccc.base_integer_ctx.assign_w(&y_prime_re_bn),
+        gseccc.base_integer_ctx.assign_w(&y_prime_im_bn),
+    );
+
+    let (x, y) = isogeny_map_in_context(&mut gseccc, &x_prime, &y_prime);
+
+    let x_re_fq = gseccc.base_integer_ctx.get_w(&x.0);
+    let x_im_fq = gseccc.base_integer_ctx.get_w(&x.1);
+    let y_re_fq = gseccc.base_integer_ctx.get_w(&y.0);
+    let y_im_fq = gseccc.base_integer_ctx.get_w(&y.1);
+
+    let should_be_x_re_bn = BigUint::from_str("247000889425909073323253760662594248478519539052718751429094202182751397921429811614953873291195197910072700650892").unwrap();
+    let should_be_x_im_bn = BigUint::from_str("3557179370195599083109501581838000826052321867195478666908439992121263526125384222649169667449608345548902519938077").unwrap();
+    let should_be_y_re_bn = BigUint::from_str("1789866621042807238102907475382506332034840965291028464945081245097279248221497616806901995510849528127582528143091").unwrap();
+    let should_be_y_im_bn = BigUint::from_str("2261920060396917200558995605865363952988463533408187402812091326590595155556733986360256617149524560595567798206730").unwrap();
+
+    let should_be_x_re_fq: Fq = bn_to_field(&should_be_x_re_bn);
+    let should_be_x_im_fq: Fq = bn_to_field(&should_be_x_im_bn);
+    let should_be_y_re_fq: Fq = bn_to_field(&should_be_y_re_bn);
+    let should_be_y_im_fq: Fq = bn_to_field(&should_be_y_im_bn);
+    
     assert_eq!(should_be_x_re_fq, x_re_fq);
     assert_eq!(should_be_x_im_fq, x_im_fq);
     assert_eq!(should_be_y_re_fq, y_re_fq);

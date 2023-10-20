@@ -40,6 +40,7 @@ use crate::utils::params::{HostCircuitInfo, Prover};
 
 use halo2_proofs::pairing::bn256::Bn256;
 use halo2_proofs::pairing::bn256::Fr;
+use zkwasm_host_circuits::circuits::keccak256::KeccakChip;
 
 trait HostCircuit<F: FieldExt>: Clone {
     fn load_shared_operands(&self, layouter: impl Layouter<F>, a: Vec<F>) -> Result<Self, Error>;
@@ -58,6 +59,7 @@ enum OpType {
     BN256PAIR,
     BN256SUM,
     POSEIDONHASH,
+    KECCAKHASH,
     MERKLE,
 }
 
@@ -258,6 +260,18 @@ fn main() {
             };
             let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
                 HostCircuitInfo::new(poseidon_circuit, format!("{:?}", opname), vec![]);
+            prover.mock_proof(k);
+            prover.create_proof(cache_folder.as_path(), k);
+        }
+        OpType::KECCAKHASH => {
+            let keccak_circuit = HostOpCircuit::<Fr, KeccakChip<Fr>> {
+                shared_operands,
+                shared_opcodes,
+                shared_index,
+                _marker: PhantomData,
+            };
+            let prover: HostCircuitInfo<Bn256, HostOpCircuit<Fr, KeccakChip<Fr>>> =
+                HostCircuitInfo::new(keccak_circuit, format!("{:?}", opname), vec![]);
             prover.mock_proof(k);
             prover.create_proof(cache_folder.as_path(), k);
         }

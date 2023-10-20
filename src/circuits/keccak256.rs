@@ -12,6 +12,7 @@ use halo2_proofs::{
     circuit::*,
     plonk::*,
 };
+use crate::value_for_assign;
 
 #[derive(Debug, Clone)]
 pub struct KeccakState<F: FieldExt> {
@@ -87,6 +88,7 @@ impl<F: FieldExt> KeccakChip<F> {
             }
         }
 
+        dbg!(&values);
         //absorb
         let chunks_total = values.len() / RATE_LANES;
         for chunk_i in 0..chunks_total {
@@ -110,11 +112,15 @@ impl<F: FieldExt> KeccakChip<F> {
                 }
             }
         }
+        dbg!(&new_state[0][0]);
+        dbg!(&values[0]);
+        dbg!(&self.keccak_state.state[0][0]);
 
         self.keccak_state.state = new_state;
 
         for y in  self.keccak_state.state.iter() {
-            dbg!(&y);
+            let state_before_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_before_permute_row);
         }
         //self.keccak_state.state[0][0].value = F::one();
         self.keccak_state.permute(
@@ -122,6 +128,11 @@ impl<F: FieldExt> KeccakChip<F> {
             region,
             offset,
         )?;
+
+        for y in  self.keccak_state.state.iter() {
+            let state_after_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_after_permute_row);
+        }
 
         let part0 = self.keccak_state.state[0][0].value.clone();
         let part1 = self.keccak_state.state[1][0].value.clone();
@@ -205,9 +216,9 @@ impl<F: FieldExt> KeccakState<F> {
         let mut bit_array_limb_res = Vec::with_capacity(64);
 
         for x in 0..64 {
-            bit_array_limb_lhs.push(field_to_u64(&bit_limb_lhs[63-x].value));
-            bit_array_limb_rhs.push(field_to_u64(&bit_limb_rhs[63-x].value));
-            bit_array_limb_res.push(field_to_u64(&bit_limb_res[63-x].value));
+            bit_array_limb_lhs.push(field_to_u64(&bit_limb_lhs[x].value));
+            bit_array_limb_rhs.push(field_to_u64(&bit_limb_rhs[x].value));
+            bit_array_limb_res.push(field_to_u64(&bit_limb_res[x].value));
         }
 
         let mut res_limb = Limb::new(None,F::zero());
@@ -639,7 +650,7 @@ mod tests {
         let mut hasher = host::keccak256::KECCAK_HASHER.clone();
         let result = hasher.squeeze();
         let mut inputs = [0u32;17].map(|_| Fr::zero()).to_vec();
-        inputs[16] = Fr::from_u128(1u128 << 63);
+        inputs[16] = Fr::from_u128(1 << 63);
         inputs[0] = Fr::one();
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);

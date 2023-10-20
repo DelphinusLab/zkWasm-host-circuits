@@ -95,7 +95,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
 
         let starting_one_lane = F::from_u128(1);
         let zero_lane = F::zero();
-        let ending_one_lane = F::from_u128(1u128 << 63);
+        let ending_one_lane = F::from_u128(1 << 63);
         let one_zero_one_lane = starting_one_lane + ending_one_lane;
 
         if padding_total == 1 {
@@ -108,6 +108,11 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
         self.spec.absorb(&mut self.state, &self.absorbing);
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
+
+        for y in  self.state.0.iter() {
+            let state_after_permute_row_wasm = y.iter().map(|x| x.clone()).collect_vec();
+            dbg!(&state_after_permute_row_wasm);
+        }
         self.spec.result(&mut self.state)
     }
 }
@@ -204,6 +209,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     pub fn absorb(&self, state: &mut State<F, T>, input: &[F]) {
 
         debug_assert_eq!(input.len() % RATE, 0);
+        dbg!(&input);
         let chunks_total = input.len() / RATE;
         for chunk_i in 0..chunks_total {
             let chuck_offset = chunk_i * RATE;

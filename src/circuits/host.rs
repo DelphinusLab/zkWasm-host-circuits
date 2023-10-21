@@ -2,6 +2,7 @@ use super::Limb;
 use crate::{utils::GateCell, adaptor::get_selected_entries, constant};
 use halo2_proofs::pairing::bn256::Fr;
 use std::marker::PhantomData;
+use ff::Field;
 
 use crate::{
     customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
@@ -17,9 +18,9 @@ use halo2_proofs::{
 use crate::constant_from;
 
 #[rustfmt::skip]
-customized_circuits!(HostOpConfig, 2, 10, 2, 0,
-    | shared_operand | shared_opcode | shared_index   | ops | p1  | filtered_opcode  | filtered_index   | filtered_operand | merged_op   | enable   | indicator | sel
-    | nil            | nil           | shared_index_n | nil | nil | nil              | filtered_index_n | nil              | merged_op_n | enable_n | nil       | nil
+customized_circuits!(HostOpConfig, 2, 11, 3, 0,
+    | shared_operand | shared_opcode | shared_index   | ops | inv | p1  | filtered_opcode  | filtered_index   | filtered_operand | merged_op   | enable   | indicator | sel_shared | sel
+    | nil            | nil           | shared_index_n | nil | nil | nil | nil              | filtered_index_n | nil              | merged_op_n | enable_n | nil       | sel_shared_n | sel_n
 );
 
 impl HostOpConfig {
@@ -45,22 +46,30 @@ impl HostOpConfig {
             let shared_index  = self.get_expr(meta, HostOpConfig::shared_index());
             let shared_index_n = self.get_expr(meta, HostOpConfig::shared_index_n());
             let sopc = self.get_expr(meta, HostOpConfig::shared_opcode());
-            let sel = self.get_expr(meta, HostOpConfig::sel());
+            let sel = self.get_expr(meta, HostOpConfig::sel_shared());
             let ops = self.get_expr(meta, HostOpConfig::ops());
+            let inv = self.get_expr(meta, HostOpConfig::inv());
             let mut cache_ops = constant_from!(1 as u64);
             for i in 0..opcodes.len() {
                 if i<4 {
                     cache_ops = cache_ops * (sopc.clone() - constant!(opcodes[i].clone()));
                 }
             }
-            // degree 3
-            let mut expr = sel.clone()*(shared_index.clone() - shared_index_n.clone()) * ops;
-            if opcodes.len() == 5 {
-                expr = expr.clone() * (sopc.clone() - constant!(opcodes[4].clone()));
-            }
-            vec![expr]
-        });
 
+            let full_ops_mult = if opcodes.len() == 5 {
+                ops.clone() * (sopc.clone() - constant!(opcodes[4].clone()))
+            } else {
+                ops.clone()
+            };
+            let picked = shared_index.clone() - shared_index_n.clone();
+
+            // degree 3
+            let expr = full_ops_mult.clone() * picked.clone() * sel.clone();
+            let either_zero = (full_ops_mult.clone() * inv + picked - constant_from!(1)) * sel.clone();
+
+            let ops_captures_four = sel.clone() * (ops - cache_ops);
+            vec![expr, either_zero, ops_captures_four]
+        });
 
         cs.create_gate("shared_index decrease", |meta| {
             let shared_index  = self.get_expr(meta, HostOpConfig::shared_index());
@@ -93,6 +102,27 @@ impl HostOpConfig {
                 (enable.clone() - constant_from!(1 as u64)) * enable_n * sel.clone(),
             ]
         });
+ 
+        cs.create_gate("end selector means zero index", |meta| {
+            let sel = self.get_expr(meta, HostOpConfig::sel_shared());
+            let shared_index = self.get_expr(meta, HostOpConfig::shared_index());
+            let sel_n = self.get_expr(meta, HostOpConfig::sel_shared_n());
+            vec![
+                (sel - sel_n) * shared_index
+            ]
+        });
+
+        cs.create_gate("end filtered means zero index", |meta| {
+            let sel = self.get_expr(meta, HostOpConfig::sel());
+            let sel_n = self.get_expr(meta, HostOpConfig::sel_n());
+            let enable = self.get_expr(meta, HostOpConfig::enable());
+            let filtered_index  = self.get_expr(meta, HostOpConfig::filtered_index());
+            vec![
+                sel.clone() * (constant_from!(1 as u64) - enable.clone()) * filtered_index,
+                (sel - sel_n) * enable
+            ]
+        });
+
     }
 
     pub fn assign_merged_operands(
@@ -226,6 +256,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                 cs.named_advice_column("shared_opcodes".to_string()),
                 cs.named_advice_column("shared_index".to_string()),
                 cs.advice_column(),
+                cs.advice_column(),
                 shared_advices[0].clone(),
                 shared_advices[1].clone(),
                 shared_advices[2].clone(),
@@ -235,6 +266,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         ];
         witness.map(|x| cs.enable_equality(x));
         let fixed = [
+            cs.fixed_column(),
             cs.fixed_column(),
             cs.fixed_column(),
         ];
@@ -255,6 +287,16 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
     ) -> Result<Vec<Limb<Fr>>, Error> {
         let mut arg_cells = None;
         let selected_length = get_selected_entries(shared_operands, shared_opcodes, &S::opcodes()).len();
+        let get_ops = |op| {
+            let mut mult = Fr::one();
+            for i in S::opcodes().iter().take(4) {
+                mult = mult * (op - i)
+            }
+            let inv:Option<Fr> = S::opcodes().iter().skip(4).fold(mult.clone(), |acc, x| {
+                acc * (op - x)
+            }).invert().into();
+            (mult, inv.unwrap_or(Fr::one())) 
+        };
         *arg_offset = layouter.assign_region(
             || "filter operands and opcodes",
             |mut region| {
@@ -267,12 +309,37 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                     &HostOpConfig::shared_opcode(),
                     Fr::zero(),
                 )?;
+
                 self.config.assign_cell(
                     &mut region,
                     offset,
                     &HostOpConfig::shared_operand(),
                     Fr::zero(),
                 )?;
+
+                self.config.assign_cell(
+                    &mut region,
+                    offset,
+                    &HostOpConfig::shared_operand(),
+                    Fr::zero(),
+                )?;
+
+                let (mult, inv) = get_ops(Fr::zero());
+
+                self.config.assign_cell(
+                    &mut region,
+                    offset,
+                    &HostOpConfig::ops(),
+                    mult,
+                )?;
+
+                self.config.assign_cell(
+                    &mut region,
+                    offset,
+                    &HostOpConfig::inv(),
+                    inv,
+                )?;
+
                 let active_total_index = self.config.assign_cell(
                     &mut region,
                     offset,
@@ -310,11 +377,35 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
                         &HostOpConfig::shared_index(),
                         Fr::from(index as u64),
                     )?;
+                    let (mult, inv) = get_ops(opcode.clone());
+
+                    self.config.assign_cell(
+                        &mut region,
+                        offset,
+                        &HostOpConfig::ops(),
+                        mult,
+                    )?;
+    
+                    self.config.assign_cell(
+                        &mut region,
+                        offset,
+                        &HostOpConfig::inv(),
+                        inv,
+                    )?;
+
                     offset += 1;
                     if S::opcodes().contains(&opcode) {
                         index -= 1;
                     }
                 }
+
+                let last_row = 1<<20;
+
+                // Set the max sel for shared_ops
+                for i in 0..last_row {
+                    self.config.assign_cell(&mut region, i, &HostOpConfig::sel_shared(), Fr::one())?;
+                }
+
                 let mut local_offset = *arg_offset;
                 arg_cells = Some(S::assign(
                     &mut region,

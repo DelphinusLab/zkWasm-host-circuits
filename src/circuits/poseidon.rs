@@ -258,7 +258,6 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        *offset = 0;
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
         let mut state = [0u32; T].map(|_| zero.clone());
         state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128 << 64))?;

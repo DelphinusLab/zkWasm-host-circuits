@@ -100,17 +100,26 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
     ) -> Result<(), Error> {
         let host_op_chip =
             HostOpChip::<Fr, S>::construct(config.hostconfig.clone(), config.selectconfig.clone());
-        let mut offset = 0;
-        let all_arg_cells = host_op_chip.assign(
-            &mut layouter,
-            &mut offset,
-            &self.shared_operands,
-            &self.shared_opcodes,
-        )?;
-        //all_arg_cells.retain(|x| x.value().is_some());
         let mut selector_chip = S::construct(config.selectconfig);
-        println!("arg cell num is: {:?}", all_arg_cells.len());
-        selector_chip.synthesize(&mut offset, &all_arg_cells, &mut layouter)?;
+        let all_arg_cells = layouter.assign_region(
+            || "filter operands and opcodes",
+            |mut region| {
+                let mut offset = 0;
+                let all_arg_cells = host_op_chip.assign(
+                    &mut region,
+                    &mut offset,
+                    &self.shared_operands,
+                    &self.shared_opcodes,
+                )?;
+    
+                //all_arg_cells.retain(|x| x.value().is_some());
+                println!("arg cell num is: {:?}", all_arg_cells.len());
+                println!("selector offset is: {:?}", offset);
+                selector_chip.synthesize(&mut offset, &all_arg_cells, &mut region)?;
+                Ok(all_arg_cells)
+            }
+        )?;
+        selector_chip.synthesize_separate(&all_arg_cells, &mut layouter)?;
         Ok(())
     }
 }

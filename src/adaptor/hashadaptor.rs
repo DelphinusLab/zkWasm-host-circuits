@@ -185,25 +185,31 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         Ok(r)
     }
 
+    fn synthesize_separate(
+        &mut self,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn synthesize(
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
-        *offset = layouter.assign_region(
-            || "poseidon hash region",
-            |mut region| {
+        *offset = {
                 let mut local_offset = *offset;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut local_offset)?;
+                self.initialize(&config, region, &mut local_offset)?;
                 for arg_group in arg_cells.chunks_exact(10).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
                     self.assign_permute(
-                        &mut region,
+                        region,
                         &mut local_offset,
                         &args[1..9].to_vec().try_into().unwrap(),
                         &args[0],
@@ -211,9 +217,8 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
                     )?;
                 }
                 end_timer!(timer);
-                Ok(local_offset)
-            },
-        )?;
+                local_offset
+            };
         Ok(())
     }
 }

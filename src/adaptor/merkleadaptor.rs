@@ -84,6 +84,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         shared_opcodes: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
+        println!("start assign offset {}", offset);
         let opcodes = Self::opcodes();
         let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
@@ -168,6 +169,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
+
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(MerkleAddress as u64));
 
@@ -238,20 +240,28 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         Ok(r)
     }
 
+    fn synthesize_separate(
+        &mut self,
+        arg_cells: &Vec<Limb<Fr>>,
+        layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn synthesize(
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
     ) -> Result<(), Error> {
         //println!("total args is {}", arg_cells.len());
+
+        println!("synthesize start at offset {}", offset);
         let default_index = 1u64 << DEPTH;
-        *offset = layouter.assign_region(
-            || "poseidon hash region",
-            |mut region| {
+        *offset = {
                 let config = self.config.clone();
                 let mut local_offset = *offset;
-                self.initialize(&config, &mut region, &mut local_offset)?;
+                self.initialize(&config, region, &mut local_offset)?;
                 // Initialize the mongodb
                 // 0: address
                 // 1: root
@@ -305,8 +315,9 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                     println!("root: {:?}", bytes_to_field::<Fr>(&proof.root));
                     assert!(mt.as_ref().unwrap().verify_proof(&proof).unwrap());
                     */
+
                     self.assign_proof(
-                        &mut region,
+                        region,
                         &mut local_offset,
                         &proof,
                         &opcode,
@@ -316,9 +327,8 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                         [&value0, &value1],
                     )?;
                 }
-                Ok(local_offset)
-            },
-        )?;
+                local_offset
+            };
         Ok(())
     }
 }

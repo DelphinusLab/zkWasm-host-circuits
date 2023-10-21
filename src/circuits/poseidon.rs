@@ -192,6 +192,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
+        println!("perform initialize ... {}", offset);
         self.poseidon_state.initialize(config, region, offset)
     }
 

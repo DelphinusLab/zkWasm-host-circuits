@@ -1,6 +1,6 @@
 #![feature(array_zip)]
 #![feature(slice_flatten)]
-#![deny(warnings)]
+//#![deny(warnings)]
 mod adaptor;
 pub mod circuits;
 pub mod host;

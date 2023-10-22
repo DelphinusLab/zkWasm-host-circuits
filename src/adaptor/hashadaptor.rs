@@ -1,3 +1,5 @@
+use crate::adaptor::get_selected_entries;
+use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
@@ -12,9 +14,7 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::plonk::{Error, Expression, VirtualCells, Column, Advice};
-use crate::adaptor::get_selected_entries;
-use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use halo2_proofs::plonk::{Advice, Column, Error, Expression, VirtualCells};
 
 use crate::utils::Limb;
 
@@ -63,7 +63,10 @@ const TOTAL_CONSTRUCTIONS: usize = 2048;
 
 impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
-    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         PoseidonChip::<Fr, 9, 8>::configure(meta, shared_advices)
     }
 
@@ -201,24 +204,24 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
         *offset = {
-                let mut local_offset = *offset;
-                let timer = start_timer!(|| "assign");
-                let config = self.config.clone();
-                self.initialize(&config, region, &mut local_offset)?;
-                for arg_group in arg_cells.chunks_exact(10).into_iter() {
-                    let args = arg_group.into_iter().map(|x| x.clone());
-                    let args = args.collect::<Vec<_>>();
-                    self.assign_permute(
-                        region,
-                        &mut local_offset,
-                        &args[1..9].to_vec().try_into().unwrap(),
-                        &args[0],
-                        &args[9],
-                    )?;
-                }
-                end_timer!(timer);
-                local_offset
-            };
+            let mut local_offset = *offset;
+            let timer = start_timer!(|| "assign");
+            let config = self.config.clone();
+            self.initialize(&config, region, &mut local_offset)?;
+            for arg_group in arg_cells.chunks_exact(10).into_iter() {
+                let args = arg_group.into_iter().map(|x| x.clone());
+                let args = args.collect::<Vec<_>>();
+                self.assign_permute(
+                    region,
+                    &mut local_offset,
+                    &args[1..9].to_vec().try_into().unwrap(),
+                    &args[0],
+                    &args[9],
+                )?;
+            }
+            end_timer!(timer);
+            local_offset
+        };
         Ok(())
     }
 }

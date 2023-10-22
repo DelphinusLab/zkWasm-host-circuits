@@ -1,26 +1,26 @@
 //use ark_std::{end_timer, start_timer};
-use crate::host::ExternalHostCallEntry;
-use crate::host::ForeignInst;
-use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleSet, MerkleSetRoot, MerkleGetRoot};
-use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::circuit::{Layouter, Region};
-use halo2_proofs::pairing::bn256::Fr;
-use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::plonk::Error;
-use halo2_proofs::plonk::Advice;
-use halo2_proofs::plonk::Column;
+use crate::adaptor::get_selected_entries;
+use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
-use crate::circuits::host::{HostOpConfig, HostOpSelector};
-use crate::adaptor::get_selected_entries;
 use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::host::mongomerkle::MongoMerkle;
 use crate::host::mongomerkle::DEFAULT_HASH_VEC;
+use crate::host::ExternalHostCallEntry;
+use crate::host::ForeignInst;
+use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleGetRoot, MerkleSet, MerkleSetRoot};
 use crate::utils::bytes_to_u64;
 use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
 use crate::utils::Limb;
+use halo2_proofs::arithmetic::FieldExt;
+use halo2_proofs::circuit::{Layouter, Region};
+use halo2_proofs::pairing::bn256::Fr;
+use halo2_proofs::plonk::Advice;
+use halo2_proofs::plonk::Column;
+use halo2_proofs::plonk::ConstraintSystem;
+use halo2_proofs::plonk::Error;
 
 /* The calling convention will be
  * MerkleAddress
@@ -59,7 +59,10 @@ fn kvpair_to_host_call_table(
 
 impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
-    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         MerkleChip::<Fr, DEPTH>::configure(meta, shared_advices)
     }
 
@@ -84,7 +87,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         shared_opcodes: &Vec<Fr>,
         config: &HostOpConfig,
     ) -> Result<Vec<Limb<Fr>>, Error> {
-        println!("start assign offset {}", offset);
         let opcodes = Self::opcodes();
         let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
@@ -161,7 +163,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             MerkleGet,
         )]);
 
-
         //let entries = default_table.
         let default_entries: Vec<((Fr, Fr), Fr)> = default_table
             .into_iter()
@@ -169,7 +170,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
-
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(MerkleAddress as u64));
 
@@ -218,7 +218,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 r.push(limb);
             }
 
-
             // new root does not change
             let (limb, _) = config.assign_merged_operands(
                 region,
@@ -242,8 +241,8 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
 
     fn synthesize_separate(
         &mut self,
-        arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -254,81 +253,76 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         arg_cells: &Vec<Limb<Fr>>,
         region: &mut Region<Fr>,
     ) -> Result<(), Error> {
-        //println!("total args is {}", arg_cells.len());
-
-        println!("synthesize start at offset {}", offset);
         let default_index = 1u64 << DEPTH;
         *offset = {
-                let config = self.config.clone();
-                let mut local_offset = *offset;
-                self.initialize(&config, region, &mut local_offset)?;
-                // Initialize the mongodb
-                // 0: address
-                // 1: root
-                // 2: new_root
-                // 3: value[]
-                // 5: op_code
-                let mut mt: Option<MongoMerkle<DEPTH>> = None;
-                for args in arg_cells.chunks_exact(6) {
-                    let [address, root, value0, value1, new_root, opcode] = args else { unreachable!() };
-                    //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
-                    //println!("address is {}", address.value.get_lower_128());
-                    //println!("root update is {:?} {:?}", root.value, new_root.value);
-                    //println!("value is {:?} {:?}", value0.value, value1.value);
-                    let addr = address.value.get_lower_128();
-                    let index = (addr as u64) + default_index - 1;
-                    let proof = if opcode.value == Fr::from(MerkleSet as u64) {
-                        //println!("op is set, process set:");
-                        let (mut leaf, _) = mt
-                            .as_ref()
-                            .unwrap()
-                            .get_leaf_with_proof(index)
-                            .expect("get leaf error");
-                        leaf.set(
-                            &data_to_bytes(vec![value0.value, value1.value]).to_vec(),
-                        );
-                        mt.as_mut()
-                            .unwrap()
-                            .set_leaf_with_proof(&leaf)
-                            .expect("set leaf error")
-                    } else {
-                        // the case of get value:
-                        // 1. load db
-                        // 2. get leaf
-                        //println!("op is get, process get");
-                        mt = Some(MongoMerkle::construct(
-                            [0u8; 32],
-                            field_to_bytes(&root.value),
-                            None,
-                        ));
+            let config = self.config.clone();
+            let mut local_offset = *offset;
+            self.initialize(&config, region, &mut local_offset)?;
+            // Initialize the mongodb
+            // 0: address
+            // 1: root
+            // 2: new_root
+            // 3: value[]
+            // 5: op_code
+            let mut mt: Option<MongoMerkle<DEPTH>> = None;
+            for args in arg_cells.chunks_exact(6) {
+                let [address, root, value0, value1, new_root, opcode] = args else { unreachable!() };
+                //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
+                //println!("address is {}", address.value.get_lower_128());
+                //println!("root update is {:?} {:?}", root.value, new_root.value);
+                //println!("value is {:?} {:?}", value0.value, value1.value);
+                let addr = address.value.get_lower_128();
+                let index = (addr as u64) + default_index - 1;
+                let proof = if opcode.value == Fr::from(MerkleSet as u64) {
+                    //println!("op is set, process set:");
+                    let (mut leaf, _) = mt
+                        .as_ref()
+                        .unwrap()
+                        .get_leaf_with_proof(index)
+                        .expect("get leaf error");
+                    leaf.set(&data_to_bytes(vec![value0.value, value1.value]).to_vec());
+                    mt.as_mut()
+                        .unwrap()
+                        .set_leaf_with_proof(&leaf)
+                        .expect("set leaf error")
+                } else {
+                    // the case of get value:
+                    // 1. load db
+                    // 2. get leaf
+                    //println!("op is get, process get");
+                    mt = Some(MongoMerkle::construct(
+                        [0u8; 32],
+                        field_to_bytes(&root.value),
+                        None,
+                    ));
 
-                        let (_, proof) = mt
-                            .as_ref()
-                            .unwrap()
-                            .get_leaf_with_proof(index)
-                            .expect("get leaf error");
+                    let (_, proof) = mt
+                        .as_ref()
+                        .unwrap()
+                        .get_leaf_with_proof(index)
+                        .expect("get leaf error");
 
-                        proof
-                    };
-                    /*
-                    println!("assist: {:?}", bytes_to_field::<Fr>(&proof.assist[0]));
-                    println!("root: {:?}", bytes_to_field::<Fr>(&proof.root));
-                    assert!(mt.as_ref().unwrap().verify_proof(&proof).unwrap());
-                    */
+                    proof
+                };
+                /*
+                println!("assist: {:?}", bytes_to_field::<Fr>(&proof.assist[0]));
+                println!("root: {:?}", bytes_to_field::<Fr>(&proof.root));
+                assert!(mt.as_ref().unwrap().verify_proof(&proof).unwrap());
+                */
 
-                    self.assign_proof(
-                        region,
-                        &mut local_offset,
-                        &proof,
-                        &opcode,
-                        &address,
-                        &root,
-                        &new_root,
-                        [&value0, &value1],
-                    )?;
-                }
-                local_offset
-            };
+                self.assign_proof(
+                    region,
+                    &mut local_offset,
+                    &proof,
+                    &opcode,
+                    &address,
+                    &root,
+                    &new_root,
+                    [&value0, &value1],
+                )?;
+            }
+            local_offset
+        };
         Ok(())
     }
 }
@@ -341,10 +335,10 @@ mod tests {
     use crate::host::mongomerkle::DEFAULT_HASH_VEC;
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{MerkleGet, MerkleSet};
+    use crate::proof::MERKLE_DEPTH;
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
-    use crate::proof::MERKLE_DEPTH;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
@@ -368,8 +362,20 @@ mod tests {
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index, root_default, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
-            (index, root_default, root64_new, [data, Fr::zero()], MerkleSet),
+            (
+                index,
+                root_default,
+                root_default,
+                [Fr::zero(), Fr::zero()],
+                MerkleGet,
+            ),
+            (
+                index,
+                root_default,
+                root64_new,
+                [data, Fr::zero()],
+                MerkleSet,
+            ),
         ]);
         let file = File::create("kvpair_test1.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
@@ -396,9 +402,27 @@ mod tests {
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
-            (index + 1, root_default, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
-            (index, root_default, root_default, [Fr::zero(), Fr::zero()], MerkleGet),
-            (index, root_default, root64_new, [data, Fr::zero()], MerkleSet),
+            (
+                index + 1,
+                root_default,
+                root_default,
+                [Fr::zero(), Fr::zero()],
+                MerkleGet,
+            ),
+            (
+                index,
+                root_default,
+                root_default,
+                [Fr::zero(), Fr::zero()],
+                MerkleGet,
+            ),
+            (
+                index,
+                root_default,
+                root64_new,
+                [data, Fr::zero()],
+                MerkleSet,
+            ),
         ]);
         let file = File::create("kvpair_test2.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))

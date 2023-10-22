@@ -1,13 +1,13 @@
-use halo2_proofs::pairing::bn256::Fr;
+use super::get_selected_entries;
 use halo2_proofs::pairing::bn256::pairing;
+use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bn256::{G1Affine, G2Affine, G1, G2};
 use halo2_proofs::pairing::group::Group;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region},
-    plonk::{ConstraintSystem, Error, Column, Advice},
+    plonk::{Advice, Column, ConstraintSystem, Error},
 };
-use super::get_selected_entries;
 
 pub const BN256FR_SIZE: usize = 4;
 //pub const BN256FQ_SIZE: usize = 5;
@@ -105,7 +105,10 @@ fn bn256_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bn256PairChip<Fr> {
     type Config = Bn256ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advice: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advice: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bn256PairChip::<Fr>::configure(meta)
     }
 
@@ -263,7 +266,10 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
                         offset,
-                        vec![&default_entries[5 * j + 2 * i], &default_entries[5 * j + 2 * i + 1]],
+                        vec![
+                            &default_entries[5 * j + 2 * i],
+                            &default_entries[5 * j + 2 * i + 1],
+                        ],
                         Fr::from_u128(1u128 << 54),
                         false,
                     )?;
@@ -303,7 +309,10 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                     let (p_01, _op) = config.assign_merged_operands(
                         region,
                         offset,
-                        vec![&default_entries[5 * j + 2 * i + 11], &default_entries[5 * j + 2 * i + 1 + 11]],
+                        vec![
+                            &default_entries[5 * j + 2 * i + 11],
+                            &default_entries[5 * j + 2 * i + 1 + 11],
+                        ],
                         Fr::from_u128(1u128 << 54),
                         false,
                     )?;
@@ -343,7 +352,10 @@ impl HostOpSelector for Bn256PairChip<Fr> {
                     let (q, _op) = config.assign_merged_operands(
                         region,
                         offset,
-                        vec![&default_entries[5 * j + 2 * i + 32], &default_entries[5 * j + 2 * i + 1 + 32]],
+                        vec![
+                            &default_entries[5 * j + 2 * i + 32],
+                            &default_entries[5 * j + 2 * i + 1 + 32],
+                        ],
                         Fr::from_u128(1u128 << 54),
                         false,
                     )?;
@@ -388,12 +400,14 @@ impl HostOpSelector for Bn256PairChip<Fr> {
     ) -> Result<(), Error> {
         Ok(())
     }
-
 }
 
 impl HostOpSelector for Bn256SumChip<Fr> {
     type Config = Bn256ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bn256SumChip::<Fr>::configure(meta)
     }
 
@@ -402,7 +416,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
     }
 
     fn opcodes() -> Vec<Fr> {
-         vec![
+        vec![
             Fr::from(ForeignInst::Bn254SumNew as u64),
             Fr::from(ForeignInst::Bn254SumScalar as u64),
             Fr::from(ForeignInst::Bn254SumG1 as u64),
@@ -457,13 +471,17 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                         let (p_01, _op) = config.assign_merged_operands(
                             region,
                             offset,
-                            vec![&group[5 + 5 * j + 2 * i + 11 * k], &group[5 + 5 * j + 2 * i + 11 * k + 1]],
+                            vec![
+                                &group[5 + 5 * j + 2 * i + 11 * k],
+                                &group[5 + 5 * j + 2 * i + 11 * k + 1],
+                            ],
                             Fr::from_u128(1u128 << 54),
                             true,
                         )?;
                         r.push(p_01);
                     }
-                    let ((operand, opcode), index) = *group.get(5 + 5 * j + 11 * k + 4).clone().unwrap();
+                    let ((operand, opcode), index) =
+                        *group.get(5 + 5 * j + 11 * k + 4).clone().unwrap();
                     let (p_2, _op) = config.assign_one_line(
                         region,
                         offset,
@@ -494,7 +512,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         }
 
         let mut default_table = vec![];
-        default_table.push(ExternalHostCallEntry{
+        default_table.push(ExternalHostCallEntry {
             op: ForeignInst::Bn254SumNew as usize,
             value: 1u64,
             is_ret: false,
@@ -527,7 +545,12 @@ impl HostOpSelector for Bn256SumChip<Fr> {
             let (limb, _op) = config.assign_merged_operands(
                 region,
                 offset,
-                vec![&default_entries[1], &default_entries[2], &default_entries[3], &default_entries[4]],
+                vec![
+                    &default_entries[1],
+                    &default_entries[2],
+                    &default_entries[3],
+                    &default_entries[4],
+                ],
                 Fr::from_u128(1u128 << 64),
                 false,
             )?;
@@ -540,13 +563,17 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                         let (p_01, _op) = config.assign_merged_operands(
                             region,
                             offset,
-                            vec![&default_entries[5 + 5 * j + 2 * i + 11 * k], &default_entries[5 + 5 * j + 2 * i + 11 * k + 1]],
+                            vec![
+                                &default_entries[5 + 5 * j + 2 * i + 11 * k],
+                                &default_entries[5 + 5 * j + 2 * i + 11 * k + 1],
+                            ],
                             Fr::from_u128(1u128 << 54),
                             false,
                         )?;
                         r.push(p_01);
                     }
-                    let ((operand, opcode), index) = default_entries[5 + 5 * j + 11 * k + 4].clone();
+                    let ((operand, opcode), index) =
+                        default_entries[5 + 5 * j + 11 * k + 4].clone();
                     let (p_2, _op) = config.assign_one_line(
                         region,
                         offset,

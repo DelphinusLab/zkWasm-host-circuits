@@ -1,3 +1,4 @@
+pub mod anemoi;
 pub mod babyjub;
 pub mod bls;
 pub mod bn256;
@@ -7,7 +8,6 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
-pub mod anemoi;
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 
@@ -77,7 +77,7 @@ impl CommonGateConfig {
     pub fn configure<F: FieldExt, LC: LookupAssistConfig>(
         cs: &mut ConstraintSystem<F>,
         lookup_assist_config: &LC,
-        shared_advices: &Vec<Column<Advice>>
+        shared_advices: &Vec<Column<Advice>>,
     ) -> Self {
         let witness = [
             shared_advices[0].clone(),
@@ -353,7 +353,6 @@ impl CommonGateConfig {
         *offset = *offset + 1;
         Ok(limbs)
     }
-
 
     fn assign_line<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,

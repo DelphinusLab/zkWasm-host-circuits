@@ -1,10 +1,10 @@
 use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bls12_381::pairing;
 use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine};
+use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     circuit::{Layouter, Region},
-    plonk::{ConstraintSystem, Error, Advice, Column},
+    plonk::{Advice, Column, ConstraintSystem, Error},
 };
 
 pub const BLS381FR_SIZE: usize = 5;
@@ -20,8 +20,8 @@ use crate::circuits::bls::{Bls381ChipConfig, Bls381PairChip, Bls381SumChip};
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::utils::Limb;
 
-use crate::host::{ExternalHostCallEntry, ForeignInst};
 use super::get_selected_entries;
+use crate::host::{ExternalHostCallEntry, ForeignInst};
 
 const TOTAL_CONSTRUCTIONS_PAIR: usize = 1;
 const TOTAL_CONSTRUCTIONS_SUM: usize = 16;
@@ -102,7 +102,10 @@ fn bls381_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bls381PairChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bls381PairChip::<Fr>::configure(meta)
     }
 
@@ -238,7 +241,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
-                    vec![&default_entries[2 * i + 17], &default_entries[2 * i + 1 + 17]],
+                    vec![
+                        &default_entries[2 * i + 17],
+                        &default_entries[2 * i + 1 + 17],
+                    ],
                     Fr::from_u128(1u128 << 54),
                     false,
                 )?;
@@ -263,7 +269,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
-                    vec![&default_entries[2 * i + 50], &default_entries[2 * i + 1 + 50]],
+                    vec![
+                        &default_entries[2 * i + 50],
+                        &default_entries[2 * i + 1 + 50],
+                    ],
                     Fr::from_u128(1u128 << 54),
                     false,
                 )?;
@@ -298,7 +307,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
 impl HostOpSelector for Bls381SumChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bls381SumChip::<Fr>::configure(meta)
     }
 
@@ -400,7 +412,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         }
 
         let mut default_table = vec![];
-        default_table.push(ExternalHostCallEntry{
+        default_table.push(ExternalHostCallEntry {
             op: ForeignInst::BlsSumNew as usize,
             value: 1u64,
             is_ret: false,
@@ -453,13 +465,16 @@ impl HostOpSelector for Bls381SumChip<Fr> {
             )?;
             r.push(limb);
 
-             //G1 and Sum
+            //G1 and Sum
             for k in 0..2 {
                 for i in 0..8 {
                     let (limb, _op) = config.assign_merged_operands(
                         region,
                         &mut offset,
-                        vec![&default_entries[6 + 2 * i + 17 * k], &default_entries[6 + 2 * i + 17 * k + 1]],
+                        vec![
+                            &default_entries[6 + 2 * i + 17 * k],
+                            &default_entries[6 + 2 * i + 17 * k + 1],
+                        ],
                         Fr::from_u128(1u128 << 54),
                         false,
                     )?;
@@ -502,5 +517,4 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     ) -> Result<(), Error> {
         Ok(())
     }
-
 }

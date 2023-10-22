@@ -3,7 +3,7 @@ use crate::circuits::{CommonGateConfig, Limb};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region},
-    plonk::{ConstraintSystem, Error, Advice, Column},
+    plonk::{Advice, Column, ConstraintSystem, Error},
 };
 use std::marker::PhantomData;
 
@@ -129,7 +129,10 @@ impl<F: FieldExt> AltJubChip<F> {
         Ok(())
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advice: &Vec<Column<Advice>>) -> CommonGateConfig {
+    pub fn configure(
+        cs: &mut ConstraintSystem<F>,
+        shared_advice: &Vec<Column<Advice>>,
+    ) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &(), shared_advice)
     }
 

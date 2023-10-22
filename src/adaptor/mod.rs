@@ -38,28 +38,28 @@ pub fn fr_to_args<F: BaseExt>(
 }
 
 pub fn get_selected_entries<Fr: FieldExt>(
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        opcodes: &Vec<Fr>,
-    ) -> Vec<((Fr, Fr), Fr)> {
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone());
+    shared_operands: &Vec<Fr>,
+    shared_opcodes: &Vec<Fr>,
+    opcodes: &Vec<Fr>,
+) -> Vec<((Fr, Fr), Fr)> {
+    let entries = shared_operands
+        .clone()
+        .into_iter()
+        .zip(shared_opcodes.clone());
 
-        let v = entries
-            .filter(|(_operand, opcode)| opcodes.contains(opcode))
-            .collect::<Vec<(Fr, Fr)>>();
+    let v = entries
+        .filter(|(_operand, opcode)| opcodes.contains(opcode))
+        .collect::<Vec<(Fr, Fr)>>();
 
-        let len = v.len();
+    let len = v.len();
 
-        let shared_index: Vec<Fr> =
-            v.iter()
-            .enumerate()
-            .map(|(i, _)| Fr::from((len - i) as u64))
-            .collect();
+    let shared_index: Vec<Fr> = v
+        .iter()
+        .enumerate()
+        .map(|(i, _)| Fr::from((len - i) as u64))
+        .collect();
 
-        v.into_iter().zip(shared_index).collect::<Vec<((Fr, Fr), Fr)>>()
+    v.into_iter()
+        .zip(shared_index)
+        .collect::<Vec<((Fr, Fr), Fr)>>()
 }
-
-

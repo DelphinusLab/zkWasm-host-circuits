@@ -12,7 +12,6 @@ use halo2_proofs::{
     circuit::*,
     plonk::*,
 };
-use crate::value_for_assign;
 
 #[derive(Debug, Clone)]
 pub struct KeccakState<F: FieldExt> {
@@ -397,6 +396,7 @@ impl<F: FieldExt> KeccakState<F> {
         for x in 0..5 {
             for y in 0..5 {
                 //not operation
+                /*
                 let mut bit_array_limb = Vec::with_capacity(64);
                 let mut bit_state = vec![]; // in big endian
                 config.decompose_limb(region,&mut(), offset, &self.state[(x + 1) % 5][y], &mut bit_state, 64)?;
@@ -413,8 +413,9 @@ impl<F: FieldExt> KeccakState<F> {
                 for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
                     not_limb.value += F::from_u128( bit as u128) * F::from_u128(1 << i);
                 }
-
-                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
+                */
+                //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
+                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
             }
         }
 
@@ -435,7 +436,7 @@ impl<F: FieldExt> KeccakState<F> {
         self.state = out;
         Ok(())
     }
-    
+
     pub fn round(&mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
@@ -447,10 +448,30 @@ impl<F: FieldExt> KeccakState<F> {
         }
 
         self.theta(config, region, offset)?;
+        for y in  self.state.iter() {
+            let state_after_theta_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_after_theta_row);
+        }
+
         self.rho(config, region, offset)?;
+        for y in  self.state.iter() {
+            let state_after_rho_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_after_rho_row);
+        }
+
         self.pi(config, region, offset)?;
+        for y in  self.state.iter() {
+            let state_after_pi_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_after_pi_row);
+        }
+
         self.xi(config, region, offset)?;
-        self.iota(config, region, offset,rc)?;
+        for y in  self.state.iter() {
+            let state_after_xi_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
+            dbg!(&state_after_xi_row);
+        }
+
+        self.iota(config, region, offset, rc)?;
 
         Ok(())
     }
@@ -654,7 +675,7 @@ mod tests {
         inputs[0] = Fr::one();
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);
-        let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(17, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 }

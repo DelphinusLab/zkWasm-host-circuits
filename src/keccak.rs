@@ -1,4 +1,3 @@
-use std::default::default;
 use std::marker::PhantomData;
 use crate::host::keccak256::*;
 use itertools::Itertools;
@@ -131,14 +130,29 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
 
     fn round_b(a: State<F, T>, rc: u64) -> State<F, T> {
         for state_before_round_wasm in a.0.iter() {
-
             dbg!(state_before_round_wasm);
-
         }
+
         let s1 = KeccakF::<F, T, RATE>::theta(a);
+        for state_after_theta_wasm in s1.0.iter() {
+            dbg!(state_after_theta_wasm);
+        }
+
         let s2 = KeccakF::<F, T, RATE>::rho(s1);
+        for state_after_rho_wasm in s2.0.iter() {
+            dbg!(state_after_rho_wasm);
+        }
+
         let s3 = KeccakF::<F, T, RATE>::pi(s2);
+        for state_after_pi_wasm in s3.0.iter() {
+            dbg!(state_after_pi_wasm);
+        }
+
         let s4 = KeccakF::<F, T, RATE>::xi(s3);
+        for state_after_xi_wasm in s4.0.iter() {
+            dbg!(state_after_xi_wasm);
+        }
+
         KeccakF::<F, T, RATE>::iota(s4, rc)
     }
 

@@ -7,3 +7,5 @@ pub mod circuits;
 pub mod host;
 pub mod proof;
 pub mod utils;
+pub mod keccak;
+

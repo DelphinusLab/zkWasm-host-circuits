@@ -6,6 +6,7 @@ pub mod circuits;
 pub mod host;
 pub mod proof;
 pub mod utils;
+pub mod keccak;
 
 use crate::proof::{exec_create_host_proof, read_host_call_table, OpType};
 use clap::{arg, value_parser, App, Arg, ArgMatches};

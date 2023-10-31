@@ -80,14 +80,13 @@ impl<F: FieldExt> RangeCheckChip<F> {
         };
 
         // Range Check of all limbs
-        //
         cs.lookup_any("within ranges", |meta| {
             let limb = config.get_expr(meta, RangeCheckConfig::limb());
             let table = config.get_expr(meta, RangeCheckConfig::table());
             vec![(limb, table)]
         });
 
-        // First we require the rem is continus if it is not zero
+        // First we require the rem is continues if it is not zero
         cs.create_gate("range check constraint", |meta| {
             let rem = config.get_expr(meta, RangeCheckConfig::rem());
             let rem_n = config.get_expr(meta, RangeCheckConfig::rem_n());
@@ -111,6 +110,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
                 //(constant_from!(1) - sel) * acc, // if sel is 0 then acc must equal to 0
             ]
         });
+
         cs.create_gate("end with zero", |meta| {
             let sel = config.get_expr(meta, RangeCheckConfig::sel());
             let acc_n = config.get_expr(meta, RangeCheckConfig::acc_n());

@@ -7,6 +7,7 @@ pub mod kvpair;
 pub mod merkle;
 pub mod poseidon;
 pub mod rmd160;
+pub(crate) mod keccak256;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};
@@ -48,6 +49,9 @@ pub enum ForeignInst {
     JubjubSumNew,
     JubjubSumPush,
     JubjubSumResult,
+    Keccak256New,
+    Keccak256Push,
+    Keccak256Finalize
 }
 
 pub enum ReduceRule<F: FieldExt> {

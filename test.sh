@@ -1,2 +1,3 @@
-cargo test generate_poseidon_input_multi
-cargo run --release -- --input blssumtest.json --opname bls381sum --output output
+cargo test generate_keccak_input_multi
+RUST_BACKTRACE=1 cargo run --release -- --input keccak256_test_multi.json --opname keccakhash --output output
+

@@ -4,3 +4,5 @@ pub mod adaptor;
 pub mod circuits;
 pub mod host;
 pub mod utils;
+pub mod keccak;
+

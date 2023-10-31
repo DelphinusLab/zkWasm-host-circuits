@@ -20,10 +20,10 @@ strum_macros = "0.24.1"
 ff = "0.12"
 halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", default-features = true }
 halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.3.3"}
+itertools = "0.10.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/lanbones/poseidon" }
 circuits-batcher = { git = "https://github.com/DelphinusLab/continuation-batcher.git" }
-itertools = "0.10.0"
 rand = "0.8"
 rand_core = "0.6"
 ark-std = { version = "0.3.0", features = ["print-trace"] }

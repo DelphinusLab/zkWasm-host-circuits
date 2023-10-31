@@ -9,6 +9,8 @@ pub mod poseidon;
 pub mod range;
 pub mod rmd160;
 pub mod keccak256;
+//mod keccak_arith_table;
+
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 
@@ -38,8 +40,8 @@ pub trait LookupAssistConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F> + Copy,
+        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F> + Copy,
     );
 }
 

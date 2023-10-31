@@ -10,7 +10,6 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::{ConstraintSystem, Error, Column, Advice}; 
-
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::host::keccak256::KECCAK_HASHER;
 use crate::utils::Limb;
@@ -23,6 +22,7 @@ fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
     }]
 }
 
+// 1 + 17 + 4
 fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntryTable {
     let mut r = vec![];
     r.push(hash_cont(true));
@@ -74,7 +74,6 @@ impl HostOpSelector for KeccakChip<Fr> {
         for group in selected_entries.chunks_exact(1 + 17 * 4 + 4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
-
             let (limb, _op) = config.assign_one_line( //operand, opcode
                 region,
                 offset,
@@ -90,11 +89,31 @@ impl HostOpSelector for KeccakChip<Fr> {
             for subgroup in group
                 .clone()
                 .into_iter()
-                .skip(1) //reset
+                .skip(1)
+                .take(17)
                 .collect::<Vec<_>>()
-                .chunks_exact(4) // 4limbs
             {
-                // running sum of 4 limbs to compute the u256
+                let ((operand, opcode), index) = subgroup.clone();
+                let (limb, _op) = config.assign_one_line(
+                    region,
+                    offset,
+                    operand,
+                    opcode,
+                    index,
+                    operand, //same as operand as indicator is 0
+                    Fr::zero(), //not merged
+                    true, // in filtered table
+                )?;
+                r.push(limb);
+            }
+
+            for subgroup in group
+                .clone()
+                .iter()
+                .skip(18) //reset
+                .collect::<Vec<_>>()
+                .chunks_exact(4) // 1 lane
+            {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
                     offset,
@@ -124,7 +143,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 Fr::zero(),
                 Fr::zero(),
                 Fr::zero(),
-                Fr::zero()
+                Fr::from(1u64 << 63)
             ],
             KECCAK_HASHER.clone().squeeze(),
         );
@@ -136,6 +155,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
+        //dbg!(total_used_instructions.clone());
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
@@ -154,8 +174,29 @@ impl HostOpSelector for KeccakChip<Fr> {
 
             for subgroup in default_entries
                 .clone()
-                .iter()
+                .into_iter()
                 .skip(1)
+                .take(17)
+                .collect::<Vec<_>>()
+            {
+                let ((operand, opcode), index) = subgroup.clone();
+                let (limb, _op) = config.assign_one_line(
+                    region,
+                    offset,
+                    operand,
+                    opcode,
+                    index,
+                    operand, //same as operand as indicator is 0
+                    Fr::zero(), //not merged
+                    true, // in filtered table
+                )?;
+                r.push(limb);
+            }
+
+            for subgroup in default_entries
+                .clone()
+                .iter()
+                .skip(18) //reset
                 .collect::<Vec<_>>()
                 .chunks_exact(4)
             {
@@ -169,7 +210,6 @@ impl HostOpSelector for KeccakChip<Fr> {
                 r.push(limb);
             }
         }
-
         Ok(r)
     }
 
@@ -241,7 +281,7 @@ mod tests {
                 r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Push));
             }
             let result = hasher.update_exact(&round);
-            r.push(crate::adaptor::fr_to_args(result, 1, 64, Keccak256Finalize));
+            r.push(crate::adaptor::fr_to_args(result, 4, 64, Keccak256Finalize));
         }
         ExternalHostCallEntryTable(r.into_iter().flatten().collect())
     }
@@ -265,7 +305,7 @@ mod tests {
             Fr::zero(),
             Fr::zero(),
             Fr::zero(),
-            Fr::zero(),
+            Fr::from(1u64 << 63),
         ]]);
         let file = File::create("keccak256_test.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &table).expect("can not write to file");
@@ -292,7 +332,7 @@ mod tests {
                 Fr::zero(),
                 Fr::zero(),
                 Fr::zero(),
-                Fr::zero(),
+                Fr::from(1u64 << 63),
             ],
         ]);
         let file = File::create("keccak256_test_multi.json").expect("can not create file");

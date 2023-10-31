@@ -111,16 +111,20 @@ impl<F: FieldExt> KeccakChip<F> {
                 }
             }
         }
+
         //dbg!(&new_state[0][0]);
         //dbg!(&values[0]);
         //dbg!(&self.keccak_state.state[0][0]);
 
         self.keccak_state.state = new_state;
 
+        /*
         for y in  self.keccak_state.state.iter() {
             let state_before_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_before_permute_row);
+            dbg!(&state_before_permute_row);
         }
+         */
+
         //self.keccak_state.state[0][0].value = F::one();
         self.keccak_state.permute(
             &self.config,
@@ -128,10 +132,12 @@ impl<F: FieldExt> KeccakChip<F> {
             offset,
         )?;
 
+        /*
         for y in  self.keccak_state.state.iter() {
             let state_after_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_after_permute_row);
+            dbg!(&state_after_permute_row);
         }
+         */
 
         let part0 = self.keccak_state.state[0][0].value.clone();
         let part1 = self.keccak_state.state[1][0].value.clone();
@@ -152,6 +158,9 @@ impl<F: FieldExt> KeccakChip<F> {
 
         //region.constrain_equal(result.cell.as_ref().unwrap().cell(), digest_limb.cell.as_ref().unwrap().cell())?;
         println!("digest is {:?}", digest);
+        // get function changes state ?
+        self.keccak_state.state = self.keccak_state.default.clone();
+        //region.constrain_equal(result.cell.as_ref().unwrap().cell(), digest_limb.cell.as_ref().unwrap().cell())?;
         dbg!(digest);
         Ok(digest_limb)
     }
@@ -317,7 +326,7 @@ impl<F: FieldExt> KeccakState<F> {
         let zero= config.assign_constant(region, &mut (), offset, &F::zero())?;
   
         let mut c = [0u32;5].map(|_| zero.clone());
-        let mut d= [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
+        let mut d = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
         //let mut out = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
         
         for x in 0..5 {
@@ -325,7 +334,7 @@ impl<F: FieldExt> KeccakState<F> {
             // do we need to add the constraints here?
             c[x] = Limb::new(None,F::from(state_u64));
         }
-        dbg!(&c);
+        //dbg!(&c);
         for x in 0..5 {
             for y in 0..5 {
                 let rotate_limb = self.rotate_left(region, config, offset, &c[(x+1)%5], 1)?;

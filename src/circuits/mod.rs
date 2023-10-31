@@ -12,6 +12,11 @@ pub mod keccak256;
 //mod keccak_arith_table;
 
 
+pub mod keccak256;
+mod keccak_arith_table;
+//mod keccak_arith_table;
+
+
 use crate::utils::{field_to_bn, GateCell, Limb};
 
 use crate::{

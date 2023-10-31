@@ -29,11 +29,11 @@ fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntr
     for f in inputs.iter() {
         r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Push));
     }
-    r.push(crate::adaptor::fr_to_args(result, 1, 64, Keccak256Finalize));
+    r.push(crate::adaptor::fr_to_args(result, 4, 64, Keccak256Finalize));
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 2048;
+const TOTAL_CONSTRUCTIONS: usize = 12;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;

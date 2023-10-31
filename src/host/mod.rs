@@ -9,7 +9,6 @@ pub mod mongomerkle;
 pub mod poseidon;
 pub mod rmd160;
 pub mod keccak256;
-pub mod keccak_reference;
 mod keccak;
 
 use halo2_proofs::arithmetic::FieldExt;

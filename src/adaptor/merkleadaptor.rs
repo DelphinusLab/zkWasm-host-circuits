@@ -32,7 +32,7 @@ const MERGE_SIZE: usize = 4;
 const MERGE_DATA_SIZE: usize = 2;
 // 0: set/get 1-4: root 5-8:address 9-12:value 13-16:root
 const CHUNK_SIZE: usize = 1 + 3 * MERGE_SIZE; // should equal to 13
-const TOTAL_CONSTRUCTIONS: usize = 600;
+const TOTAL_CONSTRUCTIONS: usize = 1200;
 
 fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
@@ -168,6 +168,8 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             .into_iter()
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
+
+        assert!(total_used_instructions <= TOTAL_CONSTRUCTIONS);
 
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();

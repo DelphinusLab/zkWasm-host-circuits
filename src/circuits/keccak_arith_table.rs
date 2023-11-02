@@ -21,7 +21,7 @@ customized_circuits!(KeccakArithConfig, 2, 7, 2, 0,
 );
 
 impl LookupAssistConfig for KeccakArithConfig {
-    /// register a columns (col) to be XOR / ADD checked by limb size (sz)
+    /// register columns (col) to be XOR checked by limb size (sz)
     fn register<F: FieldExt> (
         &self,
         cs: &mut ConstraintSystem<F>,
@@ -100,7 +100,7 @@ impl<F: FieldExt> KeccakArithChip<F> {
 
         let config = KeccakArithConfig { fixed, selector, witness };
 
-        // Check if the relation of lhs XOR rhs equals to res belongs to the table
+        // Check if the encoding of (lhs, rhs, res) belongs to the table
         cs.lookup_any("xor validity check", |meta| {
             let res = config.get_expr(meta, KeccakArithConfig::res());
             let lhs = config.get_expr(meta, KeccakArithConfig::lhs());
@@ -175,6 +175,7 @@ impl<F: FieldExt> KeccakArithChip<F> {
         let mut limbs_lhs = vec![];
         let mut limbs_rhs = vec![];
         let mut limbs_res = vec![];
+
         let mut bn_lhs = field_to_bn(&lhs);
         let mut bn_rhs = field_to_bn(&rhs);
         let mut bn_res = bn_lhs.clone() ^ bn_rhs.clone();
@@ -200,10 +201,10 @@ impl<F: FieldExt> KeccakArithChip<F> {
             limbs_rhs.push(bn_to_field(&limb_rhs));
             limbs_res.push(bn_to_field(&limb_res));
         }
-      
         cs_lhs.reverse();
         cs_rhs.reverse();
         cs_res.reverse();
+
         limbs_lhs.reverse();
         limbs_rhs.reverse();
         limbs_res.reverse();
@@ -239,104 +240,27 @@ impl<F: FieldExt> KeccakArithChip<F> {
         Ok(())
     }
 
-    /*
-        pub fn assign_value_and (
-            &mut self,
-            region: &mut Region<F>,
-            lhs: F,
-            rhs: F,
-            sz: u64,
-        ) -> Result<(), Error> {
-            let mut limbs_lhs = vec![];
-            let mut limbs_rhs = vec![];
-            let mut bn_lhs = field_to_bn(&lhs);
-            let mut bn_rhs = field_to_bn(&rhs);
-            let mut cs_lhs = vec![];
-            let mut cs_rhs = vec![];
-            let mut res_vec = vec![];
-
-            for _ in 0..sz {
-                cs_lhs.push(bn_to_field(&bn_lhs));
-                cs_rhs.push(bn_to_field(&bn_rhs));
-                let limb_lhs = bn_lhs.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<8));
-                let limb_rhs = bn_rhs.modpow(&BigUint::from(1u128), &BigUint::from(1u128<<8));
-                bn_lhs = (bn_lhs - limb_lhs.clone()).div(BigUint::from(1u128<<8));
-                bn_rhs = (bn_rhs - limb_rhs.clone()).div(BigUint::from(1u128<<8));
-                let res = limb_lhs + limb_rhs;
-                res_vec.push(bn_to_field(&res));
-                limbs_lhs.push(bn_to_field(&limb_lhs));
-                limbs_rhs.push(bn_to_field(&limb_rhs));
-            }
-
-            cs_lhs.reverse();
-            cs_rhs.reverse();
-            limbs_lhs.reverse();
-            limbs_rhs.reverse();
-            res_vec.reverse();
-
-            for i in 0..sz {
-                let limb_lhs = limbs_lhs.pop().unwrap();
-                let limb_rhs = limbs_rhs.pop().unwrap();
-                let acc_lhs = cs_lhs.pop().unwrap();
-                let acc_rhs = cs_rhs.pop().unwrap();
-                let res = res_vec.pop().unwrap();
-
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::lhs(), limb_lhs)?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::acc_lhs(), acc_lhs)?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::rem(), F::from_u128((sz-i) as u128))?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::sel(), F::one())?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::res(), res)?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::rhs(), limb_rhs)?;
-                self.config.assign_cell(region, self.offset, &KeccakArithConfig::acc_rhs(), acc_rhs)?;
-
-                self.offset += 1;
-            }
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::lhs(), F::zero())?;
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::rhs(), F::zero())?;
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::acc_lhs(), F::zero())?;
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::acc_rhs(), F::zero())?;
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::rem(), F::zero())?;
-            self.config.assign_cell(region, self.offset, &KeccakArithConfig::sel(), F::zero())?;
-            self.offset += 1;
-            Ok(())
-        }
-        */
-
     /// initialize the table columns that contains every possible result of 4-bit value via XOR or ADD operation
     /// initialize needs to be called before using the KeccarkArithchip
     pub fn initialize(
         &mut self,
         region: &mut Region<F>,
     ) -> Result<(), Error> {
-        // initialize the XOR table 枚举4bit lhs和rhs的所有可能性和res的所有可能性 encoding起来
+        // initialize the XOR table with the encoded value
         for i in 0..2^4 {
             for j in 0..2^4 {
                 let res = i ^ j;
-                self.config.assign_cell(region, i*2^4+j, &KeccakArithConfig::table(), F::from_u128((i * 2 ^ 8 + j * 2 ^ 4 + res) as u128))?;
-                // why do we need to initialize the rem and acc columns?
-                //self.config.assign_cell(region, i, &KeccakArithConfig::acc_lhs(), F::from_u128(i as u128))?;
-                //self.config.assign_cell(region, i, &KeccakArithConfig::acc_rhs(), F::from_u128(i as u128))?;
-                //self.config.assign_cell(region, i, &KeccakArithConfig::rem(), F::from_u128(i as u128))?;
-                //self.config.assign_cell(region, i, &KeccakArithConfig::table_res(), F::from_u128(i as u128))?;
+                self.config.assign_cell(
+                    region,
+                    i*2^4+j,
+                    &KeccakArithConfig::table(),
+                    F::from_u128((i * 2 ^ 8 + j * 2 ^ 4 + res) as u128)
+                )?;
+
             }
         }
         self.offset = 0;
-        self.assign_value_xor(region, F::zero(), F::zero(), 12)?;
-
-        /*
-        // initialize the ADD table
-        for i in 2^16..2^17 {
-            self.config.assign_cell(region, i, &KeccakArithConfig::table_lhs(), F::from_u128(i as u128))?;
-            self.config.assign_cell(region, i, &KeccakArithConfig::table_rhs(), F::from_u128(i as u128))?;
-
-            self.config.assign_cell(region, i, &KeccakArithConfig::acc_lhs(), F::from_u128(i as u128))?;
-            self.config.assign_cell(region, i, &KeccakArithConfig::acc_rhs(), F::from_u128(i as u128))?;
-            self.config.assign_cell(region, i, &KeccakArithConfig::rem(), F::from_u128(i as u128))?;
-            self.config.assign_cell(region, i, &KeccakArithConfig::table_res(), F::from_u128(i as u128))?;
-        }
-        self.offset = 2^16;
-        self.assign_value_and(region, F::zero(), F::zero(), 8)?;
-         */
+        self.assign_value_xor(region, F::zero(), F::zero(), 16)?;
 
         Ok(())
     }
@@ -454,8 +378,7 @@ mod tests {
             keccakchipconfig.register(
                 meta,
                 |c| helperconfig.arith_check_column(c),
-                |_| Expression::Constant(Fr::from(4u64))
-            );
+                |_| Expression::Constant(Fr::from(4u64)));
 
             Self::Config {
                 keccakchipconfig,
@@ -477,10 +400,11 @@ mod tests {
                     let bn_lhs = field_to_bn(&lhs);
                     let rhs = Fr::from(1u64<<24 + 1);
                     let bn_rhs = field_to_bn(&rhs);
-                    let v = bn_to_field(&(bn_lhs ^ bn_rhs));
-            
+                    let bn_res = bn_lhs ^ bn_rhs;
+                    let res:Fr = bn_to_field(&bn_res);
+                    let v = lhs * Fr::from(1u64<<8) + rhs * Fr::from(1u64 << 4) + res;
                     keccak_arith_chip.initialize(&mut region)?;
-                    keccak_arith_chip.assign_value_xor(&mut region, lhs, rhs, 4)?;
+                    keccak_arith_chip.assign_value_xor(&mut region, lhs, rhs, 16)?;
 
                     // assign helper
                     let mut offset = 0;
@@ -493,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn test_range_circuit() {
+    fn test_xor_circuit() {
         let test_circuit = TestCircuit {};
         let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));

@@ -33,7 +33,7 @@ fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntr
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 12;
+const TOTAL_CONSTRUCTIONS: usize = 6;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;
@@ -188,7 +188,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                     index,
                     operand, //same as operand as indicator is 0
                     Fr::zero(), //not merged
-                    true, // in filtered table
+                    false, // in filtered table
                 )?;
                 r.push(limb);
             }

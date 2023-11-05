@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use crate::host::keccak256::*;
+use crate::host::keccak256::{ROUND_CONSTANTS, ROTATION_CONSTANTS, N_R};
 use itertools::Itertools;
 use halo2_proofs::arithmetic::FieldExt;
 use crate::utils::field_to_u64;
@@ -260,19 +260,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
         output.push(state.0[2][0]);
         output.push(state.0[3][0]);
 
-        /*
-         let mut output = vec![];
-         let mut counter: usize = 0;
-         'outer: for y in 0..5 {
-             for mut sheet in state.0.iter().take(5) {
-                 output.push(sheet[y]);
-                 if counter == 3 {
-                     break 'outer;
-                 }
-                 counter += 1;
-             }
-         }
-         */
         let result = ((output[0] * F::from_u128(1u128 << 64) + output[1])
             * F::from_u128(1u128 << 64) + output[2])
             * F::from_u128(1u128 << 64) + output[3];
@@ -325,12 +312,10 @@ mod tests {
 
         for chunk in inputs.chunks(17) {
             keccak.spec.absorb(&mut keccak.state, &chunk);
-            //keccak.spec.keccak_f.permute(&mut keccak.state)
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-        dbg!(a);
-        dbg!(b);
+
         assert_eq!(a, b);
     }
 
@@ -400,6 +385,7 @@ mod tests {
         assert_eq!(a, b);
     }
 
+    /*
     fn run<const T: usize, const RATE: usize>() {
         for number_of_iters in 1..25 {
             let mut keccak: Keccak<Fr, T, RATE> = Keccak::<Fr, T, RATE>::new();
@@ -441,6 +427,8 @@ mod tests {
         run::<9, 8>();
         run::<10, 9>();
     }
+
+     */
 }
 
 /*

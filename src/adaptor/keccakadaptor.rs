@@ -17,31 +17,6 @@ use crate::host::keccak256::KECCAK_HASHER;
 
 use crate::utils::Limb;
 
-/*
-impl LookupAssistConfig for () {
-    /// register a column (col) to be range checked by limb size (sz)
-    fn register<F: FieldExt>(
-        &self,
-        _cs: &mut ConstraintSystem<F>,
-        _col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        _hint: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-    ) {
-        ()
-    }
-}
-
-impl<F: FieldExt> LookupAssistChip<F> for () {
-    fn provide_lookup_evidence(
-        &mut self,
-        _region: &mut Region<F>,
-        _value: F,
-        _sz: u64,
-    ) -> Result<(), Error> {
-        Ok(())
-    }
-}
-*/
-
 fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
         op: Keccak256New as usize,
@@ -61,7 +36,7 @@ fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntr
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 12;
+const TOTAL_CONSTRUCTIONS: usize = 6;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;
@@ -104,7 +79,6 @@ impl HostOpSelector for KeccakChip<Fr> {
         // TODO: Change 8 to RATE ?
         for group in selected_entries.chunks_exact(1 + 17 + 4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
-            dbg!(opcode.clone());
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
 
             let (limb, _op) = config.assign_one_line( //operand, opcode
@@ -188,7 +162,6 @@ impl HostOpSelector for KeccakChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        dbg!(total_used_instructions.clone());
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
@@ -221,7 +194,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                     index,
                     operand, //same as operand as indicator is 0
                     Fr::zero(), //not merged
-                    true, // in filtered table
+                    false, // in filtered table
                 )?;
                 r.push(limb);
             }
@@ -238,7 +211,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                     &mut offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
-                    true,
+                    false,
                 )?;
                 r.push(limb);
             }
@@ -252,6 +225,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
+
         layouter.assign_region(
             || "keccak256 hash region",
             |mut region| {
@@ -262,7 +236,6 @@ impl HostOpSelector for KeccakChip<Fr> {
                 for arg_group in arg_cells.chunks_exact(19).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
-                    //dbg!(&args[0].clone());
                     self.assign_permute(
                         &mut region,
                         &mut offset,

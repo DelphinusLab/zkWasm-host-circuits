@@ -1,9 +1,12 @@
 use crate::circuits::poseidon::PoseidonChip;
+use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
 use crate::utils::bytes_to_field;
 use crate::utils::field_to_bytes;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Chip, Region};
+use halo2_proofs::plonk::Advice;
+use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 use std::marker::PhantomData;
@@ -12,7 +15,7 @@ use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
 use crate::host::poseidon::MERKLE_HASHER_SPEC;
 use crate::host::poseidon::POSEIDON_HASHER_SPEC;
-use crate::host::ForeignInst::KVPairSet;
+use crate::host::ForeignInst::MerkleSet;
 use halo2_proofs::pairing::bn256::Fr;
 
 /* Given a merkel tree eg1 with height=3:
@@ -47,6 +50,7 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
 
 pub struct MerkleChip<F: FieldExt, const D: usize> {
     pub config: CommonGateConfig,
+    pub extend: PoseidonGateConfig,
     data_hasher_chip: PoseidonChip<F, 9, 8>,
     merkle_hasher_chip: PoseidonChip<F, 3, 2>,
     state: MerkleProofState<F, D>,
@@ -67,11 +71,20 @@ impl<F: FieldExt, const D: usize> Chip<F> for MerkleChip<F, D> {
 }
 
 impl<const D: usize> MerkleChip<Fr, D> {
-    pub fn new(config: CommonGateConfig) -> Self {
+    pub fn new(config: CommonGateConfig, extend: PoseidonGateConfig) -> Self {
         MerkleChip {
-            merkle_hasher_chip: PoseidonChip::construct(config.clone(), MERKLE_HASHER_SPEC.clone()),
-            data_hasher_chip: PoseidonChip::construct(config.clone(), POSEIDON_HASHER_SPEC.clone()),
+            merkle_hasher_chip: PoseidonChip::construct(
+                config.clone(),
+                extend.clone(),
+                MERKLE_HASHER_SPEC.clone(),
+            ),
+            data_hasher_chip: PoseidonChip::construct(
+                config.clone(),
+                extend.clone(),
+                POSEIDON_HASHER_SPEC.clone(),
+            ),
             config,
+            extend,
             state: MerkleProofState::default(),
             _marker: PhantomData,
         }
@@ -91,8 +104,13 @@ impl<const D: usize> MerkleChip<Fr, D> {
         self.data_hasher_chip.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &())
+    pub fn configure(
+        cs: &mut ConstraintSystem<Fr>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> (CommonGateConfig, PoseidonGateConfig) {
+        let config = CommonGateConfig::configure(cs, &(), shared_advices);
+        let extend = PoseidonGateConfig::configure(cs, &config);
+        (config, extend)
     }
 
     pub fn assign_proof(
@@ -103,6 +121,7 @@ impl<const D: usize> MerkleChip<Fr, D> {
         opcode: &Limb<Fr>,
         address: &Limb<Fr>,
         root: &Limb<Fr>,
+        new_root: &Limb<Fr>,
         value: [&Limb<Fr>; 2],
     ) -> Result<(), Error> {
         let is_set = self.config.eq_constant(
@@ -110,8 +129,9 @@ impl<const D: usize> MerkleChip<Fr, D> {
             &mut (),
             offset,
             opcode,
-            &Fr::from(KVPairSet as u64),
+            &Fr::from(MerkleSet as u64),
         )?;
+
         let fills = proof
             .assist
             .to_vec()
@@ -149,16 +169,9 @@ impl<const D: usize> MerkleChip<Fr, D> {
         self.state.assist = compare_assist.clone();
 
         let mut positions = vec![];
-        let c = self.config.sum_with_constant(
-            region,
-            &mut (),
-            offset,
-            vec![(address, Fr::one())],
-            Some(-Fr::from((1u64 << D) - 1)),
-        )?;
-        //println!("offset for position is: {:?}", c.value);
         self.config
-            .decompose_limb(region, &mut (), offset, &c, &mut positions, D)?;
+            .decompose_limb(region, &mut (), offset, &address, &mut positions, D)?;
+
         // position = 0 means assist is at right else assist is at left
         let initial_hash = self.data_hasher_chip.get_permute_result(
             region,
@@ -177,9 +190,11 @@ impl<const D: usize> MerkleChip<Fr, D> {
         )?;
         assert_eq!(field_to_bytes(&initial_hash.value), proof.source);
 
-        let final_hash = positions.iter().zip(compare_assist.iter().rev()).fold(
-            initial_hash,
-            |acc, (position, assist)| {
+        let final_hash = positions
+            .iter()
+            .rev()
+            .zip(compare_assist.iter().rev())
+            .fold(initial_hash, |acc, (position, assist)| {
                 let left = self
                     .config
                     .select(region, &mut (), offset, &position, &acc, &assist, 0)
@@ -192,13 +207,16 @@ impl<const D: usize> MerkleChip<Fr, D> {
                     .merkle_hasher_chip
                     .get_permute_result(region, offset, &[left, right], &self.state.one.clone())
                     .unwrap();
-                //println!("position check: {:?} {:?}", acc.clone().value, assist.clone().value);
+                //println!("position check: {} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
                 hash
-            },
-        );
-        assert_eq!(root.value, final_hash.value);
+            });
+
+        let desired_root =
+            self.config
+                .select(region, &mut (), offset, &is_set, root, new_root, 0)?;
+        assert_eq!(desired_root.value, final_hash.value);
         region.constrain_equal(
-            root.cell.as_ref().unwrap().cell(),
+            desired_root.cell.as_ref().unwrap().cell(),
             final_hash.cell.as_ref().unwrap().cell(),
         )?;
         Ok(())

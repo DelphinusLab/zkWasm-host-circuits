@@ -1,3 +1,4 @@
+pub mod anemoi;
 pub mod babyjub;
 pub mod bls;
 pub mod bn256;
@@ -7,9 +8,9 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
-
 pub mod keccak256;
-pub mod keccak_arith_table;
+//mod keccak_arith_table;
+
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 
@@ -30,9 +31,9 @@ use halo2_proofs::{
  * lookup_ind: whether perform lookup at this line
  */
 #[rustfmt::skip]
-customized_circuits!(CommonGateConfig, 2, 5, 12, 0,
-    | l0  | l1   | l2  | l3  | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | sel
-    | nil | nil  | nil | nil | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         | nil
+customized_circuits!(CommonGateConfig, 2, 5, 13, 0,
+    | l0   | l1    | l2   | l3   | d   |  c0  | c1  | c2  | c3  | cd  | cdn | c   | c03  | c12  | lookup_hint | lookup_ind  | common_sel | extension_sel
+    | l0_n | l1_n  | l2_n | nil  | d_n |  nil | nil | nil | nil | nil | nil | nil | nil  | nil  | nil         | nil         |    nil     |      nil
 );
 pub trait LookupAssistConfig {
     /// register a column (col) to be range checked by limb size (sz)
@@ -51,8 +52,6 @@ pub trait LookupAssistChip<F: FieldExt> {
         value: F,
         sz: u64,
     ) -> Result<(), Error>;
-
-
 }
 
 lazy_static::lazy_static! {
@@ -81,10 +80,17 @@ impl CommonGateConfig {
     pub fn configure<F: FieldExt, LC: LookupAssistConfig>(
         cs: &mut ConstraintSystem<F>,
         lookup_assist_config: &LC,
+        shared_advices: &Vec<Column<Advice>>,
     ) -> Self {
-        let witness = [0; 5].map(|_| cs.advice_column());
+        let witness = [
+            shared_advices[0].clone(),
+            shared_advices[1].clone(),
+            shared_advices[2].clone(),
+            shared_advices[3].clone(),
+            shared_advices[4].clone(),
+        ];
         witness.map(|x| cs.enable_equality(x));
-        let fixed = [0; 12].map(|_| cs.fixed_column());
+        let fixed = [0; 13].map(|_| cs.fixed_column());
         let selector = [];
 
         let config = CommonGateConfig {
@@ -102,6 +108,7 @@ impl CommonGateConfig {
             |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
         );
 
+        // helper gates for implementing poseidon with 2 cell permute
         cs.create_gate("one line constraint", |meta| {
             let l0 = config.get_expr(meta, CommonGateConfig::l0());
             let l1 = config.get_expr(meta, CommonGateConfig::l1());
@@ -118,7 +125,7 @@ impl CommonGateConfig {
             let cdn = config.get_expr(meta, CommonGateConfig::cdn());
             let c03 = config.get_expr(meta, CommonGateConfig::c03());
             let c12 = config.get_expr(meta, CommonGateConfig::c12());
-            let sel = config.get_expr(meta, CommonGateConfig::sel());
+            let sel = config.get_expr(meta, CommonGateConfig::common_sel());
 
             // if odd then carry is put at right else put at left
             vec![
@@ -191,12 +198,15 @@ impl CommonGateConfig {
         offset: &mut usize,
         limb: &Limb<F>,
         limbs: &mut Vec<Limb<F>>,
-        limbsize: usize,
+        limbsizeraw: usize,
     ) -> Result<(), Error> {
+        let initsize = limbs.len();
+        let limbsize = (limbsizeraw + 3) & (!3);
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
         bool_limbs.truncate(limbsize);
         bool_limbs.resize_with(limbsize, || 0);
         bool_limbs.reverse();
+        //FIXME: ensure the first v is zero
         let mut v = F::zero();
         for i in 0..(limbsize / 4) {
             let l0 = F::from_u128(bool_limbs[4 * i] as u128);
@@ -236,6 +246,7 @@ impl CommonGateConfig {
             limbs.append(&mut l.to_vec()[0..4].to_vec());
             v = v_next;
         }
+
         // constraint that limb.value is equal v_next so that the above limbs is
         // a real decompose of the limb.value
         self.assign_line(
@@ -263,10 +274,8 @@ impl CommonGateConfig {
             ],
             0,
         )?;
-        /* todo
-         * constraint all the limbs to be either 1 or 0
-         */
 
+        // constraint all the limbs to be either 1 or 0:
         // apply eqn: (val * val) - val = 0,
         // by: (ws[1] * ws[2] * cs[7]) + (ws[0] * cs[0]) = 0,
         for i in 0..(limbs.len()) {
@@ -298,6 +307,7 @@ impl CommonGateConfig {
             )?;
         }
 
+        limbs.truncate(initsize + limbsizeraw);
         Ok(())
     }
 
@@ -356,30 +366,33 @@ impl CommonGateConfig {
         coeffs: [Option<F>; 9],
         hint: u64, // the boundary limit of the first cell
     ) -> Result<Vec<Limb<F>>, Error> {
-        let ws = value
-            .clone()
-            .to_vec()
-            .iter()
-            .map(|x| x.clone().map_or(F::zero(), |x| x.value))
-            .collect::<Vec<F>>();
-        let cs = coeffs
-            .clone()
-            .to_vec()
-            .iter()
-            .map(|x| x.map_or(F::zero(), |x| x))
-            .collect::<Vec<F>>();
-        assert!(
-            ws[0] * cs[0]
-                + ws[1] * cs[1]
-                + ws[2] * cs[2]
-                + ws[3] * cs[3]
-                + ws[4] * cs[4]
-                + ws[5] * cs[5]
-                + ws[0] * ws[3] * cs[6]
-                + ws[1] * ws[2] * cs[7]
-                + cs[8]
-                == F::zero()
-        );
+        #[cfg(debug_assertions)]
+        {
+            let ws = value
+                .clone()
+                .to_vec()
+                .iter()
+                .map(|x| x.clone().map_or(F::zero(), |x| x.value))
+                .collect::<Vec<F>>();
+            let cs = coeffs
+                .clone()
+                .to_vec()
+                .iter()
+                .map(|x| x.map_or(F::zero(), |x| x))
+                .collect::<Vec<F>>();
+            assert!(
+                ws[0] * cs[0]
+                    + ws[1] * cs[1]
+                    + ws[2] * cs[2]
+                    + ws[3] * cs[3]
+                    + ws[4] * cs[4]
+                    + ws[5] * cs[5]
+                    + ws[0] * ws[3] * cs[6]
+                    + ws[1] * ws[2] * cs[7]
+                    + cs[8]
+                    == F::zero()
+            );
+        }
 
         let mut limbs = vec![];
         for i in 0..6 {
@@ -400,7 +413,7 @@ impl CommonGateConfig {
             let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
             self.assign_cell(region, *offset, &COMMON_CS[i], v).unwrap();
         }
-        self.assign_cell(region, *offset, &CommonGateConfig::sel(), F::one())?;
+        self.assign_cell(region, *offset, &CommonGateConfig::common_sel(), F::one())?;
         self.assign_cell(
             region,
             *offset,

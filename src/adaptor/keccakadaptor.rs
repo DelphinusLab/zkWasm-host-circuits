@@ -2,19 +2,16 @@ use crate::circuits::keccak256::KeccakChip;
 use crate::circuits::CommonGateConfig;
 //use crate::circuits::LookupAssistChip;
 //use crate::circuits::LookupAssistConfig;
-
+use crate::adaptor::get_selected_entries;
 use crate::host::ForeignInst::{Keccak256New, Keccak256Push, Keccak256Finalize};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
-use halo2_proofs::plonk::{ConstraintSystem};
-use halo2_proofs::plonk::{Error};
-
+use halo2_proofs::plonk::{ConstraintSystem, Error, Column, Advice}; 
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::host::keccak256::KECCAK_HASHER;
-
 use crate::utils::Limb;
 
 fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
@@ -36,54 +33,50 @@ fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntr
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 6;
+const TOTAL_CONSTRUCTIONS: usize = 12;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>) -> Self::Config {
-        KeccakChip::<Fr>::configure(meta)
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        shared_advice: &Vec<Column<Advice>>,
+    ) -> Self::Config {
+        KeccakChip::<Fr>::configure(meta, shared_advice)
     }
 
     fn construct(c: Self::Config) -> Self {
         KeccakChip::<Fr>::construct(c)
     }
 
-    fn assign(
-        region: &mut Region<Fr>,
-        shared_operands: &Vec<Fr>,
-        shared_opcodes: &Vec<Fr>,
-        shared_index: &Vec<Fr>,
-        config: &HostOpConfig,
-    ) -> Result<Vec<Limb<Fr>>, Error> {
-        let opcodes: Vec<Fr> = vec![
+    fn opcodes() -> Vec<Fr> {
+        vec![
             Fr::from(ForeignInst::Keccak256New as u64),
             Fr::from(ForeignInst::Keccak256Push as u64),
             Fr::from(ForeignInst::Keccak256Finalize as u64),
-        ];
+        ]
+    }
 
-        let entries = shared_operands
-            .clone()
-            .into_iter()
-            .zip(shared_opcodes.clone())
-            .zip(shared_index.clone());
-
-        let selected_entries = entries
-            .filter(|((_operand, opcode), _index)| opcodes.contains(opcode))
-            .collect::<Vec<((Fr, Fr), Fr)>>();
+    fn assign(
+        region: &mut Region<Fr>,
+        offset: &mut usize,
+        shared_operands: &Vec<Fr>,
+        shared_opcodes: &Vec<Fr>,
+        config: &HostOpConfig,
+    ) -> Result<Vec<Limb<Fr>>, Error> {
+        let opcodes: Vec<Fr> = Self::opcodes();
+        let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
         let total_used_instructions = selected_entries.len() / (1 + 17 + 4);
 
-        let mut offset = 0;
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
         for group in selected_entries.chunks_exact(1 + 17 + 4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
-
             let (limb, _op) = config.assign_one_line( //operand, opcode
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -103,7 +96,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -123,7 +116,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     true,
@@ -168,7 +161,7 @@ impl HostOpSelector for KeccakChip<Fr> {
 
             let (limb, _op) = config.assign_one_line(
                 region,
-                &mut offset,
+                offset,
                 operand,
                 opcode,
                 index,
@@ -188,7 +181,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
                     region,
-                    &mut offset,
+                    offset,
                     operand,
                     opcode,
                     index,
@@ -208,7 +201,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
-                    &mut offset,
+                    offset,
                     subgroup.to_vec(),
                     Fr::from_u128(1u128 << 64),
                     false,
@@ -219,35 +212,43 @@ impl HostOpSelector for KeccakChip<Fr> {
         Ok(r)
     }
 
+    fn synthesize_separate(
+        &mut self,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
+
     fn synthesize(
         &mut self,
+        offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
     ) -> Result<(), Error> {
-        println!("total args is {}", arg_cells.len());
-
-        layouter.assign_region(
-            || "keccak256 hash region",
-            |mut region| {
-                let mut offset = 0;
+        println!("keccak total args is {}", arg_cells.len());
+        *offset = {
+            println!("keccak adaptor total args is {}", arg_cells.len());
+                let mut local_offset = *offset;
                 let timer = start_timer!(|| "assign");
                 let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut offset)?;
+                self.initialize(&config, region, &mut local_offset)?;
                 for arg_group in arg_cells.chunks_exact(19).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
+                    println!("args {:?}", args);
                     self.assign_permute(
-                        &mut region,
-                        &mut offset,
+                        region,
+                        &mut local_offset,
                         &args[1..18].to_vec().try_into().unwrap(),
                         &args[0],
                         &args[18],
                     )?;
                 }
                 end_timer!(timer);
-                Ok(())
-            },
-        )?;
+                local_offset
+        };
         Ok(())
     }
 }

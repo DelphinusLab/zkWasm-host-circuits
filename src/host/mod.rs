@@ -1,13 +1,16 @@
 pub mod bls;
 pub mod bn256;
 pub mod cache;
+pub mod datahash;
 pub mod db;
 pub mod jubjub;
-pub mod kvpair;
 pub mod merkle;
+pub mod mongomerkle;
 pub mod poseidon;
 pub mod rmd160;
-pub(crate) mod keccak256;
+pub mod keccak256;
+pub mod keccak_reference;
+mod keccak;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};
@@ -25,21 +28,27 @@ pub struct ExternalHostCallEntry {
 #[derive(clap::ArgEnum, Clone, Copy, Debug)]
 pub enum ForeignInst {
     Log = 0,
-    BlspairG1,
-    BlspairG2,
-    BlspairG3,
+    BlsPairG1,
+    BlsPairG2,
+    BlsPairG3,
+    BlsSumNew,
+    BlsSumScalar,
     BlsSumG1,
     BlsSumResult,
-    Bn254SumG1,
-    Bn254SumResult,
     Bn254PairG1,
     Bn254PairG2,
     Bn254PairG3,
-    KVPairSetRoot, // 11
-    KVPairGetRoot, // 12
-    KVPairAddress, // 13
-    KVPairSet,     // 14
-    KVPairGet,     // 15
+    Bn254SumNew,
+    Bn254SumScalar,
+    Bn254SumG1,
+    Bn254SumResult,
+    MerkleSetRoot,
+    MerkleGetRoot,
+    MerkleAddress,
+    MerkleSet,
+    MerkleGet,
+    MerklePutData,
+    MerkleFetchData,
     SHA256New,
     SHA256Push,
     SHA256Finalize,
@@ -51,7 +60,7 @@ pub enum ForeignInst {
     JubjubSumResult,
     Keccak256New,
     Keccak256Push,
-    Keccak256Finalize
+    Keccak256Finalize,
 }
 
 pub enum ReduceRule<F: FieldExt> {
@@ -65,7 +74,7 @@ impl<F: FieldExt> ReduceRule<F> {
         match self {
             ReduceRule::Bytes(_, a) => *a, // a * u64
             ReduceRule::Field(_, _) => 4,  // 4 * u64
-            ReduceRule::U64(_) => 1,       // 4 * u64
+            ReduceRule::U64(_) => 1,       // 1 * u64
         }
     }
     fn reduce(&mut self, v: u64, offset: usize) {

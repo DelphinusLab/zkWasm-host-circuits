@@ -1,6 +1,5 @@
 use halo2_proofs::pairing::bn256::Fr;
-use crate::keccak;
-use crate::keccak::Keccak;
+use super::keccak::Keccak;
 use crate::utils::Limb;
 
 /// The State is a 5x5 matrix of 64 bit lanes.
@@ -59,23 +58,21 @@ pub static ROTATION_CONSTANTS: [[u32; 5]; 5] = [
 ];
 
 lazy_static::lazy_static! {
-    pub static ref KECCAK_HASHER: keccak::Keccak<Fr, 5, 17> = Keccak::<Fr, 5, 17>::new();
+    pub static ref KECCAK_HASHER: Keccak<Fr, 5, 17> = Keccak::<Fr, 5, 17>::new();
 }
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::pairing::bn256::Fr;
     #[test]
     fn test_keccak() {
         const ZERO_HASHER_SQUEEZE: &str =
-            //force the hasher is for fr field result.
-            "0x2f7053117e869a5a9d4035c2c93e2f902615e1f936995406bef3486ac90df1ec";
+            //"0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a"; //force the hasher is for fr field result.
+            "0x21180a6dea44931f8fbda992e505a54fd14e5b2e320cb7fd551ad907549f7092";
         let mut hasher = super::KECCAK_HASHER.clone();
-        hasher.update(&[Fr::zero()]);
+        hasher.update(&[]);
         let result = hasher.squeeze();
 
         println!("hash result is {:?}", result);
         assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
     }
 }
-

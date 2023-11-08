@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use crate::host::keccak256::{ROUND_CONSTANTS, ROTATION_CONSTANTS, N_R};
+use crate::host::keccak256::*;
 use itertools::Itertools;
 use halo2_proofs::arithmetic::FieldExt;
 use crate::utils::field_to_u64;
@@ -26,7 +26,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Keccak<F, T, RATE> {
         Self {
             state: State::default(),
             // rate & capacity in u64
-            spec: Spec::new(RATE, 25-RATE),
+            spec: Spec::new(),
             absorbing: Vec::new(),
         }
     }
@@ -34,6 +34,25 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Keccak<F, T, RATE> {
 
 impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
     pub fn update(&mut self, input: &[F]) {
+        /*
+        let mut input_elements = self.absorbing.clone();
+        input_elements.extend_from_slice(input);
+
+        for chunk in input_elements.chunks(RATE) {
+            if chunk.len() < RATE {
+                // Must be the last iteration of this update. Feed permuted inputs to the
+                // absorption line
+                self.absorbing = chunk.to_vec();
+            } else {
+                // Add new chunk of inputs for the next permutation cycle.
+                self.spec.absorb(&mut self.state, chunk);
+                // Perform intermediate permutation
+                //self.spec.keccak_f.permute(&mut self.state);
+                // Flush the absorption line
+                self.absorbing.clear();
+            }
+        }
+       */
 
         let mut offset = 0;
 
@@ -89,13 +108,10 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
 
-        /*
         for y in  self.state.0.iter() {
             let state_after_permute_row_wasm = y.iter().map(|x| x.clone()).collect_vec();
             dbg!(&state_after_permute_row_wasm);
         }
-
-         */
         self.spec.result(&mut self.state)
     }
 }
@@ -113,48 +129,12 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
     }
 
     fn round_b(a: State<F, T>, rc: u64) -> State<F, T> {
-        /*
-        for state_before_round_wasm in a.0.iter() {
-            dbg!(state_before_round_wasm);
-        }
-
-         */
 
         let s1 = KeccakF::<F, T, RATE>::theta(a);
-
-        /*
-        for state_after_theta_wasm in s1.0.iter() {
-            dbg!(state_after_theta_wasm);
-        }
-
-         */
-
         let s2 = KeccakF::<F, T, RATE>::rho(s1);
-
-        /*
-        for state_after_rho_wasm in s2.0.iter() {
-            dbg!(state_after_rho_wasm);
-        }
-
-         */
-
         let s3 = KeccakF::<F, T, RATE>::pi(s2);
-
-
-        /*
-        for state_after_pi_wasm in s3.0.iter() {
-            dbg!(state_after_pi_wasm);
-        }
-
-         */
-
         let s4 = KeccakF::<F, T, RATE>::xi(s3);
 
-        /*
-        for state_after_xi_wasm in s4.0.iter() {
-            dbg!(state_after_xi_wasm);
-        }
-        */
         KeccakF::<F, T, RATE>::iota(s4, rc)
     }
 
@@ -166,7 +146,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
             c[x] = F::from(field_to_u64(&a.0[x][0]) ^ field_to_u64(&a.0[x][1]) ^ field_to_u64(&a.0[x][2]) ^
                                field_to_u64(&a.0[x][3]) ^ field_to_u64(&a.0[x][4]));
         }
-        //dbg!(&c);
+
         for (x, y) in (0..5).cartesian_product(0..5) {
             out.0[x][y] = F::from(field_to_u64(&a.0[x][y]) ^ field_to_u64(&c[(x + 4) % 5])
                                     ^ field_to_u64(&c[(x + 1) % 5]).rotate_left(1));
@@ -208,16 +188,12 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
 }
 #[derive(Debug, Clone)]
 pub struct Spec<F: FieldExt, const T: usize, const RATE: usize> {
-    rate: usize,
-    capacity: usize,
     keccak_f: KeccakF<F, T, RATE>,
 }
 
 impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
-    pub fn new(rate: usize, capacity: usize) -> Spec<F,T,RATE> {
+    pub fn new() -> Spec<F,T,RATE> {
         Spec {
-            rate,
-            capacity,
             keccak_f: KeccakF::default(),
         }
     }
@@ -225,7 +201,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     pub fn absorb(&self, state: &mut State<F, T>, input: &[F]) {
 
         debug_assert_eq!(input.len() % RATE, 0);
-        //dbg!(&input);
+
         let chunks_total = input.len() / RATE;
         for chunk_i in 0..chunks_total {
             let chuck_offset = chunk_i * RATE;
@@ -242,12 +218,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
                 }
             }
         }
-
-        /*
-        for state_before_permute in state.0.iter(){
-            dbg!(state_before_permute);
-        }
-        */
 
         self.keccak_f.permute(state);
     }
@@ -304,7 +274,7 @@ mod tests {
     use halo2_proofs::pairing::group::ff::Field;
     use crate::host::keccak256::N_R;
     use rand_core::OsRng;
-    use crate::keccak::Keccak;
+    use crate::host::keccak::Keccak;
 
     #[test]
     fn keccak256_one(){
@@ -325,10 +295,12 @@ mod tests {
 
         for chunk in inputs.chunks(17) {
             keccak.spec.absorb(&mut keccak.state, &chunk);
+            //keccak.spec.keccak_f.permute(&mut keccak.state)
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-
+        dbg!(a);
+        dbg!(b);
         assert_eq!(a, b);
     }
 
@@ -398,7 +370,6 @@ mod tests {
         assert_eq!(a, b);
     }
 
-    /*
     fn run<const T: usize, const RATE: usize>() {
         for number_of_iters in 1..25 {
             let mut keccak: Keccak<Fr, T, RATE> = Keccak::<Fr, T, RATE>::new();
@@ -440,8 +411,6 @@ mod tests {
         run::<9, 8>();
         run::<10, 9>();
     }
-
-     */
 }
 
 /*

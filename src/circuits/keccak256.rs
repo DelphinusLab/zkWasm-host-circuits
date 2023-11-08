@@ -208,16 +208,6 @@ impl<F: FieldExt> KeccakState<F> {
         let mut lhs_limb = Limb::new(None,F::zero());
         let mut rhs_limb = Limb::new(None,F::zero());
 
-        /*
-        for x in 0..8 {
-            for y in 0..8 {
-                res_limb.value += F::from_u128(1 << bit_array_limb_res[x * 8 + y]);
-                lhs_limb.value += F::from_u128(1 << bit_array_limb_lhs[x * 8 + y]);
-                rhs_limb.value += F::from_u128(1 << bit_array_limb_rhs[x * 8 + y]);
-            }
-        }
-        */
-
         for (i, &bit) in bit_array_limb_res.iter().rev().enumerate() {
             res_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
         }
@@ -365,17 +355,16 @@ impl<F: FieldExt> KeccakState<F> {
 
     pub fn xi(
         &mut self,
-        _config: &CommonGateConfig,
-        _region: &mut Region<F>,
-        _offset: &mut usize,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
     ) -> Result<(), Error> {
         let mut out = self.state.clone();
 
         for x in 0..5 {
             for y in 0..5 {
                 //not operation
-                /*
-                let mut bit_array_limb = Vec::with_capacity(64);
+                let mut bit_array_limb = Vec::new();
                 let mut bit_state = vec![]; // in big endian
                 config.decompose_limb(region,&mut(), offset, &self.state[(x + 1) % 5][y], &mut bit_state, 64)?;
 
@@ -385,15 +374,15 @@ impl<F: FieldExt> KeccakState<F> {
 
                 let mut not_limb = Limb::new(None,F::zero());
                 for i in 0..bit_array_limb.len() {
-                    bit_array_limb[i] = !bit_array_limb[i];
+                    bit_array_limb[i] = 1 - bit_array_limb[i];
                 }
 
                 for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
                     not_limb.value += F::from_u128( bit as u128) * F::from_u128(1 << i);
                 }
-                */
-                //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
-                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
+
+                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
+                //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
             }
         }
 
@@ -614,6 +603,8 @@ mod tests {
                         &reset,
                         &result
                     )?;
+
+                    dbg!(offset);
                     Ok(())
                 },
             )?;
@@ -644,7 +635,7 @@ mod tests {
         inputs[16] = Fr::from_u128(1 << 63) + Fr::one();
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);
-        let prover = MockProver::run(17, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 
@@ -658,7 +649,7 @@ mod tests {
         inputs[16] = Fr::from_u128(1 << 63) + Fr::one();
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);
-        let prover = MockProver::run(17, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 
@@ -675,7 +666,7 @@ mod tests {
         inputs[16] = Fr::from_u128(1 << 63);
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);
-        let prover = MockProver::run(17, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
         assert_eq!(prover.verify(), Ok(()));
     }
 
@@ -695,7 +686,8 @@ mod tests {
         inputs[16] = Fr::from_u128(1 << 63);
         let test_circuit = TestCircuit { inputs, result };
         println!("result is {:?}", result);
-        let prover = MockProver::run(17, &test_circuit, vec![]).unwrap();
+        let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
+
         assert_eq!(prover.verify(), Ok(()));
     }
 }

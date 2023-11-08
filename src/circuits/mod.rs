@@ -9,9 +9,7 @@ pub mod range;
 pub mod rmd160;
 
 pub mod keccak256;
-mod keccak_arith_table;
-//mod keccak_arith_table;
-
+pub mod keccak_arith_table;
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 
@@ -53,6 +51,8 @@ pub trait LookupAssistChip<F: FieldExt> {
         value: F,
         sz: u64,
     ) -> Result<(), Error>;
+
+
 }
 
 lazy_static::lazy_static! {

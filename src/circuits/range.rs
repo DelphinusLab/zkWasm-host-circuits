@@ -130,6 +130,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
         value: F,
         sz: u64,
     ) -> Result<(), Error> {
+        dbg!(value);
         let mut limbs = vec![];
         let mut bn = field_to_bn(&value);
         let mut cs = vec![];
@@ -305,7 +306,6 @@ mod tests {
                     let v = Fr::from(1u64 << 24 + 1);
                     range_chip.initialize(&mut region)?;
                     range_chip.assign_value_with_range(&mut region, v, 4)?;
-
                     // assign helper
                     let mut offset = 0;
                     helper_chip.assign_value(&mut region, &mut offset, v)?;

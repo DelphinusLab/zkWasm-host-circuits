@@ -108,10 +108,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
 
-        for y in  self.state.0.iter() {
-            let state_after_permute_row_wasm = y.iter().map(|x| x.clone()).collect_vec();
-            dbg!(&state_after_permute_row_wasm);
-        }
         self.spec.result(&mut self.state)
     }
 }
@@ -297,8 +293,7 @@ mod tests {
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-        dbg!(a);
-        dbg!(b);
+
         assert_eq!(a, b);
     }
 
@@ -307,7 +302,6 @@ mod tests {
         let mut keccak = Keccak::<Fr, 5, 17>::new();
         keccak.update(&[]);
         let a = keccak.squeeze();
-        dbg!(a);
     }
 
     #[test]
@@ -317,7 +311,7 @@ mod tests {
         let inputs = (0..0)
             .map(|_| Fr::random(OsRng))
             .collect::<Vec<Fr>>();
-        dbg!(inputs.clone());
+
         keccak.update(&inputs[..]);
         let a = keccak.squeeze();
 
@@ -335,8 +329,7 @@ mod tests {
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-        dbg!(a);
-        dbg!(b);
+
         assert_eq!(a, b);
     }
     #[test]

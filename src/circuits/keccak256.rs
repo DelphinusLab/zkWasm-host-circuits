@@ -1,6 +1,6 @@
 use crate::host::keccak256::{ROUND_CONSTANTS, N_R, ROTATION_CONSTANTS, RATE_LANES};
 use crate::utils::field_to_u64;
-
+use crate::circuits::keccak_arith_table::{KeccakArithChip, KeccakArithConfig};
 use halo2_proofs::arithmetic::FieldExt;
 
 use crate::circuits::{
@@ -52,14 +52,19 @@ impl<F: FieldExt> KeccakChip<F> {
         self.keccak_state.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advice: &Vec<Column<Advice>>) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &(), shared_advice)
+    pub fn configure(
+        cs: &mut ConstraintSystem<F>,
+        lookup_assist_config: &KeccakArithConfig,
+        shared_advice: &Vec<Column<Advice>>
+    ) -> CommonGateConfig {
+        CommonGateConfig::configure(cs, lookup_assist_config, shared_advice)
     }
 
     // assign the r as witness to call the permutation function and constrain the result to be the same as the digest
     pub fn get_permute_result(
         &mut self,
         region: &mut Region<F>,
+        lookup_assist_chip: &mut KeccakArithChip<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
@@ -76,7 +81,7 @@ impl<F: FieldExt> KeccakChip<F> {
             for i in 0..5 {
                 new_state[x][i] = self.config.select(
                     region,
-                    &mut (),
+                    lookup_assist_chip,
                     offset,
                     &reset,
                     &current_state[i],
@@ -97,6 +102,7 @@ impl<F: FieldExt> KeccakChip<F> {
                 new_state[x][y] = self.keccak_state.xor(
                     region,
                     &self.config,
+                    lookup_assist_chip,
                     offset,
                     &new_state[x][y],
                     &values[i + chuck_offset],
@@ -143,11 +149,12 @@ impl<F: FieldExt> KeccakChip<F> {
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
+        lookup_assist_chip: &mut KeccakArithChip<F>,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
-        let r = self.get_permute_result(region, offset, values, reset)?;
+        let r = self.get_permute_result(region, offset,lookup_assist_chip, values, reset)?;
         println!("expect {:?}, get {:?}", &result.value, &r.value);
         assert_eq!(r.value, result.value);
 
@@ -178,7 +185,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn xor(&self,
         region: &mut Region<F>,
         config: &CommonGateConfig,
-        //lookup_assist_chip: &mut LC,
+        lookup_assist_chip: &mut KeccakArithChip<F>,
         offset: &mut usize,
         lhs: &Limb<F>,
         rhs: &Limb<F>,
@@ -220,9 +227,9 @@ impl<F: FieldExt> KeccakState<F> {
 
         let encode_limb = Limb::new(None,lhs_limb.value * F::from_u128(1 << 16) + rhs_limb.value * F::from_u128(1 << 8) + res_limb.value);
 
-        let res_vec = config.assign_line(region, &mut (), offset,
-                                         [Some(encode_limb),Some(lhs_limb), Some(rhs_limb), Some(res_limb), None, None],
-                                         [Some(-F::one()), Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), None, None, None, None, None], 8)?;
+        let res_vec = config.assign_line(region, lookup_assist_chip, offset,
+                                         [Some(lhs_limb), Some(rhs_limb), Some(res_limb), Some(encode_limb), None, None],
+                                         [Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), Some(-F::one()), None, None, None, None, None], 8)?;
         Ok(res_vec[3].clone())
     }
     

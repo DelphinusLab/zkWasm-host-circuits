@@ -1,7 +1,6 @@
 use crate::circuits::keccak256::KeccakChip;
 use crate::circuits::CommonGateConfig;
-//use crate::circuits::LookupAssistChip;
-//use crate::circuits::LookupAssistConfig;
+use crate::circuits::keccak_arith_table::{KeccakArithChip, KeccakArithConfig};
 use crate::adaptor::get_selected_entries;
 use crate::host::ForeignInst::{Keccak256New, Keccak256Push, Keccak256Finalize};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
@@ -9,7 +8,7 @@ use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
-use halo2_proofs::plonk::{ConstraintSystem, Error, Column, Advice}; 
+use halo2_proofs::plonk::{ConstraintSystem, Error, Column, Advice};
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::host::keccak256::KECCAK_HASHER;
 use crate::utils::Limb;
@@ -39,9 +38,10 @@ impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
+        lookup_assist_config: &mut KeccakArithConfig,
         shared_advice: &Vec<Column<Advice>>,
     ) -> Self::Config {
-        KeccakChip::<Fr>::configure(meta, shared_advice)
+        KeccakChip::<Fr>::configure(meta, lookup_assist_config, shared_advice)
     }
 
     fn construct(c: Self::Config) -> Self {
@@ -225,6 +225,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
+        lookup_assist_chip: &mut KeccakArithChip<Fr>,
         region: &mut Region<Fr>,
     ) -> Result<(), Error> {
         println!("keccak total args is {}", arg_cells.len());
@@ -241,6 +242,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                     self.assign_permute(
                         region,
                         &mut local_offset,
+                        lookup_assist_chip,
                         &args[1..18].to_vec().try_into().unwrap(),
                         &args[0],
                         &args[18],

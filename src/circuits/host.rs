@@ -211,6 +211,7 @@ pub trait HostOpSelector {
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,
+        lookup_assist_config: &mut (),
     ) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
     fn opcodes() -> Vec<Fr>;
@@ -225,6 +226,7 @@ pub trait HostOpSelector {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
+        lookup_assist_chip: &mut (),
         region: &mut Region<Fr>,
     ) -> Result<(), Error>;
     fn synthesize_separate(

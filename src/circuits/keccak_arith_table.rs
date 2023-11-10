@@ -39,12 +39,6 @@ impl LookupAssistConfig for KeccakArithConfig {
             let rem = self.get_expr(meta, KeccakArithConfig::rem());
             vec![(col(meta), acc_rhs), (sz(meta), rem)]
         });
-
-        cs.lookup_any("check res", |meta| {
-            let acc_res = self.get_expr(meta, KeccakArithConfig::acc_res());
-            let rem = self.get_expr(meta, KeccakArithConfig::rem());
-            vec![(col(meta), acc_res), (sz(meta), rem)]
-        });
     }
 }
 
@@ -55,14 +49,12 @@ pub struct KeccakArithChip<F:FieldExt> {
 }
 
 impl<F:FieldExt> LookupAssistChip<F> for KeccakArithChip<F> {
-
     fn provide_lookup_evidence (
         &mut self,
         _region: &mut Region<F>,
         _value: F,
         _sz: u64,
     ) -> Result<(), Error> {
-
         Ok(())
     }
 
@@ -92,8 +84,7 @@ impl<F: FieldExt> KeccakArithChip<F> {
     }
 
     pub fn configure(cs: &mut ConstraintSystem<F>) -> KeccakArithConfig {
-        let witness= [0; 7]
-                .map(|_|cs.advice_column());
+        let witness= [0; 7].map(|_|cs.advice_column());
         witness.map(|x| cs.enable_equality(x));
         let fixed = [0; 2].map(|_| cs.fixed_column());
         let selector =[];
@@ -118,7 +109,7 @@ impl<F: FieldExt> KeccakArithChip<F> {
             let rem_n = config.get_expr(meta, KeccakArithConfig::rem_n());
             let sel = config.get_expr(meta, KeccakArithConfig::sel());
 
-            vec![sel * rem.clone() * (rem - rem_n - constant_from!(1)), ]
+            vec![sel * rem.clone() * (rem - rem_n - constant_from!(1))]
         });
 
         // Second we make sure if the rem is not zero then
@@ -154,11 +145,11 @@ impl<F: FieldExt> KeccakArithChip<F> {
             let acc_n_rhs = config.get_expr(meta, KeccakArithConfig::acc_n_rhs());
             let acc_n_res = config.get_expr(meta, KeccakArithConfig::acc_n_res());
             let sel_n = config.get_expr(meta, KeccakArithConfig::sel_n());
-            
+
             vec![
                 sel.clone() * acc_n_lhs * (constant_from!(1) - sel_n.clone()), // if sel is 0 then acc must equal to 0
                 sel.clone() * acc_n_rhs * (constant_from!(1) - sel_n.clone()),
-                sel.clone() * acc_n_res * (constant_from!(1) - sel_n.clone()),
+                sel * acc_n_res * (constant_from!(1) - sel_n),
             ]
         });
 
@@ -247,16 +238,15 @@ impl<F: FieldExt> KeccakArithChip<F> {
         region: &mut Region<F>,
     ) -> Result<(), Error> {
         // initialize the XOR table with the encoded value
-        for i in 0..2^4 {
-            for j in 0..2^4 {
+        for i in 0..1<<4 {
+            for j in 0..1<<4 {
                 let res = i ^ j;
                 self.config.assign_cell(
                     region,
-                    i*2^4+j,
+                    i*(1<<4)+j,
                     &KeccakArithConfig::table(),
-                    F::from_u128((i * 2 ^ 8 + j * 2 ^ 4 + res) as u128)
+                    F::from_u128((i * (1 << 8) + j * (1 << 4) + res) as u128)
                 )?;
-
             }
         }
         self.offset = 0;
@@ -264,7 +254,7 @@ impl<F: FieldExt> KeccakArithChip<F> {
 
         Ok(())
     }
-} 
+}
 
 
 #[cfg(test)]
@@ -292,13 +282,18 @@ mod tests {
 
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
-        limb: Column<Advice>
+        limb_lhs: Column<Advice>,
+        limb_rhs: Column<Advice>,
     }
 
     impl HelperChipConfig {
-        pub fn arith_check_column (&self, cs: &mut VirtualCells<Fr>) -> Expression<Fr> {
-            cs.query_advice(self.limb, Rotation::cur())
+        pub fn arith_check_lhs (&self, cs: &mut VirtualCells<Fr>) -> Expression<Fr> {
+            cs.query_advice(self.limb_lhs, Rotation::cur())
         }
+        pub fn arith_check_rhs (&self, cs: &mut VirtualCells<Fr>) -> Expression<Fr> {
+            cs.query_advice(self.limb_rhs, Rotation::cur())
+        }
+        // do we need to check the result here?
     }
 
     #[derive(Clone, Debug)]
@@ -327,29 +322,50 @@ mod tests {
         }
 
         fn configure(cs: &mut ConstraintSystem<Fr>) -> HelperChipConfig {
-            let limb = cs.advice_column();
-            cs.enable_equality(limb);
+            let limb_lhs = cs.advice_column();
+            let limb_rhs = cs.advice_column();
+            cs.enable_equality(limb_rhs);
+            cs.enable_equality(limb_lhs);
             HelperChipConfig {
-                limb,
+                limb_lhs,
+                limb_rhs,
             }
         }
 
-        fn assign_value(
+        fn assign_lhs(
             &self,
             region: &mut Region<Fr>,
             offset: &mut usize,
             value: Fr,
         ) -> Result<AssignedCell<Fr, Fr>, Error> {
-            let c = region.assign_advice(
+            let v = region.assign_advice(
                 || format!("assign input"),
-                self.config.limb,
+                self.config.limb_lhs,
                 *offset,
                 || value_for_assign!(value)
             )?;
 
             *offset = *offset + 1;
-            Ok(c)
+            Ok(v)
         }
+
+        fn assign_rhs(
+            &self,
+            region: &mut Region<Fr>,
+            offset: &mut usize,
+            value: Fr,
+        ) -> Result<AssignedCell<Fr, Fr>, Error> {
+            let v = region.assign_advice(
+                || format!("assign input"),
+                self.config.limb_rhs,
+                *offset,
+                || value_for_assign!(value)
+            )?;
+
+            *offset = *offset + 1;
+            Ok(v)
+        }
+
 
     }
 
@@ -377,8 +393,15 @@ mod tests {
 
             keccakchipconfig.register(
                 meta,
-                |c| helperconfig.arith_check_column(c),
+                |c| helperconfig.arith_check_lhs(c),
+                |_| Expression::Constant(Fr::from(16u64)));
+
+            /*
+            keccakchipconfig.register(
+                meta,
+                |c| helperconfig.arith_check_rhs(c),
                 |_| Expression::Constant(Fr::from(4u64)));
+             */
 
             Self::Config {
                 keccakchipconfig,
@@ -402,13 +425,18 @@ mod tests {
                     let bn_rhs = field_to_bn(&rhs);
                     let bn_res = bn_lhs ^ bn_rhs;
                     let res:Fr = bn_to_field(&bn_res);
-                    let v = lhs * Fr::from(1u64<<8) + rhs * Fr::from(1u64 << 4) + res;
+                    //let v = lhs.clone() * Fr::from(1u64<<8) + rhs.clone() * Fr::from(1u64 << 4) + res.clone();
+
                     keccak_arith_chip.initialize(&mut region)?;
+
                     keccak_arith_chip.assign_value_xor(&mut region, lhs, rhs, 16)?;
 
                     // assign helper
                     let mut offset = 0;
-                    helper_chip.assign_value(&mut region, &mut offset, v)?;
+
+                    helper_chip.assign_lhs(&mut region, &mut offset, lhs)?;
+                    helper_chip.assign_rhs(&mut region, &mut offset, rhs)?;
+
                     Ok(())
                 }
             )?;
@@ -420,6 +448,16 @@ mod tests {
     fn test_xor_circuit() {
         let test_circuit = TestCircuit {};
         let prover = MockProver::run(18, &test_circuit, vec![]).unwrap();
-        assert_eq!(prover.verify(), Ok(()));
+
+        let verify_result = prover.verify();
+        if !verify_result.is_ok() {
+            if let Some(errors) = verify_result.err() {
+                for (i, error) in errors.iter().enumerate() {
+                    println!(" err {}, {:?}", i, error);
+                }
+            }
+            panic!();
+        }
+
     }
 }

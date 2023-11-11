@@ -108,10 +108,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
 
-        for y in  self.state.0.iter() {
-            let state_after_permute_row_wasm = y.iter().map(|x| x.clone()).collect_vec();
-            dbg!(&state_after_permute_row_wasm);
-        }
         self.spec.result(&mut self.state)
     }
 }
@@ -129,29 +125,11 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
     }
 
     fn round_b(a: State<F, T>, rc: u64) -> State<F, T> {
-        for state_before_round_wasm in a.0.iter() {
-            dbg!(state_before_round_wasm);
-        }
 
         let s1 = KeccakF::<F, T, RATE>::theta(a);
-        for state_after_theta_wasm in s1.0.iter() {
-            dbg!(state_after_theta_wasm);
-        }
-
         let s2 = KeccakF::<F, T, RATE>::rho(s1);
-        for state_after_rho_wasm in s2.0.iter() {
-            dbg!(state_after_rho_wasm);
-        }
-
         let s3 = KeccakF::<F, T, RATE>::pi(s2);
-        for state_after_pi_wasm in s3.0.iter() {
-            dbg!(state_after_pi_wasm);
-        }
-
         let s4 = KeccakF::<F, T, RATE>::xi(s3);
-        for state_after_xi_wasm in s4.0.iter() {
-            dbg!(state_after_xi_wasm);
-        }
 
         KeccakF::<F, T, RATE>::iota(s4, rc)
     }
@@ -164,7 +142,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize> KeccakF<F, T, RATE> {
             c[x] = F::from(field_to_u64(&a.0[x][0]) ^ field_to_u64(&a.0[x][1]) ^ field_to_u64(&a.0[x][2]) ^
                                field_to_u64(&a.0[x][3]) ^ field_to_u64(&a.0[x][4]));
         }
-        dbg!(&c);
         for (x, y) in (0..5).cartesian_product(0..5) {
             out.0[x][y] = F::from(field_to_u64(&a.0[x][y]) ^ field_to_u64(&c[(x + 4) % 5])
                                     ^ field_to_u64(&c[(x + 1) % 5]).rotate_left(1));
@@ -219,7 +196,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
     pub fn absorb(&self, state: &mut State<F, T>, input: &[F]) {
 
         debug_assert_eq!(input.len() % RATE, 0);
-        dbg!(&input);
         let chunks_total = input.len() / RATE;
         for chunk_i in 0..chunks_total {
             let chuck_offset = chunk_i * RATE;
@@ -237,9 +213,6 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
             }
         }
 
-        for state_before_permute in state.0.iter(){
-            dbg!(state_before_permute);
-        }
         self.keccak_f.permute(state);
     }
 
@@ -320,8 +293,7 @@ mod tests {
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-        dbg!(a);
-        dbg!(b);
+
         assert_eq!(a, b);
     }
 
@@ -330,7 +302,6 @@ mod tests {
         let mut keccak = Keccak::<Fr, 5, 17>::new();
         keccak.update(&[]);
         let a = keccak.squeeze();
-        dbg!(a);
     }
 
     #[test]
@@ -340,7 +311,7 @@ mod tests {
         let inputs = (0..0)
             .map(|_| Fr::random(OsRng))
             .collect::<Vec<Fr>>();
-        dbg!(inputs.clone());
+
         keccak.update(&inputs[..]);
         let a = keccak.squeeze();
 
@@ -358,8 +329,7 @@ mod tests {
         }
 
         let b = keccak.spec.result(&mut keccak.state);
-        dbg!(a);
-        dbg!(b);
+
         assert_eq!(a, b);
     }
     #[test]

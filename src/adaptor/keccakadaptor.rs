@@ -29,11 +29,11 @@ fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntr
     for f in inputs.iter() {
         r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Push));
     }
-    r.push(crate::adaptor::fr_to_args(result, 1, 64, Keccak256Finalize));
+    r.push(crate::adaptor::fr_to_args(result, 4, 64, Keccak256Finalize));
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 2048;
+const TOTAL_CONSTRUCTIONS: usize = 6;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = CommonGateConfig;
@@ -66,12 +66,12 @@ impl HostOpSelector for KeccakChip<Fr> {
         let opcodes: Vec<Fr> = Self::opcodes();
         let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
 
-        let total_used_instructions = selected_entries.len() / (1 + 17 * 4 + 4);
+        let total_used_instructions = selected_entries.len() / (1 + 17 + 4);
 
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
-        for group in selected_entries.chunks_exact(1 + 17 * 4 + 4) {
+        for group in selected_entries.chunks_exact(1 + 17 + 4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
             let (limb, _op) = config.assign_one_line( //operand, opcode
@@ -155,7 +155,6 @@ impl HostOpSelector for KeccakChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        //dbg!(total_used_instructions.clone());
         for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
@@ -188,7 +187,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                     index,
                     operand, //same as operand as indicator is 0
                     Fr::zero(), //not merged
-                    true, // in filtered table
+                    false, // in filtered table
                 )?;
                 r.push(limb);
             }

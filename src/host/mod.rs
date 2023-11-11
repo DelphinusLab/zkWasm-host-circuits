@@ -9,7 +9,6 @@ pub mod mongomerkle;
 pub mod poseidon;
 pub mod rmd160;
 pub mod keccak256;
-pub mod keccak_reference;
 mod keccak;
 
 use halo2_proofs::arithmetic::FieldExt;
@@ -42,13 +41,13 @@ pub enum ForeignInst {
     Bn254SumScalar,
     Bn254SumG1,
     Bn254SumResult,
-    MerkleSetRoot,   // 11
-    MerkleGetRoot,   // 12
-    MerkleAddress,   // 13
-    MerkleSet,       // 14
-    MerkleGet,       // 15
-    MerklePutData,   // 16
-    MerkleFetchData, // 17
+    MerkleSetRoot,
+    MerkleGetRoot,
+    MerkleAddress,
+    MerkleSet,
+    MerkleGet,
+    MerklePutData,
+    MerkleFetchData,
     SHA256New,
     SHA256Push,
     SHA256Finalize,

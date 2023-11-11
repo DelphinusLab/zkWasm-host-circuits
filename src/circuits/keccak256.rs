@@ -1,6 +1,5 @@
 use crate::host::keccak256::{ROUND_CONSTANTS, N_R, ROTATION_CONSTANTS, RATE_LANES};
-use crate::utils::*;
-
+use crate::utils::field_to_u64;
 use halo2_proofs::arithmetic::FieldExt;
 
 use crate::circuits::{
@@ -67,8 +66,7 @@ impl<F: FieldExt> KeccakChip<F> {
         let zero = self.config.assign_constant(region, &mut (), offset, &F::zero())?;
         let mut new_state = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));
 
-
-        for (x,(y,default)) in (self
+        for (x,(current_state,default)) in (self
             .keccak_state.state
             .iter()
             .zip(self.keccak_state.default.iter())).enumerate()
@@ -80,14 +78,13 @@ impl<F: FieldExt> KeccakChip<F> {
                     &mut (),
                     offset,
                     &reset,
-                    &y[i],
+                    &current_state[i],
                     &default[i],
                     self.round
                 )?;
             }
         }
 
-        //dbg!(&values);
         //absorb
         let chunks_total = values.len() / RATE_LANES;
         for chunk_i in 0..chunks_total {
@@ -100,7 +97,7 @@ impl<F: FieldExt> KeccakChip<F> {
                     region,
                     &self.config,
                     offset,
-                    &self.keccak_state.state[x][y],
+                    &new_state[x][y],
                     &values[i + chuck_offset],
                 )?;
                 if x < 5 - 1 {
@@ -112,32 +109,14 @@ impl<F: FieldExt> KeccakChip<F> {
             }
         }
 
-        //dbg!(&new_state[0][0]);
-        //dbg!(&values[0]);
-        //dbg!(&self.keccak_state.state[0][0]);
-
         self.keccak_state.state = new_state;
 
-        /*
-        for y in  self.keccak_state.state.iter() {
-            let state_before_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            dbg!(&state_before_permute_row);
-        }
-         */
-
-        //self.keccak_state.state[0][0].value = F::one();
         self.keccak_state.permute(
             &self.config,
             region,
             offset,
         )?;
 
-        /*
-        for y in  self.keccak_state.state.iter() {
-            let state_after_permute_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            dbg!(&state_after_permute_row);
-        }
-         */
 
         let part0 = self.keccak_state.state[0][0].value.clone();
         let part1 = self.keccak_state.state[1][0].value.clone();
@@ -156,12 +135,6 @@ impl<F: FieldExt> KeccakChip<F> {
             &digest,
         )?;
 
-        //region.constrain_equal(result.cell.as_ref().unwrap().cell(), digest_limb.cell.as_ref().unwrap().cell())?;
-        println!("digest is {:?}", digest);
-        // get function changes state ?
-        self.keccak_state.state = self.keccak_state.default.clone();
-        //region.constrain_equal(result.cell.as_ref().unwrap().cell(), digest_limb.cell.as_ref().unwrap().cell())?;
-        dbg!(digest);
         Ok(digest_limb)
     }
 
@@ -234,16 +207,6 @@ impl<F: FieldExt> KeccakState<F> {
         let mut lhs_limb = Limb::new(None,F::zero());
         let mut rhs_limb = Limb::new(None,F::zero());
 
-        /*
-        for x in 0..8 {
-            for y in 0..8 {
-                res_limb.value += F::from_u128(1 << bit_array_limb_res[x * 8 + y]);
-                lhs_limb.value += F::from_u128(1 << bit_array_limb_lhs[x * 8 + y]);
-                rhs_limb.value += F::from_u128(1 << bit_array_limb_rhs[x * 8 + y]);
-            }
-        }
-        */
-
         for (i, &bit) in bit_array_limb_res.iter().rev().enumerate() {
             res_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
         }
@@ -281,8 +244,6 @@ impl<F: FieldExt> KeccakState<F> {
 
         bit_array_limb.rotate_left(n);
 
-        //dbg!(bit_array_limb.clone());
-
         let mut rotate_res_limb = Limb::new(None, F::zero());
 
         for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
@@ -302,10 +263,6 @@ impl<F: FieldExt> KeccakState<F> {
         for (i, bit) in bit_limb2.iter().rev().enumerate() {
             res_limb2.value += bit.value * F::from_u128(1 << i);
         }
-
-        //dbg!(res_limb1.value);
-        //dbg!(res_limb2.value);
-        //dbg!(rotate_res_limb.value);
 
         // res_limb1.value + res_limb2.value * F::from_u128(1 << n) - rotate_res_limb.value = 0;
         let res = config.assign_line(region, &mut (), offset, 
@@ -334,7 +291,6 @@ impl<F: FieldExt> KeccakState<F> {
             // do we need to add the constraints here?
             c[x] = Limb::new(None,F::from(state_u64));
         }
-        //dbg!(&c);
         for x in 0..5 {
             for y in 0..5 {
                 let rotate_limb = self.rotate_left(region, config, offset, &c[(x+1)%5], 1)?;
@@ -397,17 +353,16 @@ impl<F: FieldExt> KeccakState<F> {
 
     pub fn xi(
         &mut self,
-        _config: &CommonGateConfig,
-        _region: &mut Region<F>,
-        _offset: &mut usize,
+        config: &CommonGateConfig,
+        region: &mut Region<F>,
+        offset: &mut usize,
     ) -> Result<(), Error> {
         let mut out = self.state.clone();
 
         for x in 0..5 {
             for y in 0..5 {
                 //not operation
-                /*
-                let mut bit_array_limb = Vec::with_capacity(64);
+                let mut bit_array_limb = Vec::new();
                 let mut bit_state = vec![]; // in big endian
                 config.decompose_limb(region,&mut(), offset, &self.state[(x + 1) % 5][y], &mut bit_state, 64)?;
 
@@ -417,15 +372,15 @@ impl<F: FieldExt> KeccakState<F> {
 
                 let mut not_limb = Limb::new(None,F::zero());
                 for i in 0..bit_array_limb.len() {
-                    bit_array_limb[i] = !bit_array_limb[i];
+                    bit_array_limb[i] = 1 - bit_array_limb[i];
                 }
 
                 for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
                     not_limb.value += F::from_u128( bit as u128) * F::from_u128(1 << i);
                 }
-                */
-                //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
-                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
+
+                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
+                //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
             }
         }
 
@@ -453,34 +408,11 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
         rc: u64,
     ) -> Result<(), Error> {
-        for state_before_round in self.state.iter() {
-            //dbg!(&state_before_round);
-        }
 
         self.theta(config, region, offset)?;
-        for y in  self.state.iter() {
-            let state_after_theta_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_after_theta_row);
-        }
-
         self.rho(config, region, offset)?;
-        for y in  self.state.iter() {
-            let state_after_rho_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_after_rho_row);
-        }
-
         self.pi(config, region, offset)?;
-        for y in  self.state.iter() {
-            let state_after_pi_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_after_pi_row);
-        }
-
         self.xi(config, region, offset)?;
-        for y in  self.state.iter() {
-            let state_after_xi_row = y.iter().map(|x| x.value.clone()).collect::<Vec<F>>();
-            //dbg!(&state_after_xi_row);
-        }
-
         self.iota(config, region, offset, rc)?;
 
         Ok(())

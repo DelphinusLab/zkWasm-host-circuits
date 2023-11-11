@@ -66,8 +66,8 @@ mod tests {
     #[test]
     fn test_keccak() {
         const ZERO_HASHER_SQUEEZE: &str =
-            //"0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a"; //force the hasher is for fr field result.
-            "0x21180a6dea44931f8fbda992e505a54fd14e5b2e320cb7fd551ad907549f7092";
+            "0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a"; //force the hasher is for fr field result.
+           
         let mut hasher = super::KECCAK_HASHER.clone();
         hasher.update(&[]);
         let result = hasher.squeeze();

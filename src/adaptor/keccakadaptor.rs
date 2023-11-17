@@ -1,7 +1,5 @@
 use crate::circuits::keccak256::KeccakChip;
 use crate::circuits::CommonGateConfig;
-//use crate::circuits::LookupAssistChip;
-//use crate::circuits::LookupAssistConfig;
 use crate::adaptor::get_selected_entries;
 use crate::host::ForeignInst::{Keccak256New, Keccak256Push, Keccak256Finalize};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
@@ -237,7 +235,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 for arg_group in arg_cells.chunks_exact(19).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
-                    println!("args {:?}", args);
+                    //println!("args {:?}", args);
                     self.assign_permute(
                         region,
                         &mut local_offset,

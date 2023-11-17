@@ -85,6 +85,8 @@ impl<F: FieldExt> KeccakChip<F> {
             }
         }
 
+        println!("offset after pick state is {}", offset);
+
         //absorb
         let chunks_total = values.len() / RATE_LANES;
         for chunk_i in 0..chunks_total {
@@ -108,6 +110,8 @@ impl<F: FieldExt> KeccakChip<F> {
                 }
             }
         }
+
+        println!("offset after xor state is {}", offset);
 
         self.keccak_state.state = new_state;
 
@@ -146,14 +150,15 @@ impl<F: FieldExt> KeccakChip<F> {
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
+        println!("offset is {}", offset);
         let r = self.get_permute_result(region, offset, values, reset)?;
-        println!("expect {:?}, get {:?}", &result.value, &r.value);
         assert_eq!(r.value, result.value);
 
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
             r.cell.as_ref().unwrap().cell(),
         )?;
+        println!("post offset is {}", offset);
         Ok(())
     }
 }
@@ -165,7 +170,6 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        *offset = 0;
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
         let state = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));
         let default = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));

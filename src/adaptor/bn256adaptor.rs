@@ -126,6 +126,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        _k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -426,6 +427,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        _k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,

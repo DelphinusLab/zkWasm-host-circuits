@@ -49,6 +49,7 @@ pub enum OpType {
 pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
+    k: usize,
     _marker: PhantomData<(F, S)>,
 }
 
@@ -57,6 +58,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
         HostOpCircuit {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
+            k: 22,
             _marker: PhantomData,
         }
     }
@@ -107,6 +109,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
                 let mut offset = 0;
                 let all_arg_cells = host_op_chip.assign(
                     &mut region,
+                    self.k,
                     &mut offset,
                     &self.shared_operands,
                     &self.shared_opcodes,
@@ -137,6 +140,7 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
 
 pub fn build_host_circuit<S: HostOpSelector>(
     v: &ExternalHostCallEntryTable,
+    k: usize,
 ) -> HostOpCircuit<Fr, S> {
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
@@ -145,6 +149,7 @@ pub fn build_host_circuit<S: HostOpSelector>(
     HostOpCircuit::<Fr, S> {
         shared_operands,
         shared_opcodes,
+        k,
         _marker: PhantomData,
     }
 }
@@ -163,7 +168,7 @@ pub fn exec_create_host_proof(
     use circuits_batcher::proof::PKEY_CACHE;
     match opname {
         OpType::BLS381PAIR => {
-            let bls381pair_circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v);
+            let bls381pair_circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bls381PairChip<Fr>>> =
                 CircuitInfo::new(
                     bls381pair_circuit,
@@ -183,7 +188,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::BLS381SUM => {
-            let bls381sum_circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v);
+            let bls381sum_circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bls381SumChip<Fr>>> = CircuitInfo::new(
                 bls381sum_circuit,
                 format!("{}.{:?}", name, opname),
@@ -202,7 +207,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::BN256PAIR => {
-            let bn256pair_circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v);
+            let bn256pair_circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bn256PairChip<Fr>>> = CircuitInfo::new(
                 bn256pair_circuit,
                 format!("{}.{:?}", name, opname),
@@ -221,7 +226,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::BN256SUM => {
-            let bn256sum_circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v);
+            let bn256sum_circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Bn256SumChip<Fr>>> = CircuitInfo::new(
                 bn256sum_circuit,
                 format!("{}.{:?}", name, opname),
@@ -240,7 +245,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::POSEIDONHASH => {
-            let poseidon_circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v);
+            let poseidon_circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr, 9, 8>>> =
                 CircuitInfo::new(
                     poseidon_circuit,
@@ -261,7 +266,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::MERKLE => {
-            let merkle_circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v);
+            let merkle_circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, MerkleChip<Fr, MERKLE_DEPTH>>> =
                 CircuitInfo::new(
                     merkle_circuit,
@@ -282,7 +287,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::JUBJUBSUM => {
-            let jubjub_circuit = build_host_circuit::<AltJubChip<Fr>>(&v);
+            let jubjub_circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, AltJubChip<Fr>>> = CircuitInfo::new(
                 jubjub_circuit,
                 format!("{}.{:?}", name, opname),

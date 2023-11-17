@@ -117,23 +117,47 @@ impl<F: FieldExt> KeccakChip<F> {
             offset,
         )?;
 
-
         let part0 = self.keccak_state.state[0][0].value.clone();
         let part1 = self.keccak_state.state[1][0].value.clone();
         let part2 = self.keccak_state.state[2][0].value.clone();
         let part3 = self.keccak_state.state[3][0].value.clone();
 
-        // each part is 64bit and digest is 256bit
-        let digest = ((part0 * F::from_u128(1u128 << 64) + part1)
-            * F::from_u128(1u128 << 64) + part2)
-            * F::from_u128(1u128 << 64) + part3;
+        let part0_limb = Limb::new(None, part0);
+        let part1_limb = Limb::new(None, part1);
+        let part2_limb = Limb::new(None, part2);
+        let part3_limb = Limb::new(None, part3);
 
-        let digest_limb = self.config.assign_constant(
+        // each part is 64bit and digest is 256bit
+        let digest_01 = part0 * F::from_u128(1u128 << 64) + part1;
+        let digest_12 = digest_01 * F::from_u128(1u128 << 64) + part2;
+        let digest = digest_12 * F::from_u128(1u128 << 64) + part3;
+
+        let digest_limb_01 = self.config.assign_line(
             region,
             &mut (),
             offset,
-            &digest,
-        )?;
+            [Some(part0_limb), Some(part1_limb), Some(Limb::new(None,digest_01)), None, None, None],
+            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
+            8,
+        )?[2].clone();
+
+        let digest_limb_12 = self.config.assign_line(
+            region,
+            &mut (),
+            offset,
+            [Some(digest_limb_01), Some(part2_limb), Some(Limb::new(None,digest_12)), None, None, None],
+            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
+            8,
+        )?[2].clone();
+
+        let digest_limb = self.config.assign_line(
+            region,
+            &mut (),
+            offset,
+            [Some(digest_limb_12), Some(part3_limb), Some(Limb::new(None,digest)), None, None, None],
+            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
+            8,
+        )?[2].clone();
 
         Ok(digest_limb)
     }

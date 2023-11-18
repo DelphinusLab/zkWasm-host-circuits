@@ -308,11 +308,9 @@ impl<F: FieldExt> KeccakState<F> {
   
         let mut c = [0u32;5].map(|_| zero.clone());
         let mut d = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
-        //let mut out = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
         
         for x in 0..5 {
             let state_u64 = field_to_u64(&self.state[x][0].value) ^ field_to_u64(&self.state[x][1].value) ^ field_to_u64(&self.state[x][2].value) ^ field_to_u64(&self.state[x][3].value) ^ field_to_u64(&self.state[x][4].value);
-            // do we need to add the constraints here?
             c[x] = Limb::new(None,F::from(state_u64));
         }
         for x in 0..5 {

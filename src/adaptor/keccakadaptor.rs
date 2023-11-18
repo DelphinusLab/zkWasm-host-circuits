@@ -237,7 +237,8 @@ impl HostOpSelector for KeccakChip<Fr> {
                 for arg_group in arg_cells.chunks_exact(19).into_iter() {
                     let args = arg_group.into_iter().map(|x| x.clone());
                     let args = args.collect::<Vec<_>>();
-                    println!("args {:?}", args);
+                    //println!("args {:?}", args);
+
                     self.assign_permute(
                         region,
                         &mut local_offset,

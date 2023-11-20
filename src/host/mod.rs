@@ -56,6 +56,8 @@ pub enum ForeignInst {
     JubjubSumPush,
     JubjubSumResult,
     LogChar,
+    WitnessInsert,
+    WitnessPop,
 }
 
 pub enum ReduceRule<F: FieldExt> {

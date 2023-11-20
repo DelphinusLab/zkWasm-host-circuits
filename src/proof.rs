@@ -313,7 +313,7 @@ pub fn exec_create_host_proof(
                 Poseidon,
             );
             prover.mock_proof(k as u32);
-            println!("mock proof for jubjub success");
+            println!("mock proof for keccak success");
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(
                 cache_folder.as_path(),

@@ -63,9 +63,8 @@ impl<F: FieldExt> KeccakChip<F> {
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
-        let zero = self.config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let mut new_state = [[0u32;5];5].map(|x| x.map(|_|zero.clone()));
 
+        let mut new_state = self.keccak_state.default.clone();
         for (x,(current_state,default)) in (self
             .keccak_state.state
             .iter()
@@ -308,11 +307,11 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        let zero= config.assign_constant(region, &mut (), offset, &F::zero())?;
-  
-        let mut c = [0u32;5].map(|_| zero.clone());
-        let mut d = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
-        
+
+        let mut c = self.default[0].clone();
+        //let mut d = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
+        let mut d = self.default.clone();
+
         for x in 0..5 {
             let state_u64 = field_to_u64(&self.state[x][0].value) ^ field_to_u64(&self.state[x][1].value) ^ field_to_u64(&self.state[x][2].value) ^ field_to_u64(&self.state[x][3].value) ^ field_to_u64(&self.state[x][4].value);
             c[x] = Limb::new(None,F::from(state_u64));
@@ -340,8 +339,8 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        let zero= config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let mut out = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
+
+        let mut out = self.default.clone();
 
         for x in 0..5 {
             for y in 0..5 {
@@ -359,12 +358,12 @@ impl<F: FieldExt> KeccakState<F> {
 
     pub fn pi(
         &mut self,
-        config: &CommonGateConfig,
-        region: &mut Region<F>,
-        offset: &mut usize,
+        _config: &CommonGateConfig,
+        _region: &mut Region<F>,
+        _offset: &mut usize,
     ) -> Result<(), Error> {
-        let zero= config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let mut out = [[0u32;5];5].map(|x| x.map(|_|zero.clone()) );
+
+        let mut out = self.default.clone();
 
         for x in 0..5 {
             for y in 0..5 {

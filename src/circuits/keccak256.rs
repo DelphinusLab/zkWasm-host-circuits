@@ -244,12 +244,12 @@ impl<F: FieldExt> KeccakState<F> {
             rhs_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
         }
 
-        let encode_limb = Limb::new(None,lhs_limb.value * F::from_u128(1 << 16) + rhs_limb.value * F::from_u128(1 << 8) + res_limb.value);
+        let encode_limb = Limb::new(None, lhs_limb.value * F::from_u128(1 << 16) + rhs_limb.value * F::from_u128(1 << 8) + res_limb.value);
 
         let res_vec = config.assign_line(region, &mut (), offset,
-                                         [Some(encode_limb),Some(lhs_limb), Some(rhs_limb), Some(res_limb), None, None],
-                                         [Some(-F::one()), Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), None, None, None, None, None], 8)?;
-        Ok(res_vec[3].clone())
+                                         [Some(lhs_limb), Some(rhs_limb), Some(res_limb), Some(encode_limb), None, None],
+                                         [Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), Some(-F::one()),None, None, None, None, None], 8)?;
+        Ok(res_vec[2].clone())
     }
     
     pub fn rotate_left(
@@ -376,6 +376,7 @@ impl<F: FieldExt> KeccakState<F> {
         Ok(())  
     }
 
+    // maybe use lookup table to optimize? limb, not limb and encode limb
     pub fn xi(
         &mut self,
         config: &CommonGateConfig,
@@ -387,9 +388,10 @@ impl<F: FieldExt> KeccakState<F> {
         for x in 0..5 {
             for y in 0..5 {
                 //not operation
+                let target_limb = self.state[(x + 1) % 5][y].clone();
                 let mut bit_array_limb = Vec::new();
                 let mut bit_state = vec![]; // in big endian
-                config.decompose_limb(region,&mut(), offset, &self.state[(x + 1) % 5][y], &mut bit_state, 64)?;
+                config.decompose_limb(region,&mut(), offset, &target_limb, &mut bit_state, 64)?;
 
                 for x in 0..64 {
                     bit_array_limb.push(field_to_u64(&bit_state[x].value));
@@ -399,12 +401,19 @@ impl<F: FieldExt> KeccakState<F> {
                 for i in 0..bit_array_limb.len() {
                     bit_array_limb[i] = 1 - bit_array_limb[i];
                 }
-
+                //add constraint
                 for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
                     not_limb.value += F::from_u128( bit as u128) * F::from_u128(1 << i);
                 }
 
-                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&not_limb.value) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
+                let res_limb = Limb::new(None,F::from(field_to_u64(&target_limb.value) ^ field_to_u64(&not_limb.value)));
+                let encode_limb = Limb::new(None, *&self.state[(x + 1) % 5][y].value * F::from_u128(1 << 16) + not_limb.value * F::from_u128(1 << 8) + res_limb.value);
+
+                let res_vec = config.assign_line(region, &mut (), offset,
+                                                 [Some(target_limb), Some(not_limb), Some(res_limb), Some(encode_limb), None, None],
+                                                 [Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), Some(-F::one()), None, None, None, None, None], 8)?;
+
+                out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ (field_to_u64(&res_vec[1].value.clone()) & field_to_u64(&self.state[(x + 2) % 5][y].value))));
                 //out[x][y] = Limb::new(None,F::from(field_to_u64(&self.state[x][y].value) ^ !field_to_u64(&self.state[(x + 1) % 5][y].value) & field_to_u64(&self.state[(x + 2) % 5][y].value)));
             }
         }

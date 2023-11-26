@@ -126,7 +126,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 Fr::zero(),
                 Fr::from(1u64 << 63)
             ],
-            &KECCAK_HASHER.clone().squeeze(),
+            &KECCAK_HASHER.clone().squeeze().map(|x| Fr::from(x)),
         );
 
         //let entries = default_table.
@@ -220,7 +220,7 @@ mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
-
+    use crate::utils::field_to_u64;
     use crate::host::ForeignInst::{Keccak256New, Keccak256Finalize, Keccak256Push};
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
@@ -241,8 +241,10 @@ mod tests {
             for f in round.iter() {
                 r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Push));
             }
-            let result = hasher.update_exact(&round);
-            r.push(crate::adaptor::fr_to_args(result, 4, 64, Keccak256Finalize));
+            let result = hasher.update_exact(&round.map(|x| field_to_u64(&x)));
+            for f in result.iter() {
+                r.push(crate::adaptor::fr_to_args(Fr::from(*f), 1, 64, Keccak256Finalize));
+            }
         }
         ExternalHostCallEntryTable(r.into_iter().flatten().collect())
     }

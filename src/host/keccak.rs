@@ -79,7 +79,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
         }
     }
 
-    pub fn update_exact(&mut self, inputs: &[F; RATE]) -> F {
+    pub fn update_exact(&mut self, inputs: &[F; RATE]) -> [F; 4] {
         assert_eq!(self.absorbing.len(), 0);
 
         self.spec.absorb(&mut self.state, inputs);
@@ -88,7 +88,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize > Keccak<F, T, RATE> {
     }
 
     /// Returns keccak hash based on current state
-    pub fn squeeze(&mut self) -> F {
+    pub fn squeeze(&mut self) -> [F; 4] {
         let len = self.absorbing.len();
         let padding_total = RATE - (len % RATE);
 
@@ -216,7 +216,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
         self.keccak_f.permute(state);
     }
 
-    pub fn result(&self, state: &mut State<F, T>) -> F {
+    pub fn result(&self, state: &mut State<F, T>) -> [F; 4] {
 
         let mut output = vec![];
         output.push(state.0[0][0]);
@@ -237,6 +237,9 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
              }
          }
          */
+        output.try_into().unwrap() //check endian (current big endian)
+
+        /*
         let result = ((output[0] * F::from_u128(1u128 << 64) + output[1])
             * F::from_u128(1u128 << 64) + output[2])
             * F::from_u128(1u128 << 64) + output[3];
@@ -257,6 +260,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> Spec<F,T,RATE> {
         println!("{}", hex_strings);
 
         result
+        */
 
     }
 }

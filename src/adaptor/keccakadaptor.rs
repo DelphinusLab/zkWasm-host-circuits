@@ -21,13 +21,15 @@ fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
 }
 
 // 1 + 17 + 4
-fn hash_to_host_call_table(inputs: [Fr; 17], result: Fr) -> ExternalHostCallEntryTable {
+fn hash_to_host_call_table(inputs: &[Fr; 17], result: &[Fr; 4]) -> ExternalHostCallEntryTable {
     let mut r = vec![];
     r.push(hash_cont(true));
     for f in inputs.iter() {
         r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Push));
     }
-    r.push(crate::adaptor::fr_to_args(result, 4, 64, Keccak256Finalize));
+    for f in result.iter() {
+        r.push(crate::adaptor::fr_to_args(*f, 1, 64, Keccak256Finalize));
+    }
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
@@ -88,8 +90,6 @@ impl HostOpSelector for KeccakChip<Fr> {
                 .clone()
                 .into_iter()
                 .skip(1)
-                .take(17)
-                .collect::<Vec<_>>()
             {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
@@ -104,27 +104,10 @@ impl HostOpSelector for KeccakChip<Fr> {
                 )?;
                 r.push(limb);
             }
-
-            for subgroup in group
-                .clone()
-                .iter()
-                .skip(18) //reset
-                .collect::<Vec<_>>()
-                .chunks_exact(4) // 1 lane
-            {
-                let (limb, _op) = config.assign_merged_operands(
-                    region,
-                    offset,
-                    subgroup.to_vec(),
-                    Fr::from_u128(1u128 << 64),
-                    true,
-                )?;
-                r.push(limb);
-            }
         }
 
         let default_table = hash_to_host_call_table(
-            [
+            &[
                 Fr::one(),
                 Fr::zero(),
                 Fr::zero(),
@@ -143,7 +126,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 Fr::zero(),
                 Fr::from(1u64 << 63)
             ],
-            KECCAK_HASHER.clone().squeeze(),
+            &KECCAK_HASHER.clone().squeeze(),
         );
 
         //let entries = default_table.
@@ -173,8 +156,6 @@ impl HostOpSelector for KeccakChip<Fr> {
                 .clone()
                 .into_iter()
                 .skip(1)
-                .take(17)
-                .collect::<Vec<_>>()
             {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
@@ -186,23 +167,6 @@ impl HostOpSelector for KeccakChip<Fr> {
                     operand, //same as operand as indicator is 0
                     Fr::zero(), //not merged
                     false, // in filtered table
-                )?;
-                r.push(limb);
-            }
-
-            for subgroup in default_entries
-                .clone()
-                .iter()
-                .skip(18) //reset
-                .collect::<Vec<_>>()
-                .chunks_exact(4)
-            {
-                let (limb, _op) = config.assign_merged_operands(
-                    region,
-                    offset,
-                    subgroup.to_vec(),
-                    Fr::from_u128(1u128 << 64),
-                    false,
                 )?;
                 r.push(limb);
             }
@@ -241,7 +205,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                         &mut local_offset,
                         &args[1..18].to_vec().try_into().unwrap(),
                         &args[0],
-                        &args[18],
+                        &args[18..22].to_vec().try_into().unwrap()
                     )?;
                 }
                 end_timer!(timer);

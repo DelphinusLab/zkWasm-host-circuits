@@ -62,7 +62,7 @@ impl<F: FieldExt> KeccakChip<F> {
         offset: &mut usize,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
-    ) -> Result<Limb<F>, Error> {
+    ) -> Result<[Limb<F>; 4], Error> {
 
         let mut new_state = self.keccak_state.default.clone();
         for (x,(current_state,default)) in (self
@@ -87,26 +87,22 @@ impl<F: FieldExt> KeccakChip<F> {
         println!("offset after pick state is {}", offset);
 
         //absorb
-        let chunks_total = values.len() / RATE_LANES;
-        for chunk_i in 0..chunks_total {
-            let chuck_offset = chunk_i * RATE_LANES;
-            let mut x = 0;
-            let mut y = 0;
+        let mut x = 0;
+        let mut y = 0;
 
-            for i in 0..RATE_LANES {
-                new_state[x][y] = self.keccak_state.xor(
-                    region,
-                    &self.config,
-                    offset,
-                    &new_state[x][y],
-                    &values[i + chuck_offset],
+        for i in 0..RATE_LANES {
+            new_state[x][y] = self.keccak_state.xor(
+                region,
+                &self.config,
+                offset,
+                &new_state[x][y],
+                &values[i],
                 )?;
-                if x < 5 - 1 {
-                    x += 1;
-                } else {
-                    y += 1;
-                    x = 0;
-                }
+            if x < 5 - 1 {
+                x += 1;
+            } else {
+                y += 1;
+                x = 0;
             }
         }
 
@@ -130,39 +126,7 @@ impl<F: FieldExt> KeccakChip<F> {
         let part2_limb = Limb::new(None, part2);
         let part3_limb = Limb::new(None, part3);
 
-        // each part is 64bit and digest is 256bit
-        let digest_01 = part0 * F::from_u128(1u128 << 64) + part1;
-        let digest_12 = digest_01 * F::from_u128(1u128 << 64) + part2;
-        let digest = digest_12 * F::from_u128(1u128 << 64) + part3;
-
-        let digest_limb_01 = self.config.assign_line(
-            region,
-            &mut (),
-            offset,
-            [Some(part0_limb), Some(part1_limb), Some(Limb::new(None,digest_01)), None, None, None],
-            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
-            8,
-        )?[2].clone();
-
-        let digest_limb_12 = self.config.assign_line(
-            region,
-            &mut (),
-            offset,
-            [Some(digest_limb_01), Some(part2_limb), Some(Limb::new(None,digest_12)), None, None, None],
-            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
-            8,
-        )?[2].clone();
-
-        let digest_limb = self.config.assign_line(
-            region,
-            &mut (),
-            offset,
-            [Some(digest_limb_12), Some(part3_limb), Some(Limb::new(None,digest)), None, None, None],
-            [Some(F::from_u128(1u128 << 64)), Some(F::one()), Some(-F::one()), None, None, None, None, None, None],
-            8,
-        )?[2].clone();
-
-        Ok(digest_limb)
+        Ok([part0_limb, part1_limb, part2_limb, part3_limb])
     }
 
     pub(crate) fn assign_permute(
@@ -171,16 +135,19 @@ impl<F: FieldExt> KeccakChip<F> {
         offset: &mut usize,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
-        result: &Limb<F>,
+        result: &[Limb<F>; 4],
     ) -> Result<(), Error> {
         println!("offset is {}", offset);
         let r = self.get_permute_result(region, offset, values, reset)?;
-        assert_eq!(r.value, result.value);
+        for (r, result) in r.iter().zip(result.iter()) {
+            assert_eq!(r.value, result.value);
+            region.constrain_equal(
+                result.cell.as_ref().unwrap().cell(),
+                r.cell.as_ref().unwrap().cell(),
+            )?;
 
-        region.constrain_equal(
-            result.cell.as_ref().unwrap().cell(),
-            r.cell.as_ref().unwrap().cell(),
-        )?;
+        }
+
         println!("post offset is {}", offset);
         Ok(())
     }
@@ -251,7 +218,7 @@ impl<F: FieldExt> KeccakState<F> {
                                          [Some(F::from_u128(1u128 << 16)), Some(F::from_u128(1u128 << 8)), Some(F::one()), Some(-F::one()),None, None, None, None, None], 8)?;
         Ok(res_vec[2].clone())
     }
-    
+
     pub fn rotate_left(
         &self,
         region: &mut Region<F>,
@@ -259,8 +226,8 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
         input: &Limb<F>,
         n: usize,
-    ) -> Result<Limb<F>, Error> {
-        
+        ) -> Result<Limb<F>, Error> {
+
         let mut bit_limb = vec![];
         config.decompose_limb(region,&mut(), offset, &input, &mut bit_limb, 64)?;
         let mut bit_array_limb = Vec::with_capacity(64);
@@ -279,10 +246,10 @@ impl<F: FieldExt> KeccakState<F> {
 
         let bit_limb1 = bit_limb[0..n].to_vec();
         let bit_limb2 = bit_limb[n..64].to_vec();
-        
+
         let mut res_limb1 = Limb::new(None,F::zero());
         let mut res_limb2 = Limb::new(None,F::zero());
-        
+
         for (i, bit) in bit_limb1.iter().rev().enumerate() { // little endian
             res_limb1.value += bit.value * F::from_u128(1 << i);
         }
@@ -293,14 +260,15 @@ impl<F: FieldExt> KeccakState<F> {
 
         // res_limb1.value + res_limb2.value * F::from_u128(1 << n) - rotate_res_limb.value = 0;
         let res = config.assign_line(region, &mut (), offset, 
-        [Some(res_limb1), Some(res_limb2), None, None, Some(rotate_res_limb), None], 
-        [Some(F::one()), Some(F::from_u128(1 << n)), None, None, Some(-F::one()), None, None, None, None], 0)?;
-        
+                                     [Some(res_limb1), Some(res_limb2), None, None, Some(rotate_res_limb), None], 
+                                     [Some(F::one()), Some(F::from_u128(1 << n)), None, None, Some(-F::one()), None, None, None, None], 0)?;
+
         Ok(res[2].clone())
 
-        }
+    }
 
 
+    // TODO!: circuits not implemented
     pub fn theta(
         &mut self,
         config: &CommonGateConfig,
@@ -316,6 +284,7 @@ impl<F: FieldExt> KeccakState<F> {
             let state_u64 = field_to_u64(&self.state[x][0].value) ^ field_to_u64(&self.state[x][1].value) ^ field_to_u64(&self.state[x][2].value) ^ field_to_u64(&self.state[x][3].value) ^ field_to_u64(&self.state[x][4].value);
             c[x] = Limb::new(None,F::from(state_u64));
         }
+
         for x in 0..5 {
             for y in 0..5 {
                 let rotate_limb = self.rotate_left(region, config, offset, &c[(x+1)%5], 1)?;
@@ -361,7 +330,7 @@ impl<F: FieldExt> KeccakState<F> {
         _config: &CommonGateConfig,
         _region: &mut Region<F>,
         _offset: &mut usize,
-    ) -> Result<(), Error> {
+        ) -> Result<(), Error> {
 
         let mut out = self.default.clone();
 
@@ -372,11 +341,11 @@ impl<F: FieldExt> KeccakState<F> {
         }
 
         self.state = out;
-
-        Ok(())  
+        Ok(())
     }
 
     // maybe use lookup table to optimize? limb, not limb and encode limb
+    // TODO!: circuits not implemented
     pub fn xi(
         &mut self,
         config: &CommonGateConfig,
@@ -422,6 +391,7 @@ impl<F: FieldExt> KeccakState<F> {
         Ok(())
     }
 
+    // TODO!: circuits not implemented
     pub fn iota(
         &mut self,
         _config: &CommonGateConfig,
@@ -458,7 +428,7 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-       
+
         for rc in ROUND_CONSTANTS.iter().take(N_R) {
             Self::round(self, config, region, offset, *rc)?;
         }

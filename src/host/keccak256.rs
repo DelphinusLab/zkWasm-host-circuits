@@ -46,7 +46,7 @@ pub static ROUND_CONSTANTS: [u64; N_R] = [
     0x8000000000008080,
     0x0000000080000001,
     0x8000000080008008,
-];
+    ];
 
 /// The Keccak [rotation offsets](https://github.com/Legrandin/pycryptodome/blob/016252bde04456614b68d4e4e8798bc124d91e7a/src/keccak.c#L232-L255)
 pub static ROTATION_CONSTANTS: [[u32; 5]; 5] = [
@@ -67,7 +67,7 @@ mod tests {
     fn test_keccak() {
         const ZERO_HASHER_SQUEEZE: &str =
             "0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a"; //force the hasher is for fr field result.
-           
+
         let mut hasher = super::KECCAK_HASHER.clone();
         hasher.update(&[]);
         let result = hasher.squeeze();

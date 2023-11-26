@@ -84,6 +84,45 @@ impl PoseidonGateConfig {
         extend
     }
 
+    fn sbox_full<F: FieldExt, const T: usize>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        state: &mut [Limb<F>; T],
+        constants: &[F; T],
+    ) -> Result<(), Error> {
+        for (x, constant) in state.iter_mut().zip(constants.iter()) {
+            *x = self.assign_x5_c_line(region, offset, x, *constant)?;
+        }
+        Ok(())
+    }
+
+    fn assign_x5_c_line<F: FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        x: &Limb<F>,
+        c_value: F,
+    ) -> Result<Limb<F>, Error> {
+        let x0 = Self::x0();
+        let x0_2 = Self::x0_2();
+        let x0_5_c = Self::x0_5_c();
+        let c = Self::c();
+
+        let x2_value = x.value.square();
+        let x5_c_value = x2_value.square() * x.value + c_value;
+
+        let cell = self.assign_cell(region, *offset, &x0, x.value)?;
+        region.constrain_equal(x.get_the_cell().cell(), cell.get_the_cell().cell())?;
+        self.assign_cell(region, *offset, &x0_2, x2_value)?;
+        self.assign_cell(region, *offset, &c, c_value)?;
+        let ret = self.assign_cell(region, *offset, &x0_5_c, x5_c_value)?;
+
+        *offset += 2;
+
+        Ok(ret)
+    }
+
     fn assign_permute_helper_line<F: FieldExt, const RATE: usize, const T: usize>(
         &self,
         region: &mut Region<F>,
@@ -367,7 +406,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         Ok(x5)
     }
 
-    fn sbox_full(
+    fn _sbox_full(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
@@ -408,12 +447,12 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         self.absorb_with_pre_constants(config, region, offset, inputs, &constants[0])?;
 
         for constants in constants.iter().skip(1).take(r_f - 1) {
-            self.sbox_full(config, region, offset, constants)?;
+            extend.sbox_full(region, offset, &mut self.state, constants)?;
             self.apply_mds(config, region, offset, mds)?;
         }
 
         let pre_sparse_mds = &spec.mds_matrices().pre_sparse_mds().rows();
-        self.sbox_full(config, region, offset, constants.last().unwrap())?;
+        extend.sbox_full(region, offset, &mut self.state, constants.last().unwrap())?;
         self.apply_mds(config, region, offset, &pre_sparse_mds)?;
 
         let sparse_matrices = &spec.mds_matrices().sparse_matrices();
@@ -440,10 +479,10 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
 
         let constants = &spec.constants().end();
         for constants in constants.iter() {
-            self.sbox_full(config, region, offset, constants)?;
+            extend.sbox_full(region, offset, &mut self.state, constants)?;
             self.apply_mds(config, region, offset, mds)?;
         }
-        self.sbox_full(config, region, offset, &[F::zero(); T])?;
+        extend.sbox_full(region, offset, &mut self.state, &[F::zero(); T])?;
         self.apply_mds(config, region, offset, mds)?;
         Ok(())
     }

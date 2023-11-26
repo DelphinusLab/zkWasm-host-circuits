@@ -67,6 +67,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        _k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,

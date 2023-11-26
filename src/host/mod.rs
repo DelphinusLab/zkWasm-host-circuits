@@ -59,6 +59,9 @@ pub enum ForeignInst {
     Keccak256New,
     Keccak256Push,
     Keccak256Finalize,
+    LogChar,
+    WitnessInsert,
+    WitnessPop,
 }
 
 pub enum ReduceRule<F: FieldExt> {

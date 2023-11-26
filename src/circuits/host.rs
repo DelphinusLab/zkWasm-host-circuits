@@ -216,6 +216,7 @@ pub trait HostOpSelector {
     fn opcodes() -> Vec<Fr>;
     fn assign(
         region: &mut Region<Fr>,
+        k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -292,6 +293,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
     pub fn assign(
         &self,
         region: &mut Region<Fr>,
+        k: usize,
         arg_offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -403,6 +405,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
         let mut local_offset = *arg_offset;
         let arg_cells = S::assign(
             region,
+            k,
             &mut local_offset,
             shared_operands,
             shared_opcodes,

@@ -21,6 +21,7 @@ use circuits_batcher::proof::CircuitInfo;
 use circuits_batcher::proof::Prover;
 
 use crate::host::ExternalHostCallEntryTable;
+use serde::{Deserialize, Serialize};
 
 pub const MERKLE_DEPTH: usize = 32;
 
@@ -34,7 +35,7 @@ struct ArgOpName {
     #[clap(arg_enum)]
     t: OpType,
 }
-#[derive(clap::ArgEnum, Clone, Debug)]
+#[derive(clap::ArgEnum, Clone, Debug, Serialize, Deserialize)]
 pub enum OpType {
     BLS381PAIR,
     BLS381SUM,

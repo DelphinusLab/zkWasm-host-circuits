@@ -115,22 +115,17 @@ impl State {
 }
 
 impl State {
-    pub fn absorb(&mut self, input: &[u64]) {
-        debug_assert_eq!(input.len() % RATE, 0);
-        let chunks_total = input.len() / RATE;
-        for chunk_i in 0..chunks_total {
-            let chuck_offset = chunk_i * RATE;
-            let mut x = 0;
-            let mut y = 0;
-            for i in 0..RATE {
-                let word = input[chuck_offset + i];
-                self.0[x][y] = (&word) ^ (&self.0[x][y]);
-                if x < 5 - 1 {
-                    x += 1;
-                } else {
-                    y += 1;
-                    x = 0;
-                }
+    pub fn absorb(&mut self, input: &[u64; RATE]) {
+        let mut x = 0;
+        let mut y = 0;
+        for i in 0..RATE {
+            let word = input[i];
+            self.0[x][y] = (&word) ^ (&self.0[x][y]);
+            if x < 5 - 1 {
+                x += 1;
+            } else {
+                y += 1;
+                x = 0;
             }
         }
         self.permute();
@@ -161,27 +156,15 @@ impl Keccak {
     }
 
     pub fn update(&mut self, input: &[u64]) {
-        let mut offset = 0;
-        let absorb_len = self.absorbing.len();
-        if absorb_len > 0 && absorb_len + input.len() >= RATE {
-            // concat scratch and input up to the next full `rate`
-            offset = RATE - absorb_len;
-            self.absorbing.extend(&input[0..offset]);
-            self.state.absorb(&self.absorbing);
-            self.absorbing.truncate(0);
-        }
-
-        let chunks_total = (input.len() - offset) / RATE;
-        if chunks_total != 0 {
-            // absorb all chunks
-            let tail = offset + (RATE * chunks_total);
-            self.state.absorb(&input[offset..tail]);
-            offset = tail;
-        }
-
-        if offset != input.len() {
-            // save the remainder
-            self.absorbing.extend(&input[offset..]);
+        self.absorbing.extend(input);
+        let candidate = self.absorbing.clone();
+        self.absorbing = vec![];
+        for chunk in candidate.chunks(RATE).into_iter() {
+            if chunk.len() == RATE {
+                self.state.absorb(chunk.try_into().unwrap());
+            } else {
+                self.absorbing = chunk.to_vec();
+            }
         }
     }
 
@@ -209,7 +192,8 @@ impl Keccak {
             self.absorbing.resize(len + padding_total - 1, zero_lane);
             self.absorbing.push(ending_one_lane);
         }
-        self.state.absorb(&self.absorbing);
+        let r:Vec<u64> = self.absorbing.clone();
+        self.state.absorb(&r.try_into().unwrap());
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
         self.state.result()
@@ -258,7 +242,7 @@ mod tests {
         assert_eq!(inputs.len() % 17, 0);
 
         for chunk in inputs.chunks(17) {
-            keccak.state.absorb(&chunk);
+            keccak.state.absorb(&chunk.try_into().unwrap());
             //keccak.spec.keccak_f.permute(&mut keccak.state)
         }
 
@@ -294,7 +278,7 @@ mod tests {
         assert_eq!(inputs.len() % 17, 0);
 
         for chunk in inputs.chunks(17) {
-            keccak.state.absorb(&chunk);
+            keccak.state.absorb(&chunk.try_into().unwrap());
             //keccak.spec.keccak_f.permute(&mut keccak.state)
         }
 
@@ -323,7 +307,7 @@ mod tests {
         inputs.extend(extra_padding);
 
         for chunk in inputs.chunks(17) {
-            keccak.state.absorb(&chunk);
+            keccak.state.absorb(&chunk.try_into().unwrap());
             //keccak.spec.keccak_f.permute(&mut keccak.state)
         }
 

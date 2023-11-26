@@ -1,16 +1,16 @@
+use crate::adaptor::get_selected_entries;
+use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::keccak256::KeccakChip;
 use crate::circuits::CommonGateConfig;
-use crate::adaptor::get_selected_entries;
-use crate::host::ForeignInst::{Keccak256New, Keccak256Push, Keccak256Finalize};
+use crate::host::keccak256::KECCAK_HASHER;
+use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
+use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
-use halo2_proofs::plonk::{ConstraintSystem, Error, Column, Advice}; 
-use crate::circuits::host::{HostOpConfig, HostOpSelector};
-use crate::host::keccak256::KECCAK_HASHER;
-use crate::utils::Limb;
+use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Error};
 
 fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {
@@ -58,6 +58,7 @@ impl HostOpSelector for KeccakChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        _k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -74,23 +75,20 @@ impl HostOpSelector for KeccakChip<Fr> {
         for group in selected_entries.chunks_exact(1 + 17 + 4) {
             let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
-            let (limb, _op) = config.assign_one_line( //operand, opcode
+            let (limb, _op) = config.assign_one_line(
+                //operand, opcode
                 region,
                 offset,
                 operand,
                 opcode,
                 index,
-                operand, //same as operand as indicator is 0
+                operand,    //same as operand as indicator is 0
                 Fr::zero(), //not merged
-                true, // in filtered table
+                true,       // in filtered table
             )?;
             r.push(limb);
 
-            for subgroup in group
-                .clone()
-                .into_iter()
-                .skip(1)
-            {
+            for subgroup in group.clone().into_iter().skip(1) {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
                     region,
@@ -98,9 +96,9 @@ impl HostOpSelector for KeccakChip<Fr> {
                     operand,
                     opcode,
                     index,
-                    operand, //same as operand as indicator is 0
+                    operand,    //same as operand as indicator is 0
                     Fr::zero(), //not merged
-                    true, // in filtered table
+                    true,       // in filtered table
                 )?;
                 r.push(limb);
             }
@@ -124,7 +122,7 @@ impl HostOpSelector for KeccakChip<Fr> {
                 Fr::zero(),
                 Fr::zero(),
                 Fr::zero(),
-                Fr::from(1u64 << 63)
+                Fr::from(1u64 << 63),
             ],
             &KECCAK_HASHER.clone().squeeze().map(|x| Fr::from(x)),
         );
@@ -152,11 +150,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             )?;
             r.push(limb);
 
-            for subgroup in default_entries
-                .clone()
-                .into_iter()
-                .skip(1)
-            {
+            for subgroup in default_entries.clone().into_iter().skip(1) {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
                     region,
@@ -164,9 +158,9 @@ impl HostOpSelector for KeccakChip<Fr> {
                     operand,
                     opcode,
                     index,
-                    operand, //same as operand as indicator is 0
+                    operand,    //same as operand as indicator is 0
                     Fr::zero(), //not merged
-                    false, // in filtered table
+                    false,      // in filtered table
                 )?;
                 r.push(limb);
             }
@@ -182,7 +176,6 @@ impl HostOpSelector for KeccakChip<Fr> {
         Ok(())
     }
 
-
     fn synthesize(
         &mut self,
         offset: &mut usize,
@@ -192,24 +185,24 @@ impl HostOpSelector for KeccakChip<Fr> {
         println!("keccak total args is {}", arg_cells.len());
         *offset = {
             println!("keccak adaptor total args is {}", arg_cells.len());
-                let mut local_offset = *offset;
-                let timer = start_timer!(|| "assign");
-                let config = self.config.clone();
-                self.initialize(&config, region, &mut local_offset)?;
-                for arg_group in arg_cells.chunks_exact(19).into_iter() {
-                    let args = arg_group.into_iter().map(|x| x.clone());
-                    let args = args.collect::<Vec<_>>();
-                    //println!("args {:?}", args);
-                    self.assign_permute(
-                        region,
-                        &mut local_offset,
-                        &args[1..18].to_vec().try_into().unwrap(),
-                        &args[0],
-                        &args[18..22].to_vec().try_into().unwrap()
-                    )?;
-                }
-                end_timer!(timer);
-                local_offset
+            let mut local_offset = *offset;
+            let timer = start_timer!(|| "assign");
+            let config = self.config.clone();
+            self.initialize(&config, region, &mut local_offset)?;
+            for arg_group in arg_cells.chunks_exact(19).into_iter() {
+                let args = arg_group.into_iter().map(|x| x.clone());
+                let args = args.collect::<Vec<_>>();
+                //println!("args {:?}", args);
+                self.assign_permute(
+                    region,
+                    &mut local_offset,
+                    &args[1..18].to_vec().try_into().unwrap(),
+                    &args[0],
+                    &args[18..22].to_vec().try_into().unwrap(),
+                )?;
+            }
+            end_timer!(timer);
+            local_offset
         };
         Ok(())
     }
@@ -217,11 +210,11 @@ impl HostOpSelector for KeccakChip<Fr> {
 
 #[cfg(test)]
 mod tests {
+    use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
+    use crate::utils::field_to_u64;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
-    use crate::utils::field_to_u64;
-    use crate::host::ForeignInst::{Keccak256New, Keccak256Finalize, Keccak256Push};
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
@@ -243,7 +236,12 @@ mod tests {
             }
             let result = hasher.update_exact(&round.map(|x| field_to_u64(&x)));
             for f in result.iter() {
-                r.push(crate::adaptor::fr_to_args(Fr::from(*f), 1, 64, Keccak256Finalize));
+                r.push(crate::adaptor::fr_to_args(
+                    Fr::from(*f),
+                    1,
+                    64,
+                    Keccak256Finalize,
+                ));
             }
         }
         ExternalHostCallEntryTable(r.into_iter().flatten().collect())

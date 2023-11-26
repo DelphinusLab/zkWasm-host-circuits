@@ -5,13 +5,12 @@ pub const L: usize = 6;
 pub const RATE: usize = (1088 / LANE_SIZE) as usize;
 pub const LANE_SIZE: u32 = 64;
 
-
 /// The range of x and y coordinates for the sponge state.
 pub const T: usize = 5;
 /// The State is a 5x5 matrix of 64 bit lanes.
 
 #[derive(Debug, Clone)]
-pub struct State ([[u64; T]; T]);
+pub struct State([[u64; T]; T]);
 
 /// The number of rounds for the 1600 bits permutation used in Keccak-256.
 pub const N_R: usize = T * T - 1;
@@ -45,7 +44,7 @@ pub static ROUND_CONSTANTS: [u64; N_R] = [
     0x8000000000008080,
     0x0000000080000001,
     0x8000000080008008,
-    ];
+];
 
 /// The Keccak [rotation offsets](https://github.com/Legrandin/pycryptodome/blob/016252bde04456614b68d4e4e8798bc124d91e7a/src/keccak.c#L232-L255)
 pub static ROTATION_CONSTANTS: [[u32; 5]; 5] = [
@@ -58,7 +57,7 @@ pub static ROTATION_CONSTANTS: [[u32; 5]; 5] = [
 
 impl State {
     fn default() -> Self {
-        let state = [[0u64; T];T];
+        let state = [[0u64; T]; T];
         State(state)
     }
 
@@ -79,7 +78,8 @@ impl State {
     pub fn theta(&mut self) {
         let mut c: [u64; 5] = [0; 5];
         for x in 0..5 {
-            c[x] = (((&self.0[x][0] ^ &self.0[x][1]) ^ &self.0[x][2]) ^ &self.0[x][3]) ^ &self.0[x][4];
+            c[x] =
+                (((&self.0[x][0] ^ &self.0[x][1]) ^ &self.0[x][2]) ^ &self.0[x][3]) ^ &self.0[x][4];
         }
         for (x, y) in (0..5).cartesian_product(0..5) {
             self.0[x][y] = (&self.0[x][y] ^ &c[(x + 4) % 5]) ^ &c[(x + 1) % 5].rotate_left(1);
@@ -137,7 +137,6 @@ impl State {
     }
 
     pub fn result(&self) -> [u64; 4] {
-
         let mut output = vec![];
         output.push(self.0[0][0]);
         output.push(self.0[1][0]);
@@ -215,10 +214,7 @@ impl Keccak {
         self.absorbing.truncate(0);
         self.state.result()
     }
-
 }
-
-
 
 lazy_static::lazy_static! {
     pub static ref KECCAK_HASHER: Keccak = Keccak::new();
@@ -228,8 +224,8 @@ lazy_static::lazy_static! {
 mod tests {
     use super::KECCAK_HASHER;
     use crate::host::keccak256::N_R;
-    use rand_core::OsRng;
     use rand::RngCore;
+    use rand_core::OsRng;
 
     #[test]
     fn test_keccak() {
@@ -245,8 +241,8 @@ mod tests {
     }
 
     #[test]
-    fn keccak256_one(){
-        let mut keccak  = KECCAK_HASHER.clone();
+    fn keccak256_one() {
+        let mut keccak = KECCAK_HASHER.clone();
         let number_of_permutation = N_R / 24;
         let number_of_inputs = 17 * number_of_permutation - 1;
         let inputs = (0..number_of_inputs)
@@ -256,7 +252,7 @@ mod tests {
         keccak.update(&inputs[..]);
         let a = keccak.squeeze();
 
-        let mut keccak  = KECCAK_HASHER.clone();
+        let mut keccak = KECCAK_HASHER.clone();
         let mut inputs = inputs.clone();
         inputs.push(1u64 + (1u64 << 63));
         assert_eq!(inputs.len() % 17, 0);
@@ -272,25 +268,23 @@ mod tests {
     }
 
     #[test]
-    fn keccak256(){
-        let mut keccak  = KECCAK_HASHER.clone();
+    fn keccak256() {
+        let mut keccak = KECCAK_HASHER.clone();
         keccak.update(&[]);
         let a = keccak.squeeze();
         // what is a then?
     }
 
     #[test]
-    fn keccak256_empty(){
-        let mut keccak  = KECCAK_HASHER.clone();
+    fn keccak256_empty() {
+        let mut keccak = KECCAK_HASHER.clone();
 
-        let inputs = (0..0)
-            .map(|_| OsRng.next_u64())
-            .collect::<Vec<u64>>();
+        let inputs = (0..0).map(|_| OsRng.next_u64()).collect::<Vec<u64>>();
 
         keccak.update(&inputs[..]);
         let a = keccak.squeeze();
 
-        let mut keccak  = KECCAK_HASHER.clone();
+        let mut keccak = KECCAK_HASHER.clone();
         let mut inputs = inputs.clone();
         let mut extra_padding = vec![0; 17];
 
@@ -311,7 +305,7 @@ mod tests {
 
     #[test]
     fn keccak256_extra_permutation() {
-        let mut keccak  = KECCAK_HASHER.clone();
+        let mut keccak = KECCAK_HASHER.clone();
         let number_of_permutation = N_R / 24;
         let number_of_inputs = 17 * number_of_permutation;
         let inputs = (0..number_of_inputs)
@@ -321,7 +315,7 @@ mod tests {
         keccak.update(&inputs[..]);
         let a = keccak.squeeze();
 
-        let mut keccak  = KECCAK_HASHER.clone();
+        let mut keccak = KECCAK_HASHER.clone();
         let mut inputs = inputs.clone();
         let mut extra_padding = vec![0u64; 17];
         extra_padding[0] = 1u64 << 63;
@@ -339,8 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn keccak_run() {
-    }
+    fn keccak_run() {}
 }
 
 /*

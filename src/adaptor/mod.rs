@@ -7,9 +7,9 @@ use num_bigint::BigUint;
 pub mod bls381adaptor;
 pub mod bn256adaptor;
 pub mod hashadaptor;
+pub mod keccakadaptor;
 pub mod merkleadaptor;
 pub mod msmadaptor;
-pub mod keccakadaptor;
 
 pub fn fr_to_args<F: BaseExt>(
     f: F,

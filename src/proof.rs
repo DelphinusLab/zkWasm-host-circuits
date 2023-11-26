@@ -5,8 +5,8 @@ use crate::circuits::{
     bn256::Bn256PairChip,
     bn256::Bn256SumChip,
     host::{HostOpChip, HostOpConfig, HostOpSelector},
-    merkle::MerkleChip,
     keccak256::KeccakChip,
+    merkle::MerkleChip,
     poseidon::PoseidonChip,
 };
 use halo2_proofs::{
@@ -310,7 +310,7 @@ pub fn exec_create_host_proof(
             );
         }
         OpType::KECCAKHASH => {
-            let keccak_circuit = build_host_circuit::<KeccakChip<Fr>>(&v);
+            let keccak_circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k);
             let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, KeccakChip<Fr>>> = CircuitInfo::new(
                 keccak_circuit,
                 format!("{}.{:?}", name, opname),
@@ -328,9 +328,7 @@ pub fn exec_create_host_proof(
                 0,
                 K_PARAMS_CACHE.lock().as_mut().unwrap(),
             );
-
         }
-
     };
     println!("Proof generated.");
 }

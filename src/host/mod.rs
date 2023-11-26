@@ -4,11 +4,11 @@ pub mod cache;
 pub mod datahash;
 pub mod db;
 pub mod jubjub;
+pub mod keccak256;
 pub mod merkle;
 pub mod mongomerkle;
 pub mod poseidon;
 pub mod rmd160;
-pub mod keccak256;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};

@@ -99,7 +99,8 @@ impl HostOpConfig {
             let merged_op_n = self.get_expr(meta, HostOpConfig::merged_op_n());
             let cur_op = self.get_expr(meta, HostOpConfig::filtered_operand());
             let indicator = self.get_expr(meta, HostOpConfig::indicator());
-            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))] // merged_op_n * indicator + cur_op == merged_op ???
+            vec![indicator.clone() * (merged_op - (merged_op_n * indicator + cur_op))]
+            // merged_op_n * indicator + cur_op == merged_op ???
         });
 
         /* enable is continuous with pattern 1,1,1,1,1,0,0,0,0 when sel is active */

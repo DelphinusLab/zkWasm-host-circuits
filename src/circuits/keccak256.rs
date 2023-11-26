@@ -157,8 +157,10 @@ impl<F: FieldExt> KeccakState<F> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
         let state = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
         let default = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
-        self.default = default;
-        self.state = state;
+        for i in 0..N_R {
+            self.rc[i] = config.assign_constant(region, &mut (), offset, &self.rc[i].value)?;
+        }
+
         Ok(())
     }
 

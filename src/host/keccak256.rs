@@ -102,7 +102,7 @@ impl State {
     }
 
     pub fn xi(&mut self) {
-        let mut out = self.clone();
+        let mut out = Self::default();
         for (x, y) in (0..5).cartesian_product(0..5) {
             out.0[x][y] = &self.0[x][y] ^ (!&self.0[(x + 1) % 5][y]) & (&self.0[(x + 2) % 5][y]);
         }
@@ -193,7 +193,9 @@ impl Keccak {
             self.absorbing.push(ending_one_lane);
         }
         let r:Vec<u64> = self.absorbing.clone();
+        println!("before absorb is {:?}", &r);
         self.state.absorb(&r.try_into().unwrap());
+        println!("after absorb state is {:?}", &self.state);
         //self.spec.keccak_f.permute(&mut self.state);
         self.absorbing.truncate(0);
         self.state.result()
@@ -210,6 +212,7 @@ mod tests {
     use crate::host::keccak256::N_R;
     use rand::RngCore;
     use rand_core::OsRng;
+    use itertools::Itertools;
 
     #[test]
     fn test_keccak() {
@@ -220,7 +223,8 @@ mod tests {
         hasher.update(&[]);
         let result = hasher.squeeze();
 
-        println!("hash result is {:?}", result);
+        let hash = result.iter().map(|x| format!("{:02x}", x)).join("");
+        println!("hash result is {:?}", hash);  // endian does not match the reference implementation
         //assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
     }
 

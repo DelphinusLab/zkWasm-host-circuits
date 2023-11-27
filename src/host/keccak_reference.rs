@@ -109,8 +109,10 @@ impl Keccak {
             self.scratch.resize(len + padding_total - 1, 0x00);
             self.scratch.push(0x80);
         }
+        println!("before absorb is {:?}", self.scratch);
         self.sponge.absorb(&mut self.state, &self.scratch);
         self.scratch.truncate(0);
+        println!("after absorb state is {:?}", self.state);
         self.sponge.squeeze(&mut self.state)
     }
 }
@@ -127,7 +129,7 @@ impl KeccakF {
 
     fn round_b(a: State, rc: u64) -> State {
         for state_before_round in a.iter() {
-            dbg!(state_before_round);
+            //dbg!(state_before_round);
         }
         let s1 = KeccakF::theta(a);
         let s2 = KeccakF::rho(s1);

@@ -17,7 +17,7 @@ pub const BIT_AND:u8 = 2;
 pub const BIT_NOT_AND:u8 = 3;
 
 #[rustfmt::skip]
-customized_circuits!(BitsArithConfig, 1, 3, 2, 0,
+customized_circuits!(BitsArithConfig, 1, 3, 1, 0,
    | lhs   |  rhs   |  res   | op
 );
 
@@ -67,7 +67,7 @@ impl<F: FieldExt> BitsArithChip<F> {
 
     pub fn configure(cs: &mut ConstraintSystem<F>) -> BitsArithConfig {
         let witness = [0; 3].map(|_| cs.advice_column());
-        let fixed = [0; 2].map(|_| cs.fixed_column());
+        let fixed = [0; 1].map(|_| cs.fixed_column());
         let selector = [];
 
         let config = BitsArithConfig {

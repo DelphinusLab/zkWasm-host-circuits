@@ -9,7 +9,6 @@ pub mod merkle;
 pub mod mongomerkle;
 pub mod poseidon;
 pub mod rmd160;
-mod keccak_reference;
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};

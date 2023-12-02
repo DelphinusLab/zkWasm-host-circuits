@@ -282,8 +282,10 @@ mod tests {
 
             rangecheckconfig.register(
                 meta,
-                |c| helperconfig.range_check_column(c),
-                |_| Expression::Constant(Fr::from(4 as u64)),
+                |c| vec![
+                    helperconfig.range_check_column(c),
+                    Expression::Constant(Fr::from(4 as u64)),
+                ]
             );
 
             Self::Config {

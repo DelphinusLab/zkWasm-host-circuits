@@ -15,8 +15,6 @@ pub struct KeccakState<F: FieldExt> {
     rc: [Limb<F>; N_R],
 }
 
-const HALF_DEBUG: bool = false;
-
 pub struct KeccakChip<F: FieldExt> {
     pub config: CommonGateConfig,
     keccak_state: KeccakState<F>,
@@ -158,8 +156,8 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let state = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
-        let default = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
+        self.state = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
+        self.default = [[0u32; 5]; 5].map(|x| x.map(|_| zero.clone()));
         for i in 0..N_R {
             self.rc[i] = config.assign_constant(region, &mut (), offset, &self.rc[i].value)?;
         }

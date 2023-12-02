@@ -324,10 +324,11 @@ impl CommonGateConfig {
         offset: &mut usize,
         limb: &Limb<F>,
     ) -> Result<(Limb<F>, [Limb<F>;8]), Error> {
-        let bytes = field_to_u64(&limb.value).to_le_bytes().map(|x| x as u64);
+        let limbu64 = field_to_u64(&limb.value);
+        let bytes = limbu64.to_le_bytes().map(|x| x as u64);
         let mid = bytes[0] + (bytes[1] + (bytes[2] + bytes[3] * 256u64) * 256u64) * 256u64;
         let bytes_f = bytes.map(|x| Limb::new(None, F::from(x as u64)));
-        let mid_f = Limb::new(None, F::from(mid as u64));
+        let mid_f = Limb::new(None, F::from(limbu64 - (mid as u64)));
         let c = self.assign_line(
             region,
             &mut (),

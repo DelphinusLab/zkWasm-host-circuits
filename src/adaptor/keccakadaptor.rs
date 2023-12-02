@@ -7,7 +7,6 @@ use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
 use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
-use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Error};
@@ -189,7 +188,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             let timer = start_timer!(|| "assign");
             let config = self.config.clone();
             self.initialize(&config, region, &mut local_offset)?;
-            for arg_group in arg_cells.chunks_exact(19).into_iter() {
+            for arg_group in arg_cells.chunks_exact(22).into_iter() {
                 let args = arg_group.into_iter().map(|x| x.clone());
                 let args = args.collect::<Vec<_>>();
                 //println!("args {:?}", args);

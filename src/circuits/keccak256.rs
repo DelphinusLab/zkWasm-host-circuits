@@ -1,10 +1,12 @@
 use crate::host::keccak256::{N_R, RATE_LANES, ROTATION_CONSTANTS, ROUND_CONSTANTS};
 use crate::utils::field_to_u64;
 use halo2_proofs::arithmetic::FieldExt;
-
 use crate::circuits::{CommonGateConfig, Limb};
 use halo2_proofs::{circuit::*, plonk::*};
 use std::marker::PhantomData;
+use crate::circuits::bits_arith::BitsArithChip;
+use crate::circuits::bits_arith::BIT_XOR;
+use crate::circuits::bits_arith::BIT_NOT_AND;
 
 #[derive(Debug, Clone)]
 pub struct KeccakState<F: FieldExt> {
@@ -51,7 +53,8 @@ impl<F: FieldExt> KeccakChip<F> {
         cs: &mut ConstraintSystem<F>,
         shared_advice: &Vec<Column<Advice>>,
     ) -> CommonGateConfig {
-        CommonGateConfig::configure(cs, &(), shared_advice)
+        let bitsarithconfig = BitsArithChip::configure(cs);
+        CommonGateConfig::configure(cs, &bitsarithconfig, shared_advice)
     }
 
     // assign the r as witness to call the permutation function and constrain the result to be the same as the digest
@@ -160,7 +163,6 @@ impl<F: FieldExt> KeccakState<F> {
         for i in 0..N_R {
             self.rc[i] = config.assign_constant(region, &mut (), offset, &self.rc[i].value)?;
         }
-
         Ok(())
     }
 
@@ -174,24 +176,44 @@ impl<F: FieldExt> KeccakState<F> {
         b: &Limb<F>,
         c: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
-        // TODO: implement this function
-        // a ^ (not(b) & c)
-        if !HALF_DEBUG {
-            unimplemented!()
-        } else {
+        let d = (!field_to_u64(&b.value)) & field_to_u64(&c.value);
+        let e = field_to_u64(&a.value) ^ d;
+        let not_b_and_c = Limb::new(None, F::from(d));
+        let res = Limb::new(None, F::from(e));
+        let (_, a_limbs) = config.decompose_bytes(region, offset, a)?;
+        let (_, b_limbs) = config.decompose_bytes(region, offset, b)?;
+        let (_, c_limbs) = config.decompose_bytes(region, offset, c)?;
+        let (_, f_limbs) = config.decompose_bytes(region, offset, &not_b_and_c)?;
+        let (output, res_limbs) = config.decompose_bytes(region, offset, &res)?;
+
+        for ((l, r), res) in b_limbs.zip(c_limbs).zip(f_limbs.clone()).into_iter() {
+            config.assign_witness(
+                region,
+                &mut (),
+                offset,
+                [ Some(l), Some(r), Some(res), None, None, ],
+                BIT_NOT_AND as u64,
+            )?;
+        }
+
+        for ((l, r), res) in a_limbs.zip(f_limbs).zip(res_limbs).into_iter() {
+            config.assign_witness(
+                region,
+                &mut (),
+                offset,
+                [ Some(l), Some(r), Some(res), None, None, ],
+                BIT_XOR as u64,
+            )?;
+        }
+
+        {
             let a = field_to_u64(&a.value);
             let b = field_to_u64(&b.value);
             let c = field_to_u64(&c.value);
             let res = a ^ ((!b) & c);
-            let res = config.assign_witness(
-                region,
-                &mut (),
-                offset,
-                [Some(Limb::new(None, F::from(res))), None, None, None, None],
-                0,
-            )?;
-            Ok(res[0].clone())
+            assert_eq!(F::from(res), output.value);
         }
+        Ok(output)
     }
 
     pub fn xor(
@@ -202,76 +224,21 @@ impl<F: FieldExt> KeccakState<F> {
         lhs: &Limb<F>,
         rhs: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
-        let res = Limb::new(
-            None,
-            F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)),
-        );
+        let res = Limb::new(None, F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)));
+        let (_, lhs_limbs) = config.decompose_bytes(region, offset, lhs)?;
+        let (_, rhs_limbs) = config.decompose_bytes(region, offset, rhs)?;
+        let (output, res_limbs) = config.decompose_bytes(region, offset, &res)?;
 
-        let mut bit_limb_lhs = vec![];
-        let mut bit_limb_rhs = vec![];
-        let mut bit_limb_res = vec![];
-
-        config.decompose_limb(region, &mut (), offset, &lhs, &mut bit_limb_lhs, 64)?;
-        config.decompose_limb(region, &mut (), offset, &rhs, &mut bit_limb_rhs, 64)?;
-        config.decompose_limb(region, &mut (), offset, &res, &mut bit_limb_res, 64)?;
-
-        let mut bit_array_limb_lhs = Vec::with_capacity(64);
-        let mut bit_array_limb_rhs = Vec::with_capacity(64);
-        let mut bit_array_limb_res = Vec::with_capacity(64);
-
-        for x in 0..64 {
-            bit_array_limb_lhs.push(field_to_u64(&bit_limb_lhs[x].value));
-            bit_array_limb_rhs.push(field_to_u64(&bit_limb_rhs[x].value));
-            bit_array_limb_res.push(field_to_u64(&bit_limb_res[x].value));
+        for ((l, r), res) in lhs_limbs.zip(rhs_limbs).zip(res_limbs).into_iter() {
+            config.assign_witness(
+                region,
+                &mut (),
+                offset,
+                [ Some(l), Some(r), Some(res), None, None, ],
+                BIT_XOR as u64,
+            )?;
         }
-
-        let mut res_limb = Limb::new(None, F::zero());
-        let mut lhs_limb = Limb::new(None, F::zero());
-        let mut rhs_limb = Limb::new(None, F::zero());
-
-        for (i, &bit) in bit_array_limb_res.iter().rev().enumerate() {
-            res_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
-        }
-        for (i, &bit) in bit_array_limb_lhs.iter().rev().enumerate() {
-            lhs_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
-        }
-        for (i, &bit) in bit_array_limb_rhs.iter().rev().enumerate() {
-            rhs_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
-        }
-
-        let encode_limb = Limb::new(
-            None,
-            lhs_limb.value * F::from_u128(1 << 16)
-                + rhs_limb.value * F::from_u128(1 << 8)
-                + res_limb.value,
-        );
-
-        let res_vec = config.assign_line(
-            region,
-            &mut (),
-            offset,
-            [
-                Some(lhs_limb),
-                Some(rhs_limb),
-                Some(res_limb),
-                Some(encode_limb),
-                None,
-                None,
-            ],
-            [
-                Some(F::from_u128(1u128 << 16)),
-                Some(F::from_u128(1u128 << 8)),
-                Some(F::one()),
-                Some(-F::one()),
-                None,
-                None,
-                None,
-                None,
-                None,
-            ],
-            8,
-        )?;
-        Ok(res_vec[2].clone())
+        Ok(output)
     }
 
     pub fn rotate_left(

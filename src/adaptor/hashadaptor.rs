@@ -23,8 +23,7 @@ impl LookupAssistConfig for () {
     fn register<F: FieldExt>(
         &self,
         _cs: &mut ConstraintSystem<F>,
-        _col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        _hint: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        _col: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     ) {
         ()
     }

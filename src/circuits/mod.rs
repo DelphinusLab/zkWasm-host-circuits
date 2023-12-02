@@ -4,7 +4,7 @@ pub mod bls;
 pub mod bn256;
 pub mod host;
 pub mod keccak256;
-mod keccak_arith_table;
+pub mod bits_arith;
 pub mod merkle;
 pub mod modexp;
 pub mod poseidon;
@@ -12,7 +12,7 @@ pub mod range;
 pub mod rmd160;
 //pub(crate) mod keccak_arith_table;
 
-use crate::utils::{field_to_bn, GateCell, Limb};
+use crate::utils::{field_to_bn, GateCell, Limb, field_to_u64};
 
 use crate::{
     customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
@@ -40,8 +40,7 @@ pub trait LookupAssistConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F> + Copy,
-        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F> + Copy,
+        cols: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     );
 }
 
@@ -102,10 +101,16 @@ impl CommonGateConfig {
         lookup_assist_config.register(
             cs,
             |c| {
-                config.get_expr(c, CommonGateConfig::l0())
-                    * config.get_expr(c, CommonGateConfig::lookup_ind())
+                vec![config.get_expr(c, CommonGateConfig::l0())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l1())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l2())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::lookup_hint())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                ]
             },
-            |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
         );
 
         // helper gates for implementing poseidon with 2 cell permute
@@ -310,6 +315,74 @@ impl CommonGateConfig {
         limbs.truncate(initsize + limbsizeraw);
         Ok(())
     }
+
+    /// decompose a limb into bytes cells, in big endian
+    /// return (a, [a0,a1,a2,a3,a4,a5,a6,a7])
+    pub fn decompose_bytes<F: FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        limb: &Limb<F>,
+    ) -> Result<(Limb<F>, [Limb<F>;8]), Error> {
+        let bytes = field_to_u64(&limb.value).to_le_bytes().map(|x| x as u64);
+        let mid = bytes[0] + (bytes[1] + (bytes[2] + bytes[3] * 256u64) * 256u64) * 256u64;
+        let bytes_f = bytes.map(|x| Limb::new(None, F::from(x as u64)));
+        let mid_f = Limb::new(None, F::from(mid as u64));
+        let c = self.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes_f[0].clone()),
+                Some(bytes_f[1].clone()),
+                Some(bytes_f[2].clone()),
+                Some(bytes_f[3].clone()),
+                Some(limb.clone()),
+                Some(mid_f.clone())
+            ],
+            [
+                Some(F::from(1u64)),
+                Some(F::from(1u64<<8)),
+                Some(F::from(1u64<<16)),
+                Some(F::from(1u64<<24)),
+                None,
+                None,
+                Some(-F::one()),
+                Some(F::one()),
+                None
+            ],
+            0
+        )?;
+
+        let d = self.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes_f[4].clone()),
+                Some(bytes_f[5].clone()),
+                Some(bytes_f[6].clone()),
+                Some(bytes_f[7].clone()),
+                Some(mid_f),
+                None,
+            ],
+            [
+                Some(F::from(1u64<<32)),
+                Some(F::from(1u64<<40)),
+                Some(F::from(1u64<<48)),
+                Some(F::from(1u64<<56)),
+                None,
+                None,
+                Some(-F::one()),
+                None,
+                None
+            ],
+            0
+        )?;
+        Ok((c[4].clone(), [d[3].clone(), d[2].clone(), d[1].clone(), d[0].clone(), c[3].clone(), c[2].clone(), c[1].clone(), c[0].clone()]))
+    }
+
+
 
     /// put pure witness advices with no constraints.
     fn assign_witness<F: FieldExt, LC: LookupAssistChip<F>>(

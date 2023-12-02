@@ -30,13 +30,13 @@ impl LookupAssistConfig for RangeCheckConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        cols: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     ) {
         cs.lookup_any("check ranges", |meta| {
+            let exprs = cols(meta);
             let acc = self.get_expr(meta, RangeCheckConfig::acc());
             let rem = self.get_expr(meta, RangeCheckConfig::rem());
-            vec![(col(meta), acc), (sz(meta), rem)]
+            vec![(exprs[0].clone(), acc), (exprs[1].clone(), rem)]
         });
     }
 }

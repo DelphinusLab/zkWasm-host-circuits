@@ -346,10 +346,10 @@ impl CommonGateConfig {
                 Some(F::from(1u64<<8)),
                 Some(F::from(1u64<<16)),
                 Some(F::from(1u64<<24)),
-                None,
-                None,
                 Some(-F::one()),
                 Some(F::one()),
+                None,
+                None,
                 None
             ],
             0
@@ -372,9 +372,9 @@ impl CommonGateConfig {
                 Some(F::from(1u64<<40)),
                 Some(F::from(1u64<<48)),
                 Some(F::from(1u64<<56)),
-                None,
-                None,
                 Some(-F::one()),
+                None,
+                None,
                 None,
                 None
             ],

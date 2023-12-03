@@ -255,6 +255,9 @@ impl<F: FieldExt> KeccakState<F> {
         n: usize,
     ) -> Result<Limb<F>, Error> {
         let v = field_to_u64(&input.value).rotate_left(n as u32);
+        println!("input is {:x}", field_to_u64(&input.value));
+        println!("v is {:x}", v);
+        println!("n is {:x}", n);
         let chunk = n / 8; // how many chunks we have to move
         let rem = n % 8; // how many bits we have to move
         let (_, bytes) = config.decompose_bytes(region, offset, input)?;
@@ -262,11 +265,16 @@ impl<F: FieldExt> KeccakState<F> {
         for i in 0..8 {
             let current = bytes[(i+chunk) % 8].clone();
             let next = bytes[(i+chunk+1) % 8].clone();
+            let res = field_to_u64(&vbytes[i%8].value);
+            let c = field_to_u64(&current.value);
+            let n = field_to_u64(&next.value);
+            let r = ((c << rem) & 0xff) + (n >> (8 - rem));
+            assert_eq!(r, res);
             config.assign_witness(
                 region,
                 &mut (),
                 offset,
-                [ Some(current), Some(next), Some(vbytes[(i + chunk)%8].clone()), None, None, ],
+                [ Some(current), Some(next), Some(vbytes[(i)%8].clone()), None, None, ],
                 (BIT_ROTATE_LEFT as usize + rem) as u64,
             )?;
         }
@@ -395,11 +403,17 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
         round: usize,
     ) -> Result<(), Error> {
+        println!("offset {}", offset);
         self.theta(config, region, offset)?;
+        println!("offset theta {}", offset);
         self.rho(config, region, offset)?;
+        println!("offset rho {}", offset);
         self.pi(config, region, offset)?;
+        println!("offset pi {}", offset);
         self.xi(config, region, offset)?;
+        println!("offset xi {}", offset);
         self.iota(config, region, offset, round)?;
+        println!("offset iota {}", offset);
 
         Ok(())
     }

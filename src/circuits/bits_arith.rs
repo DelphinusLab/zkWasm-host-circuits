@@ -15,6 +15,8 @@ use std::marker::PhantomData;
 pub const BIT_XOR:u8 = 1;
 pub const BIT_AND:u8 = 2;
 pub const BIT_NOT_AND:u8 = 3;
+pub const BIT_ROTATE_LEFT:u8 = 4; // 4 + 7, max 11 ---- total 2^4
+pub const BIT_ROTATE_RIGHT:u8 = 12; // 12 + 7, max 21 -- total 2^5
 
 #[rustfmt::skip]
 customized_circuits!(BitsArithConfig, 1, 0, 4, 0,

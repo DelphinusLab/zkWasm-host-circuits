@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use crate::circuits::bits_arith::BitsArithChip;
 use crate::circuits::bits_arith::BIT_XOR;
 use crate::circuits::bits_arith::BIT_NOT_AND;
+use crate::circuits::bits_arith::BIT_ROTATE_LEFT;
 
 #[derive(Debug, Clone)]
 pub struct KeccakState<F: FieldExt> {
@@ -253,65 +254,23 @@ impl<F: FieldExt> KeccakState<F> {
         input: &Limb<F>,
         n: usize,
     ) -> Result<Limb<F>, Error> {
-        let mut bit_limb = vec![];
-        config.decompose_limb(region, &mut (), offset, &input, &mut bit_limb, 64)?;
-        let mut bit_array_limb = Vec::with_capacity(64);
-
-        for x in 0..64 {
-            bit_array_limb.push(field_to_u64(&bit_limb[x].value));
+        let v = field_to_u64(&input.value).rotate_left(n as u32);
+        let chunk = n / 8; // how many chunks we have to move
+        let rem = n % 8; // how many bits we have to move
+        let (_, bytes) = config.decompose_bytes(region, offset, input)?;
+        let (v, vbytes) = config.decompose_bytes(region, offset, &Limb::new(None, F::from(v)))?;
+        for i in 0..8 {
+            let current = bytes[(i+chunk) % 8].clone();
+            let next = bytes[(i+chunk+1) % 8].clone();
+            config.assign_witness(
+                region,
+                &mut (),
+                offset,
+                [ Some(current), Some(next), Some(vbytes[(i + chunk)%8].clone()), None, None, ],
+                (BIT_ROTATE_LEFT as usize + rem) as u64,
+            )?;
         }
-
-        bit_array_limb.rotate_left(n);
-
-        let mut rotate_res_limb = Limb::new(None, F::zero());
-
-        for (i, &bit) in bit_array_limb.iter().rev().enumerate() {
-            rotate_res_limb.value += F::from_u128(bit as u128) * F::from_u128(1 << i);
-        }
-
-        let bit_limb1 = bit_limb[0..n].to_vec();
-        let bit_limb2 = bit_limb[n..64].to_vec();
-
-        let mut res_limb1 = Limb::new(None, F::zero());
-        let mut res_limb2 = Limb::new(None, F::zero());
-
-        for (i, bit) in bit_limb1.iter().rev().enumerate() {
-            // little endian
-            res_limb1.value += bit.value * F::from_u128(1 << i);
-        }
-
-        for (i, bit) in bit_limb2.iter().rev().enumerate() {
-            res_limb2.value += bit.value * F::from_u128(1 << i);
-        }
-
-        // res_limb1.value + res_limb2.value * F::from_u128(1 << n) - rotate_res_limb.value = 0;
-        let res = config.assign_line(
-            region,
-            &mut (),
-            offset,
-            [
-                Some(res_limb1),
-                Some(res_limb2),
-                None,
-                None,
-                Some(rotate_res_limb),
-                None,
-            ],
-            [
-                Some(F::one()),
-                Some(F::from_u128(1 << n)),
-                None,
-                None,
-                Some(-F::one()),
-                None,
-                None,
-                None,
-                None,
-            ],
-            0,
-        )?;
-
-        Ok(res[2].clone())
+        Ok(v)
     }
 
     pub fn theta(

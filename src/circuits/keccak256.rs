@@ -112,17 +112,12 @@ impl<F: FieldExt> KeccakChip<F> {
 
         self.keccak_state.permute(&self.config, region, offset)?;
 
-        let part0 = self.keccak_state.state[0][0].value.clone();
-        let part1 = self.keccak_state.state[1][0].value.clone();
-        let part2 = self.keccak_state.state[2][0].value.clone();
-        let part3 = self.keccak_state.state[3][0].value.clone();
+        let part0 = self.keccak_state.state[0][0].clone();
+        let part1 = self.keccak_state.state[1][0].clone();
+        let part2 = self.keccak_state.state[2][0].clone();
+        let part3 = self.keccak_state.state[3][0].clone();
 
-        let part0_limb = Limb::new(None, part0);
-        let part1_limb = Limb::new(None, part1);
-        let part2_limb = Limb::new(None, part2);
-        let part3_limb = Limb::new(None, part3);
-
-        Ok([part0_limb, part1_limb, part2_limb, part3_limb])
+        Ok([part0, part1, part2, part3])
     }
 
     pub(crate) fn assign_permute(
@@ -134,7 +129,10 @@ impl<F: FieldExt> KeccakChip<F> {
         result: &[Limb<F>; 4],
     ) -> Result<(), Error> {
         println!("offset is {}", offset);
+        println!("result is {:?}", result);
+        println!("values is {:?}", values);
         let r = self.get_permute_result(region, offset, values, reset)?;
+        println!("r is {:?}", r);
         for (r, result) in r.iter().zip(result.iter()) {
             assert_eq!(r.value, result.value);
             region.constrain_equal(
@@ -164,6 +162,14 @@ impl<F: FieldExt> KeccakState<F> {
         Ok(())
     }
 
+    pub fn debug(&mut self) {
+        println!("debug state");
+        for i in 0..5 {
+            let c = self.state[i].clone().map(|x| format!("{:02x}", field_to_u64(&x.value))).join("-");
+            println!("state({}): {}", i, c);
+        }
+    }
+
     // Combine for optimization opportunity, i.e. reduce decompose count
     pub fn xor_not_and(
         &self,
@@ -177,7 +183,7 @@ impl<F: FieldExt> KeccakState<F> {
         let d = (!field_to_u64(&b.value)) & field_to_u64(&c.value);
         let e = field_to_u64(&a.value) ^ d;
         let not_b_and_c = Limb::new(None, F::from(d));
-        let res = Limb::new(None, F::from(e));
+        let res = Limb::new(None, F::from(e)); // reference
         let (_, a_limbs) = config.decompose_bytes(region, offset, a)?;
         let (_, b_limbs) = config.decompose_bytes(region, offset, b)?;
         let (_, c_limbs) = config.decompose_bytes(region, offset, c)?;
@@ -393,9 +399,11 @@ impl<F: FieldExt> KeccakState<F> {
         let next = |x| (x + 1) % 5;
         let skip = |x| (x + 2) % 5;
 
+        let mut out = self.state.clone();
+
         for x in 0..5 {
             for y in 0..5 {
-                self.state[x][y] = self.xor_not_and(
+                out[x][y] = self.xor_not_and(
                     config,
                     region,
                     offset,
@@ -406,6 +414,7 @@ impl<F: FieldExt> KeccakState<F> {
             }
         }
 
+        self.state = out;
         Ok(())
     }
 
@@ -442,8 +451,10 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
+        self.debug();
         for round in 0..N_R {
             Self::round(self, config, region, offset, round)?;
+            self.debug();
         }
 
         Ok(())

@@ -62,8 +62,18 @@ impl State {
     }
 
     pub fn permute(&mut self) {
+        self.debug();
         for rc in ROUND_CONSTANTS.iter().take(N_R) {
             self.round_b(*rc);
+            self.debug();
+        }
+    }
+
+    pub fn debug(&self) {
+        println!("debug host state");
+        for i in 0..5 {
+            let c = self.0[i].clone().map(|x| format!("{:02x}", x)).join("-");
+            println!("host state ({}): {}", i, c);
         }
     }
 
@@ -104,7 +114,7 @@ impl State {
     pub fn xi(&mut self) {
         let mut out = Self::default();
         for (x, y) in (0..5).cartesian_product(0..5) {
-            out.0[x][y] = &self.0[x][y] ^ (!&self.0[(x + 1) % 5][y]) & (&self.0[(x + 2) % 5][y]);
+            out.0[x][y] = &self.0[x][y] ^ ((!&self.0[(x + 1) % 5][y]) & (&self.0[(x + 2) % 5][y]));
         }
         self.0 = out.0;
     }
@@ -116,6 +126,7 @@ impl State {
 
 impl State {
     pub fn absorb(&mut self, input: &[u64; RATE]) {
+        println!("absorbing ... {:?}", input);
         let mut x = 0;
         let mut y = 0;
         for i in 0..RATE {
@@ -127,6 +138,8 @@ impl State {
                 y += 1;
                 x = 0;
             }
+            println!("current init round: {}", i);
+            self.debug();
         }
         self.permute();
     }
@@ -216,15 +229,15 @@ mod tests {
 
     #[test]
     fn test_keccak() {
-        const ZERO_HASHER_SQUEEZE: &str =
-            "0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a"; //force the hasher is for fr field result.
-
+        let exp = [197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182, 83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112];
+        let expect_str = exp.iter().map(|x| format!("{:02x}", x)).join("");
         let mut hasher = super::KECCAK_HASHER.clone();
         hasher.update(&[]);
         let result = hasher.squeeze();
 
         let hash = result.iter().map(|x| format!("{:02x}", x)).join("");
         println!("hash result is {:?}", hash);  // endian does not match the reference implementation
+        println!("expect result is {:?}", expect_str);
         //assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
     }
 
@@ -256,10 +269,15 @@ mod tests {
     }
 
     #[test]
-    fn keccak256() {
+    fn keccak256_check_reference() {
         let mut keccak = KECCAK_HASHER.clone();
         keccak.update(&[]);
-        let a = keccak.squeeze();
+        let expect = "0x0bbfa9132015329c07b3822630fc263512f39a81d9fc90542cc28fc914d8fa7a";
+        let result = keccak.squeeze();
+        let g = result.iter().map(|x| format!("{:02x}", x)).join("");
+        println!("g is {:?}", g);
+        println!("result is {:?}", result);
+        println!("expect is {:?}", expect);
         // what is a then?
     }
 

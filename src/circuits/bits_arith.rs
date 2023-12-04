@@ -18,6 +18,15 @@ pub const BIT_NOT_AND:u8 = 3;
 pub const BIT_ROTATE_LEFT:u8 = 4; // 4 + 7, max 11 ---- total 2^4
 pub const BIT_ROTATE_RIGHT:u8 = 12; // 12 + 7, max 21 -- total 2^5
 
+
+// a0 a1 a2 a3
+// a4 a5 a6 a7
+// b0 b1 b2 b3
+// b4 b5 b6 b7
+// c0 c1 c2 c3
+// c4 c5 c6 c7
+// (a0,b0,c0) in lookup_set
+
 #[rustfmt::skip]
 customized_circuits!(BitsArithConfig, 1, 0, 4, 0,
    | lhs   |  rhs   |  res   | op
@@ -93,20 +102,17 @@ impl<F: FieldExt> BitsArithChip<F> {
         offset: &mut usize,
     ) -> Result<(), Error> {
         let op = F::from(opcode as u64);
-        for i in 0..u8::MAX {
-            for j in 0..u8::MAX {
+        for i in 0..=u8::MAX {
+            for j in 0..=u8::MAX {
                 let lhs = F::from(i as u64);
                 let rhs = F::from(j as u64);
                 let res = F::from(opcall(i, j) as u64);
                 self.config
                     .assign_cell(region, *offset, &BitsArithConfig::lhs(), lhs)?;
-                *offset = *offset + 1;
                 self.config
                     .assign_cell(region, *offset, &BitsArithConfig::rhs(), rhs)?;
-                *offset = *offset + 1;
                 self.config
                     .assign_cell(region, *offset, &BitsArithConfig::res(), res)?;
-                *offset = *offset + 1;
                 self.config
                     .assign_cell(region, *offset, &BitsArithConfig::op(), op)?;
                 *offset = *offset + 1;
@@ -122,6 +128,15 @@ impl<F: FieldExt> BitsArithChip<F> {
         self.assign_table_entries(region, |x,y|{x ^ y}, BIT_XOR, offset)?;
         self.assign_table_entries(region, |x,y|{x & y}, BIT_AND, offset)?;
         self.assign_table_entries(region, |x,y|{(!x) & y}, BIT_NOT_AND, offset)?;
+        for i in 0..8 {
+            self.assign_table_entries(region, |x,y|{
+                if i != 0 {
+                    ((x << i) & 0xff) + (y >> (8-i))
+                } else {
+                    x
+                }
+            }, BIT_ROTATE_LEFT  + i, offset)?;
+        }
         Ok(())
     }
 }

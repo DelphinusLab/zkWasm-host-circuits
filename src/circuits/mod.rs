@@ -334,17 +334,18 @@ impl CommonGateConfig {
         Ok(())
     }
 
-    /// decompose a limb into bytes cells, in big endian
+    /// decompose a limb into bytes cells, in little endian
     /// return (a, [a0,a1,a2,a3,a4,a5,a6,a7])
     pub fn decompose_bytes<F: FieldExt>(
         &self,
         region: &mut Region<F>,
         offset: &mut usize,
         limb: &Limb<F>,
-        rotate_left: usize, //how limbs a rotated left
+        rotate: usize, //how limbs rotated towards high bits
         hint: u64 // lookup hints
     ) -> Result<(Limb<F>, [Limb<F>;8]), Error> {
-        let rot = |x| (x + rotate_left) % 8;
+        assert!(rotate < 8);
+        let rot = |x| (x + ((8 - rotate) as usize)) % 8;
 
         let limbu64 = field_to_u64(&limb.value);
         let bytes = limbu64.to_le_bytes().map(|x| x as u64);
@@ -407,7 +408,7 @@ impl CommonGateConfig {
             ],
             hint
         )?;
-        Ok((c[4].clone(), [d[3].clone(), d[2].clone(), d[1].clone(), d[0].clone(), c[3].clone(), c[2].clone(), c[1].clone(), c[0].clone()]))
+        Ok((c[4].clone(), [c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone(), d[0].clone(), d[1].clone(), d[2].clone(), d[3].clone()]))
     }
 
 
@@ -717,7 +718,15 @@ impl CommonGateConfig {
                     Some(Limb::new(None, acc)),
                     Some(Limb::new(None, result)),
                 ]);
-                coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None, None, None]);
+                coeffs.append(
+                    &mut vec![
+                    Some(F::one()),
+                    //if firstline { None } else { Some(F::one()) }, TODO FIXME: BUG
+                    Some(-F::one()),
+                    None,
+                    None,
+                    None]
+                );
                 self.assign_line(
                     region,
                     lookup_assist_chip,

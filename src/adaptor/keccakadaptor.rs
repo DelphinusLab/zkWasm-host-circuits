@@ -32,7 +32,7 @@ fn hash_to_host_call_table(inputs: &[Fr; 17], result: &[Fr; 4]) -> ExternalHostC
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 2;
+const TOTAL_CONSTRUCTIONS: usize = 50;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = KeccakGateConfig;
@@ -57,7 +57,7 @@ impl HostOpSelector for KeccakChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _k: usize,
+        k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -135,7 +135,10 @@ impl HostOpSelector for KeccakChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
+        assert!(k >= 22);
+        let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
+        assert!(total_used_instructions <= total_available);
+        for _ in 0..= total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
 

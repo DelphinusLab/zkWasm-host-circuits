@@ -53,7 +53,7 @@ impl<F: FieldExt> KeccakChip<F> {
         offset: &mut usize,
     ) -> Result<(), Error> {
         let mut bitschip = BitsArithChip::new(self.config.arith.clone());
-        bitschip.initialize(region, &mut 0)?;
+        bitschip.initialize(region, &mut 1)?;
         self.keccak_state.initialize(&config.common, region, offset)
     }
 
@@ -97,8 +97,6 @@ impl<F: FieldExt> KeccakChip<F> {
             }
         }
 
-        println!("offset after pick state is {}", offset);
-
         //absorb
         let mut x = 0;
         let mut y = 0;
@@ -118,8 +116,6 @@ impl<F: FieldExt> KeccakChip<F> {
                 x = 0;
             }
         }
-
-        println!("offset after xor state is {}", offset);
 
         self.keccak_state.state = new_state;
 
@@ -141,11 +137,7 @@ impl<F: FieldExt> KeccakChip<F> {
         reset: &Limb<F>,
         result: &[Limb<F>; 4],
     ) -> Result<(), Error> {
-        println!("offset is {}", offset);
-        println!("result is {:?}", result);
-        println!("values is {:?}", values);
         let r = self.get_permute_result(region, offset, values, reset)?;
-        println!("r is {:?}", r);
         for (r, result) in r.iter().zip(result.iter()) {
             assert_eq!(r.value, result.value);
             region.constrain_equal(
@@ -153,8 +145,6 @@ impl<F: FieldExt> KeccakChip<F> {
                 r.cell.as_ref().unwrap().cell(),
             )?;
         }
-
-        println!("post offset is {}", offset);
         Ok(())
     }
 }
@@ -197,8 +187,7 @@ impl<F: FieldExt> KeccakState<F> {
         let e = field_to_u64(&a.value) ^ d;
         let not_b_and_c = Limb::new(None, F::from(d));
         let res = Limb::new(None, F::from(e)); // reference
-        //config.decompose_bytes(region, offset, b, 0, BIT_NOT_AND as u64)?;
-        config.decompose_bytes(region, offset, b, 0, 0 as u64)?;
+        config.decompose_bytes(region, offset, b, 0, BIT_NOT_AND as u64)?;
         config.decompose_bytes(region, offset, c, 0, 0)?;
         config.decompose_bytes(region, offset, &not_b_and_c, 0, BIT_XOR as u64)?;
         config.decompose_bytes(region, offset, a, 0, 0)?;
@@ -224,7 +213,6 @@ impl<F: FieldExt> KeccakState<F> {
     ) -> Result<Limb<F>, Error> {
         let res = Limb::new(None, F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)));
         let (_, b1) = config.decompose_bytes(region, offset, lhs, 0, BIT_XOR as u64)?; // start of the lookup line
-        //config.decompose_bytes(region, offset, lhs, 0, 0)?; // start of the lookup line
         let (_, b2) = config.decompose_bytes(region, offset, rhs, 0, 0)?;
         let (output, b3) = config.decompose_bytes(region, offset, &res, 0, 0)?;
         assert_eq!(field_to_u64(&b2[0].value) ^ field_to_u64(&b1[0].value), field_to_u64(&b3[0].value));
@@ -240,28 +228,34 @@ impl<F: FieldExt> KeccakState<F> {
         n: usize,
     ) -> Result<Limb<F>, Error> {
         let v = field_to_u64(&input.value).rotate_left(n as u32);
-        println!("input is {:x}", field_to_u64(&input.value));
-        println!("v is {:x}", v);
-        println!("n is {:x}", n);
         let chunk = n / 8; // how many chunks we have to move
         let rem = n % 8; // how many bits we have to move
-        let (_, bytes) = config.decompose_bytes(region, offset, input, chunk, 0)?;
-        //let (_, bytes) = config.decompose_bytes(region, offset, input, chunk, (BIT_ROTATE_LEFT as usize + rem) as u64)?;
+        let (_, bytes) = config.decompose_bytes(region, offset, input, chunk, (BIT_ROTATE_LEFT as usize + rem) as u64)?;
         config.assign_witness(
                 region,
                 &mut (),
                 offset,
-                [ Some(bytes[1].clone()), Some(bytes[2].clone()), Some(bytes[3].clone()), Some(bytes[4].clone()), None],
+                [ Some(bytes[7].clone()), Some(bytes[0].clone()), Some(bytes[1].clone()), Some(bytes[2].clone()), None],
                 0
             )?;
         config.assign_witness(
                 region,
                 &mut (),
                 offset,
-                [ Some(bytes[5].clone()), Some(bytes[6].clone()), Some(bytes[7].clone()), Some(bytes[0].clone()), None],
+                [ Some(bytes[3].clone()), Some(bytes[4].clone()), Some(bytes[5].clone()), Some(bytes[6].clone()), None],
                 0
             )?;
-        let (v, _) = config.decompose_bytes(region, offset, &Limb::new(None, F::from(v)), 0, 0)?;
+        let (v, bs) = config.decompose_bytes(region, offset, &Limb::new(None, F::from(v)), 0, 0)?;
+        for i in 0..7 {
+            let op1 = field_to_u64(&bytes[i].value);
+            let op2 = field_to_u64(&bytes[(i+7)%8].value);
+            let op3 = field_to_u64(&bs[i].value);
+            if rem == 0 {
+                assert_eq!(op1, op3);
+            } else {
+                assert_eq!(((op1 << rem) & 0xff) + (op2 >> (8-rem)), op3);
+            }
+        }
         Ok(v)
     }
 
@@ -387,18 +381,11 @@ impl<F: FieldExt> KeccakState<F> {
         offset: &mut usize,
         round: usize,
     ) -> Result<(), Error> {
-        println!("offset {}", offset);
         self.theta(config, region, offset)?;
-        println!("offset theta {}", offset);
         self.rho(config, region, offset)?;
-        println!("offset rho {}", offset);
         self.pi(config, region, offset)?;
-        println!("offset pi {}", offset);
         self.xi(config, region, offset)?;
-        println!("offset xi {}", offset);
         self.iota(config, region, offset, round)?;
-        println!("offset iota {}", offset);
-
         Ok(())
     }
 
@@ -408,10 +395,8 @@ impl<F: FieldExt> KeccakState<F> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        self.debug();
         for round in 0..N_R {
             Self::round(self, config, region, offset, round)?;
-            self.debug();
         }
 
         Ok(())

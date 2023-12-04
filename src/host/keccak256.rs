@@ -62,10 +62,10 @@ impl State {
     }
 
     pub fn permute(&mut self) {
-        self.debug();
+        //self.debug();
         for rc in ROUND_CONSTANTS.iter().take(N_R) {
             self.round_b(*rc);
-            self.debug();
+            //self.debug();
         }
     }
 
@@ -138,8 +138,8 @@ impl State {
                 y += 1;
                 x = 0;
             }
-            println!("current init round: {}", i);
-            self.debug();
+            //println!("current init round: {}", i);
+            //self.debug();
         }
         self.permute();
     }

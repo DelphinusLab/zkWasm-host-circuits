@@ -175,7 +175,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         assert!(total_used_instructions <= total_available);
         println!("total available instructions {}", total_available);
 
-        for _ in 0..total_available - total_used_instructions {
+        for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(MerkleAddress as u64));
 

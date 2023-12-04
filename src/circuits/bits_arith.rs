@@ -28,16 +28,23 @@ impl LookupAssistConfig for BitsArithConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        cols: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
+        cols: impl Fn(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     ) {
-        cs.lookup_any("check lhs", |meta| {
-            let lhs = self.get_expr(meta, BitsArithConfig::lhs());
-            let rhs = self.get_expr(meta, BitsArithConfig::rhs());
-            let op = self.get_expr(meta, BitsArithConfig::op());
-            let res = self.get_expr(meta, BitsArithConfig::res());
-            let icols = cols(meta);
-            vec![(lhs, icols[0].clone()), (rhs, icols[1].clone()), (op, icols[2].clone()), (res, icols[3].clone())]
-        });
+        for i in 0..4 {
+            cs.lookup_any("check bits arith", |meta| {
+                let lhs = self.get_expr(meta, BitsArithConfig::lhs());
+                let rhs = self.get_expr(meta, BitsArithConfig::rhs());
+                let op = self.get_expr(meta, BitsArithConfig::op());
+                let res = self.get_expr(meta, BitsArithConfig::res());
+                let icols = cols(meta);
+                vec![
+                    (icols[i].clone(), lhs),
+                    (icols[i+4].clone(), rhs),
+                    (icols[i+8].clone(), res),
+                    (icols[12].clone(), op)
+                ]
+            });
+        }
     }
 }
 
@@ -91,17 +98,19 @@ impl<F: FieldExt> BitsArithChip<F> {
                 let lhs = F::from(i as u64);
                 let rhs = F::from(j as u64);
                 let res = F::from(opcall(i, j) as u64);
-            self.config
-                .assign_cell(region, *offset, &BitsArithConfig::lhs(), lhs)?;
-            self.config
-                .assign_cell(region, *offset, &BitsArithConfig::rhs(), rhs)?;
-            self.config
-                .assign_cell(region, *offset, &BitsArithConfig::res(), res)?;
-            self.config
-                .assign_cell(region, *offset, &BitsArithConfig::op(), op)?;
-
+                self.config
+                    .assign_cell(region, *offset, &BitsArithConfig::lhs(), lhs)?;
+                *offset = *offset + 1;
+                self.config
+                    .assign_cell(region, *offset, &BitsArithConfig::rhs(), rhs)?;
+                *offset = *offset + 1;
+                self.config
+                    .assign_cell(region, *offset, &BitsArithConfig::res(), res)?;
+                *offset = *offset + 1;
+                self.config
+                    .assign_cell(region, *offset, &BitsArithConfig::op(), op)?;
+                *offset = *offset + 1;
             }
-            *offset = *offset + 1;
         }
         Ok(())
     }

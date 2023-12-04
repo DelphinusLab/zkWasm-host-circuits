@@ -1,7 +1,7 @@
 use crate::adaptor::get_selected_entries;
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::keccak256::KeccakChip;
-use crate::circuits::CommonGateConfig;
+use crate::circuits::keccak256::KeccakGateConfig;
 use crate::host::keccak256::KECCAK_HASHER;
 use crate::host::ForeignInst::{Keccak256Finalize, Keccak256New, Keccak256Push};
 use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
@@ -35,7 +35,7 @@ fn hash_to_host_call_table(inputs: &[Fr; 17], result: &[Fr; 4]) -> ExternalHostC
 const TOTAL_CONSTRUCTIONS: usize = 2;
 
 impl HostOpSelector for KeccakChip<Fr> {
-    type Config = CommonGateConfig;
+    type Config = KeccakGateConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,

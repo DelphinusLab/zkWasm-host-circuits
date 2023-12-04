@@ -40,7 +40,7 @@ pub trait LookupAssistConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        cols: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
+        cols: impl Fn(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     );
 }
 
@@ -106,6 +106,24 @@ impl CommonGateConfig {
                     config.get_expr(c, CommonGateConfig::l1())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
                     config.get_expr(c, CommonGateConfig::l2())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l3())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l0().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l1().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l2().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l3().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l0().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l1().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l2().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                    config.get_expr(c, CommonGateConfig::l3().next(4))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
                     config.get_expr(c, CommonGateConfig::lookup_hint())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
@@ -323,36 +341,45 @@ impl CommonGateConfig {
         region: &mut Region<F>,
         offset: &mut usize,
         limb: &Limb<F>,
+        rotate_left: usize, //how limbs a rotated left
+        hint: u64 // lookup hints
     ) -> Result<(Limb<F>, [Limb<F>;8]), Error> {
+        let rot = |x| (x + rotate_left) % 8;
+
         let limbu64 = field_to_u64(&limb.value);
         let bytes = limbu64.to_le_bytes().map(|x| x as u64);
-        let mid = bytes[0] + (bytes[1] + (bytes[2] + bytes[3] * 256u64) * 256u64) * 256u64;
-        let bytes_f = bytes.map(|x| Limb::new(None, F::from(x as u64)));
+        let mut mid = 0;
+        for i in 0..4 {
+            mid += bytes[rot(i)] * 256u64.pow(rot(i) as u32)
+        }
         let mid_f = Limb::new(None, F::from(limbu64 - (mid as u64)));
+
+        let bytes_f = bytes.map(|x| Limb::new(None, F::from(x as u64)));
+
         let c = self.assign_line(
             region,
             &mut (),
             offset,
             [
-                Some(bytes_f[0].clone()),
-                Some(bytes_f[1].clone()),
-                Some(bytes_f[2].clone()),
-                Some(bytes_f[3].clone()),
+                Some(bytes_f[rot(0)].clone()),
+                Some(bytes_f[rot(1)].clone()),
+                Some(bytes_f[rot(2)].clone()),
+                Some(bytes_f[rot(3)].clone()),
                 Some(limb.clone()),
                 Some(mid_f.clone())
             ],
             [
-                Some(F::from(1u64)),
-                Some(F::from(1u64<<8)),
-                Some(F::from(1u64<<16)),
-                Some(F::from(1u64<<24)),
+                Some(F::from(256u64.pow(rot(0) as u32))),
+                Some(F::from(256u64.pow(rot(1) as u32))),
+                Some(F::from(256u64.pow(rot(2) as u32))),
+                Some(F::from(256u64.pow(rot(3) as u32))),
                 Some(-F::one()),
                 Some(F::one()),
                 None,
                 None,
                 None
             ],
-            0
+            hint
         )?;
 
         let d = self.assign_line(
@@ -360,25 +387,25 @@ impl CommonGateConfig {
             &mut (),
             offset,
             [
-                Some(bytes_f[4].clone()),
-                Some(bytes_f[5].clone()),
-                Some(bytes_f[6].clone()),
-                Some(bytes_f[7].clone()),
+                Some(bytes_f[rot(4)].clone()),
+                Some(bytes_f[rot(5)].clone()),
+                Some(bytes_f[rot(6)].clone()),
+                Some(bytes_f[rot(7)].clone()),
                 Some(mid_f),
                 None,
             ],
             [
-                Some(F::from(1u64<<32)),
-                Some(F::from(1u64<<40)),
-                Some(F::from(1u64<<48)),
-                Some(F::from(1u64<<56)),
+                Some(F::from(256u64.pow(rot(4) as u32))),
+                Some(F::from(256u64.pow(rot(5) as u32))),
+                Some(F::from(256u64.pow(rot(6) as u32))),
+                Some(F::from(256u64.pow(rot(7) as u32))),
                 Some(-F::one()),
                 None,
                 None,
                 None,
                 None
             ],
-            0
+            hint
         )?;
         Ok((c[4].clone(), [d[3].clone(), d[2].clone(), d[1].clone(), d[0].clone(), c[3].clone(), c[2].clone(), c[1].clone(), c[0].clone()]))
     }

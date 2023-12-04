@@ -85,10 +85,18 @@ fn u8_to_bits(num: u8) -> Vec<bool> {
 }
 */
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GateCell {
     pub cell: [usize; 3],
     pub name: String,
+}
+
+impl GateCell {
+    pub fn next(&self, u: usize) -> Self {
+        let mut r = self.clone();
+        r.cell[2] = r.cell[2] + u;
+        r
+    }
 }
 
 pub mod macros;

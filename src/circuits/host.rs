@@ -89,8 +89,15 @@ impl HostOpConfig {
             let sel = self.get_expr(meta, HostOpConfig::sel());
             vec![
                 sel.clone()
-                    * (filtered_index - filtered_index_n.clone() - constant_from!(1 as u64))
-                    * filtered_index_n,
+                    * (filtered_index.clone()
+                        - filtered_index_n.clone()
+                        - constant_from!(1 as u64))
+                    * filtered_index_n.clone(),
+                sel.clone()
+                    * (filtered_index.clone()
+                        - filtered_index_n.clone()
+                        - constant_from!(1 as u64))
+                    * filtered_index,
             ]
         });
 

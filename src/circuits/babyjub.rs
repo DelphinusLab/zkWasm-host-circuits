@@ -10,6 +10,8 @@ use std::marker::PhantomData;
 pub struct AltJubChip<F: FieldExt> {
     pub config: CommonGateConfig,
     state: JubState<F>,
+    a: F,
+    d: F,
     _marker: PhantomData<F>,
 }
 
@@ -70,6 +72,14 @@ impl<F: FieldExt> AltJubChip<F> {
         AltJubChip {
             config,
             state,
+            a: F::from_str_vartime(
+                "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+            )
+            .unwrap(),
+            d: F::from_str_vartime(
+                "12181644023421730124874158521699555681764249180949974110617291017600649128846",
+            )
+            .unwrap(),
             _marker: PhantomData,
         }
     }
@@ -147,15 +157,6 @@ impl<F: FieldExt> AltJubChip<F> {
          * x3 = (x1y2 + y1x2)/(1 + lambda)
          * y3 = (y1y2 - ax1x2)/(1 - lambda)
          */
-        // constants
-        let a = F::from_str_vartime(
-            "21888242871839275222246405745257275088548364400416034343698204186575808495616",
-        )
-        .unwrap();
-        let d = F::from_str_vartime(
-            "12181644023421730124874158521699555681764249180949974110617291017600649128846",
-        )
-        .unwrap();
 
         // constraint lambda
         let x1x2 = lhs.x.value * rhs.x.value;
@@ -223,7 +224,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 None,
                 None,
                 Some(lambda2),
-                Some(Limb::new(None, d * y1y2 * x1x2)),
+                Some(Limb::new(None, self.d * y1y2 * x1x2)),
                 None,
             ],
             [
@@ -233,7 +234,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 None,
                 Some(-F::one()),
                 None,
-                Some(d),
+                Some(self.d),
                 None,
                 None,
             ],
@@ -357,7 +358,7 @@ impl<F: FieldExt> AltJubChip<F> {
             .clone();
 
         // gives y1y2 - ax1x2
-        let y3_f = lhs.y.value * rhs.y.value - a * lhs.x.value * rhs.x.value;
+        let y3_f = lhs.y.value * rhs.y.value - self.a * lhs.x.value * rhs.x.value;
         let y3_f_cell = self.config.assign_line(
             region,
             &mut (),
@@ -378,7 +379,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 Some(-F::one()),
                 None,
                 Some(F::one()),
-                Some(-a),
+                Some(-self.a),
                 None,
             ],
             0,

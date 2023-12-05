@@ -506,38 +506,44 @@ impl CommonGateConfig {
 
         let mut limbs = vec![];
         for i in 0..6 {
-            let v = value[i].as_ref().map_or(F::zero(), |x| x.value);
-            let limb = self
-                .assign_cell(region, *offset, &COMMON_WITNESS[i], v)
-                .unwrap();
-            value[i].clone().map(|x| {
-                limbs.push(limb.clone());
-                x.cell.map(|c| {
-                    region
-                        .constrain_equal(limb.get_the_cell().cell(), c.cell())
+            match &value[i] {
+                Some(x) => {
+                    let limb = self
+                        .assign_cell(region, *offset, &COMMON_WITNESS[i], x.value)
                         .unwrap();
-                });
-            });
+                    x.cell.as_ref().map(|c| {
+                        region
+                            .constrain_equal(limb.get_the_cell().cell(), c.cell())
+                            .unwrap();
+                    });
+                    limbs.push(limb);
+                }
+                None => {}
+            }
         }
+
         for i in 0..9 {
-            let v = coeffs[i].as_ref().map_or(F::zero(), |x| *x);
-            self.assign_cell(region, *offset, &COMMON_CS[i], v).unwrap();
+            match &coeffs[i] {
+                Some(v) => {
+                    if !v.is_zero_vartime() {
+                        self.assign_cell(region, *offset, &COMMON_CS[i], *v)
+                            .unwrap();
+                    }
+                }
+                _ => {}
+            }
         }
+
         self.assign_cell(region, *offset, &CommonGateConfig::common_sel(), F::one())?;
-        self.assign_cell(
-            region,
-            *offset,
-            &CommonGateConfig::lookup_hint(),
-            F::from(hint),
-        )?;
-        self.assign_cell(
-            region,
-            *offset,
-            &CommonGateConfig::lookup_ind(),
-            F::from(if hint == 0 { 0u64 } else { 1u64 }),
-        )?;
 
         if hint != 0 {
+            self.assign_cell(
+                region,
+                *offset,
+                &CommonGateConfig::lookup_hint(),
+                F::from(hint),
+            )?;
+            self.assign_cell(region, *offset, &CommonGateConfig::lookup_ind(), F::one())?;
             lookup_assist_chip.provide_lookup_evidence(
                 region,
                 value[0].as_ref().unwrap().value,

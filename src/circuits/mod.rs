@@ -219,26 +219,44 @@ impl CommonGateConfig {
         offset: &mut usize,
         limb: &Limb<F>,
         limbs: &mut Vec<Limb<F>>,
-        limbsizeraw: usize,
+        limb_size_raw: usize,
     ) -> Result<(), Error> {
-        let initsize = limbs.len();
-        let limbsize = (limbsizeraw + 3) & (!3);
+        let init_size = limbs.len();
+        let limb_size = (limb_size_raw + 3) & (!3);
+        let extended_bits = limb_size - limb_size_raw;
+
         let mut bool_limbs = field_to_bn(&limb.value).to_radix_le(2);
-        bool_limbs.truncate(limbsize);
-        bool_limbs.resize_with(limbsize, || 0);
+        bool_limbs.truncate(limb_size);
+        bool_limbs.resize_with(limb_size, || 0);
         bool_limbs.reverse();
-        //FIXME: ensure the first v is zero
+
+        let mut new_limbs = vec![];
+
+        let f_0 = F::zero();
+        let f_1 = F::one();
+        let f_n1 = -f_1;
+        let f_2 = f_1.double();
+        let f_4 = f_2.double();
+        let f_8 = f_4.double();
+        let f_16 = f_8.double();
+
+        let pick = |x: u8, default| if x == 0 { f_0 } else { default };
+        let pick_bit = |x: u8| if x == 0 { f_0 } else { f_1 };
+
         let mut v = F::zero();
-        for i in 0..(limbsize / 4) {
-            let l0 = F::from_u128(bool_limbs[4 * i] as u128);
-            let l1 = F::from_u128(bool_limbs[4 * i + 1] as u128);
-            let l2 = F::from_u128(bool_limbs[4 * i + 2] as u128);
-            let l3 = F::from_u128(bool_limbs[4 * i + 3] as u128);
-            let v_next = v * F::from_u128(16u128)
-                + l0 * F::from_u128(8u128)
-                + l1 * F::from_u128(4u128)
-                + l2 * F::from_u128(2u128)
-                + l3 * F::from_u128(1u128);
+        let lines = limb_size / 4;
+        for i in 0..lines {
+            let l0 = pick_bit(bool_limbs[4 * i]);
+            let l1 = pick_bit(bool_limbs[4 * i + 1]);
+            let l2 = pick_bit(bool_limbs[4 * i + 2]);
+            let l3 = pick_bit(bool_limbs[4 * i + 3]);
+
+            let mut v_next = v * f_16;
+            v_next += pick(bool_limbs[4 * i], f_8);
+            v_next += pick(bool_limbs[4 * i + 1], f_4);
+            v_next += pick(bool_limbs[4 * i + 2], f_2);
+            v_next += pick(bool_limbs[4 * i + 3], f_1);
+
             let l = self.assign_line(
                 region,
                 lookup_assist_chip,
@@ -251,20 +269,39 @@ impl CommonGateConfig {
                     Some(Limb::new(None, v)),
                     Some(Limb::new(None, v_next)),
                 ],
-                [
-                    Some(F::from_u128(8u128)),
-                    Some(F::from_u128(4u128)),
-                    Some(F::from_u128(2u128)),
-                    Some(F::from_u128(1u128)),
-                    Some(F::from_u128(16u128)),
-                    Some(-F::one()),
-                    None,
-                    None,
-                    None,
-                ],
+                if i == 0 {
+                    // skip the extended bits
+                    [
+                        if extended_bits < 1 { Some(f_8) } else { None },
+                        if extended_bits < 2 { Some(f_4) } else { None },
+                        if extended_bits < 3 { Some(f_2) } else { None },
+                        if extended_bits < 4 { Some(f_1) } else { None },
+                        None,
+                        Some(f_n1),
+                        None,
+                        None,
+                        None,
+                    ]
+                } else {
+                    [
+                        Some(f_8),
+                        Some(f_4),
+                        Some(f_2),
+                        Some(f_1),
+                        Some(f_16),
+                        Some(f_n1),
+                        None,
+                        None,
+                        None,
+                    ]
+                },
                 0,
             )?;
-            limbs.append(&mut l.to_vec()[0..4].to_vec());
+            if i == 0 {
+                new_limbs.append(&mut l[extended_bits..4].to_vec());
+            } else {
+                new_limbs.append(&mut l[0..4].to_vec());
+            }
             v = v_next;
         }
 
@@ -299,9 +336,8 @@ impl CommonGateConfig {
         // constraint all the limbs to be either 1 or 0:
         // apply eqn: (val * val) - val = 0,
         // by: (ws[1] * ws[2] * cs[7]) + (ws[0] * cs[0]) = 0,
-        for i in 0..(limbs.len()) {
-            let lm = limbs[i].clone();
-            let _l = self.assign_line(
+        for lm in new_limbs.clone() {
+            self.assign_line(
                 region,
                 lookup_assist_chip,
                 offset,
@@ -328,7 +364,7 @@ impl CommonGateConfig {
             )?;
         }
 
-        limbs.truncate(initsize + limbsizeraw);
+        limbs.append(&mut new_limbs);
         Ok(())
     }
 

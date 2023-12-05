@@ -36,7 +36,7 @@ impl LookupAssistConfig for RangeCheckConfig {
             let exprs = cols(meta);
             let acc = self.get_expr(meta, RangeCheckConfig::acc());
             let rem = self.get_expr(meta, RangeCheckConfig::rem());
-            vec![(exprs[0].clone(), acc), (exprs[1].clone(), rem)]
+            vec![(exprs[0].clone(), acc), (exprs[12].clone(), rem)]
         });
     }
 }

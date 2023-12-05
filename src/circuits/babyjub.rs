@@ -167,10 +167,20 @@ impl<F: FieldExt> AltJubChip<F> {
          * y3 = (y1y2 - ax1x2)/(1 - lambda)
          */
 
-        // constraint lambda
-        let x1x2 = lhs.x.value * rhs.x.value;
+        let is_rhs_identity = rhs.x.value.is_zero_vartime();
 
-        let y1y2 = lhs.y.value * rhs.y.value;
+        // constraint lambda
+        let x1x2 = if is_rhs_identity {
+            F::zero()
+        } else {
+            lhs.x.value * rhs.x.value
+        };
+
+        let y1y2 = if is_rhs_identity {
+            lhs.y.value
+        } else {
+            lhs.y.value * rhs.y.value
+        };
         let lambda1 = self.config.assign_line(
             region,
             &mut (),
@@ -224,6 +234,12 @@ impl<F: FieldExt> AltJubChip<F> {
             0,
         )?[2]
             .clone(); // verify y1y2 is correct
+
+        let d_lambda_value = if is_rhs_identity {
+            F::zero()
+        } else {
+            self.curve_coeff_d * y1y2 * x1x2
+        };
         let d_lambda = self.config.assign_line(
             region,
             &mut (),
@@ -233,7 +249,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 None,
                 None,
                 Some(lambda2),
-                Some(Limb::new(None, self.curve_coeff_d * y1y2 * x1x2)),
+                Some(Limb::new(None, d_lambda_value)),
                 None,
             ],
             [
@@ -251,7 +267,11 @@ impl<F: FieldExt> AltJubChip<F> {
         )?[2]
             .clone(); // lambda1*lambda2 = y1y2 * x1x2
 
-        let x3_f = lhs.x.value * rhs.y.value + lhs.y.value * rhs.x.value;
+        let x3_f = if is_rhs_identity {
+            lhs.x.value
+        } else {
+            lhs.x.value * rhs.y.value + lhs.y.value * rhs.x.value
+        };
         let x3_f_cell = self.config.assign_line(
             region,
             &mut (),
@@ -279,16 +299,25 @@ impl<F: FieldExt> AltJubChip<F> {
         )?[4]
             .clone(); // gives x1y2 + x2y1
 
-        //1+d*lambda
-        let x_d_lambda = F::one() + d_lambda.value;
-        //1-d*lambda
-        let y_d_lambda = F::one() - d_lambda.value;
+        let (x_d_lambda, y_d_lambda, x_d_lambda_inv, y_d_lambda_inv) = if is_rhs_identity {
+            (F::one(), F::one(), F::one(), F::one())
+        } else {
+            //1+d*lambda
+            let x_d_lambda = F::one() + d_lambda.value;
+            //1-d*lambda
+            let y_d_lambda = F::one() - d_lambda.value;
 
-        let batch = x_d_lambda * y_d_lambda;
-        let batch_invert = batch.invert().unwrap();
+            let batch = x_d_lambda * y_d_lambda;
+            let batch_invert = if batch == F::one() {
+                batch
+            } else {
+                batch.invert().unwrap()
+            };
 
-        let x_d_lambda_inv = batch_invert * y_d_lambda;
-        let y_d_lambda_inv = y_d_lambda * x_d_lambda;
+            let x_d_lambda_inv = batch_invert * y_d_lambda;
+            let y_d_lambda_inv = y_d_lambda * x_d_lambda;
+            (x_d_lambda, y_d_lambda, x_d_lambda_inv, y_d_lambda_inv)
+        };
 
         //1+d*lambda
         let x_d_lambda_cell = self.config.assign_line(
@@ -347,7 +376,11 @@ impl<F: FieldExt> AltJubChip<F> {
 
         //x3 * (1+d*lambda) = x3f
         // constrain x3 to be the product of the two
-        let x3_t = x_d_lambda_inv_cell.value * x3_f;
+        let x3_t = if is_rhs_identity {
+            x3_f
+        } else {
+            x_d_lambda_inv_cell.value * x3_f
+        };
         let x3 = self.config.assign_line(
             region,
             &mut (),
@@ -376,7 +409,11 @@ impl<F: FieldExt> AltJubChip<F> {
             .clone();
 
         // gives y1y2 - ax1x2
-        let y3_f = lhs.y.value * rhs.y.value + self.curve_coeff_a_neg * lhs.x.value * rhs.x.value;
+        let y3_f = if is_rhs_identity {
+            lhs.y.value
+        } else {
+            lhs.y.value * rhs.y.value + self.curve_coeff_a_neg * lhs.x.value * rhs.x.value
+        };
         let y3_f_cell = self.config.assign_line(
             region,
             &mut (),
@@ -460,7 +497,11 @@ impl<F: FieldExt> AltJubChip<F> {
             .clone();
 
         //y3 * (1-d*lambda) = y3f
-        let y3_t = y_d_lambda_inv_cell.value * y3_f;
+        let y3_t = if is_rhs_identity {
+            y3_f
+        } else {
+            y_d_lambda_inv_cell.value * y3_f
+        };
         // constrain it
         let y3 = self.config.assign_line(
             region,

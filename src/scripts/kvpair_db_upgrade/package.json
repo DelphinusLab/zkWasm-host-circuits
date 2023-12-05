@@ -4,7 +4,7 @@
     "private": true,
     "description": "upgrade kvpair mongodb",
     "dependencies": {
-      "mongodb": "5.7.0"
+      "mongodb": "5.8.0"
     },
     "scripts": {
       "upgrade": "node db_upgrade.js",

@@ -10,8 +10,8 @@ use std::marker::PhantomData;
 pub struct AltJubChip<F: FieldExt> {
     pub config: CommonGateConfig,
     state: JubState<F>,
-    a: F,
-    d: F,
+    curve_coeff_a_neg: F,
+    curve_coeff_d: F,
     _marker: PhantomData<F>,
 }
 
@@ -24,6 +24,7 @@ pub struct Point<F: FieldExt> {
 pub struct JubState<F: FieldExt> {
     acc: Point<F>,
     default: Point<F>,
+    identity: Point<F>,
 }
 
 impl<F: FieldExt> Chip<F> for AltJubChip<F> {
@@ -52,7 +53,8 @@ impl<F: FieldExt> JubState<F> {
             x: zero.clone(),
             y: one.clone(),
         };
-        self.default = Point { x: zero, y: one };
+        self.identity = Point { x: zero, y: one };
+        self.default = self.identity.clone();
         Ok(())
     }
 }
@@ -68,18 +70,25 @@ impl<F: FieldExt> AltJubChip<F> {
                 x: Limb::new(None, F::zero()),
                 y: Limb::new(None, F::one()),
             },
+            identity: Point {
+                x: Limb::new(None, F::zero()),
+                y: Limb::new(None, F::one()),
+            },
         };
+        // constants
+        let a = F::from_str_vartime(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495616",
+        )
+        .unwrap();
+        let d = F::from_str_vartime(
+            "12181644023421730124874158521699555681764249180949974110617291017600649128846",
+        )
+        .unwrap();
         AltJubChip {
             config,
             state,
-            a: F::from_str_vartime(
-                "21888242871839275222246405745257275088548364400416034343698204186575808495616",
-            )
-            .unwrap(),
-            d: F::from_str_vartime(
-                "12181644023421730124874158521699555681764249180949974110617291017600649128846",
-            )
-            .unwrap(),
+            curve_coeff_a_neg: -a,
+            curve_coeff_d: d,
             _marker: PhantomData,
         }
     }
@@ -224,7 +233,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 None,
                 None,
                 Some(lambda2),
-                Some(Limb::new(None, self.d * y1y2 * x1x2)),
+                Some(Limb::new(None, self.curve_coeff_d * y1y2 * x1x2)),
                 None,
             ],
             [
@@ -234,7 +243,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 None,
                 Some(-F::one()),
                 None,
-                Some(self.d),
+                Some(self.curve_coeff_d),
                 None,
                 None,
             ],
@@ -272,6 +281,16 @@ impl<F: FieldExt> AltJubChip<F> {
 
         //1+d*lambda
         let x_d_lambda = F::one() + d_lambda.value;
+        //1-d*lambda
+        let y_d_lambda = F::one() - d_lambda.value;
+
+        let batch = x_d_lambda * y_d_lambda;
+        let batch_invert = batch.invert().unwrap();
+
+        let x_d_lambda_inv = batch_invert * y_d_lambda;
+        let y_d_lambda_inv = y_d_lambda * x_d_lambda;
+
+        //1+d*lambda
         let x_d_lambda_cell = self.config.assign_line(
             region,
             &mut (),
@@ -299,7 +318,6 @@ impl<F: FieldExt> AltJubChip<F> {
         )?[0]
             .clone();
 
-        let x_d_lambda_inv = (F::one() + d_lambda.value).invert().unwrap();
         let x_d_lambda_inv_cell = self.config.assign_line(
             region,
             &mut (),
@@ -358,7 +376,7 @@ impl<F: FieldExt> AltJubChip<F> {
             .clone();
 
         // gives y1y2 - ax1x2
-        let y3_f = lhs.y.value * rhs.y.value - self.a * lhs.x.value * rhs.x.value;
+        let y3_f = lhs.y.value * rhs.y.value + self.curve_coeff_a_neg * lhs.x.value * rhs.x.value;
         let y3_f_cell = self.config.assign_line(
             region,
             &mut (),
@@ -379,7 +397,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 Some(-F::one()),
                 None,
                 Some(F::one()),
-                Some(-self.a),
+                Some(self.curve_coeff_a_neg),
                 None,
             ],
             0,
@@ -387,7 +405,6 @@ impl<F: FieldExt> AltJubChip<F> {
             .clone();
 
         //1-d*lambda
-        let y_d_lambda = F::one() - d_lambda.value;
         let y_d_lambda_cell = self.config.assign_line(
             region,
             &mut (),
@@ -415,7 +432,6 @@ impl<F: FieldExt> AltJubChip<F> {
         )?[0]
             .clone();
 
-        let y_d_lambda_inv = y_d_lambda.invert().unwrap();
         let y_d_lambda_inv_cell = self.config.assign_line(
             region,
             &mut (),
@@ -487,13 +503,7 @@ impl<F: FieldExt> AltJubChip<F> {
         self.config
             .decompose_limb(region, &mut (), offset, lhs, &mut scalar_bin, 256)?;
 
-        // get the additive identity point
-        let iden_ele = Point {
-            x: Limb::new(None, F::zero()),
-            y: Limb::new(None, F::one()),
-        };
-
-        let mut ret = iden_ele.clone();
+        let mut ret = self.state.identity.clone();
         let mut temp = rhs.clone();
         // loop through the decomposed limbs
         for limb in scalar_bin.iter().rev() {
@@ -504,8 +514,8 @@ impl<F: FieldExt> AltJubChip<F> {
                 &mut (),
                 offset,
                 &limb,
-                &Limb::new(None, iden_ele.clone().x.value),
-                &Limb::new(None, temp.clone().x.value),
+                &self.state.identity.x,
+                &rhs.x,
                 0,
             )?;
             let add_y = self.config.select(
@@ -513,13 +523,13 @@ impl<F: FieldExt> AltJubChip<F> {
                 &mut (),
                 offset,
                 &limb,
-                &Limb::new(None, iden_ele.clone().y.value),
-                &Limb::new(None, temp.clone().y.value),
+                &self.state.identity.y,
+                &rhs.y,
                 0,
             )?;
             let point_to_add = Point { x: add_x, y: add_y }; // this would be identity element if the cond is not satisfied
-            ret = self.add(region, offset, &ret.clone(), &point_to_add.clone())?;
-            temp = self.add(region, offset, &temp.clone(), &temp.clone())?;
+            ret = self.add(region, offset, &ret, &point_to_add)?;
+            temp = self.add(region, offset, &temp, &temp)?;
         }
         Ok(ret)
     }

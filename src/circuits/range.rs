@@ -280,13 +280,12 @@ mod tests {
             let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             let helperconfig = HelperChip::configure(meta);
 
-            rangecheckconfig.register(
-                meta,
-                |c| vec![
+            rangecheckconfig.register(meta, |c| {
+                vec![
                     helperconfig.range_check_column(c),
                     Expression::Constant(Fr::from(4 as u64)),
                 ]
-            );
+            });
 
             Self::Config {
                 rangecheckconfig,

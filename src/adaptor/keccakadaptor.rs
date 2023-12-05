@@ -69,7 +69,6 @@ impl HostOpSelector for KeccakChip<Fr> {
         let total_used_instructions = selected_entries.len() / (1 + 17 + 4);
         println!(" selected entries: {:?}", total_used_instructions);
 
-
         let mut r = vec![];
 
         // TODO: Change 8 to RATE ?
@@ -138,7 +137,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         assert!(k >= 22);
         let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
         assert!(total_used_instructions <= total_available);
-        for _ in 0..= total_available - total_used_instructions {
+        for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert_eq!(opcode.clone(), Fr::from(Keccak256New as u64));
 

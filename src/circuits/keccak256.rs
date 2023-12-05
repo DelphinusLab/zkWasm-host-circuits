@@ -1,14 +1,14 @@
+use crate::circuits::bits_arith::BitsArithChip;
+use crate::circuits::bits_arith::BitsArithConfig;
+use crate::circuits::bits_arith::BIT_NOT_AND;
+use crate::circuits::bits_arith::BIT_ROTATE_LEFT;
+use crate::circuits::bits_arith::BIT_XOR;
+use crate::circuits::{CommonGateConfig, Limb};
 use crate::host::keccak256::{N_R, RATE_LANES, ROTATION_CONSTANTS, ROUND_CONSTANTS};
 use crate::utils::field_to_u64;
 use halo2_proofs::arithmetic::FieldExt;
-use crate::circuits::{CommonGateConfig, Limb};
 use halo2_proofs::{circuit::*, plonk::*};
 use std::marker::PhantomData;
-use crate::circuits::bits_arith::BitsArithChip;
-use crate::circuits::bits_arith::BitsArithConfig;
-use crate::circuits::bits_arith::BIT_XOR;
-use crate::circuits::bits_arith::BIT_NOT_AND;
-use crate::circuits::bits_arith::BIT_ROTATE_LEFT;
 
 #[derive(Debug, Clone)]
 pub struct KeccakState<F: FieldExt> {
@@ -64,7 +64,7 @@ impl<F: FieldExt> KeccakChip<F> {
         let bitsarithconfig = BitsArithChip::configure(cs);
         KeccakGateConfig {
             arith: bitsarithconfig.clone(),
-            common: CommonGateConfig::configure(cs, &bitsarithconfig, shared_advice)
+            common: CommonGateConfig::configure(cs, &bitsarithconfig, shared_advice),
         }
     }
 
@@ -119,7 +119,8 @@ impl<F: FieldExt> KeccakChip<F> {
 
         self.keccak_state.state = new_state;
 
-        self.keccak_state.permute(&self.config.common, region, offset)?;
+        self.keccak_state
+            .permute(&self.config.common, region, offset)?;
 
         let part0 = self.keccak_state.state[0][0].clone();
         let part1 = self.keccak_state.state[1][0].clone();
@@ -168,7 +169,10 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn debug(&mut self) {
         println!("debug state");
         for i in 0..5 {
-            let c = self.state[i].clone().map(|x| format!("{:02x}", field_to_u64(&x.value))).join("-");
+            let c = self.state[i]
+                .clone()
+                .map(|x| format!("{:02x}", field_to_u64(&x.value)))
+                .join("-");
             println!("state({}): {}", i, c);
         }
     }
@@ -211,11 +215,17 @@ impl<F: FieldExt> KeccakState<F> {
         lhs: &Limb<F>,
         rhs: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
-        let res = Limb::new(None, F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)));
+        let res = Limb::new(
+            None,
+            F::from(field_to_u64(&lhs.value) ^ field_to_u64(&rhs.value)),
+        );
         let (_, b1) = config.decompose_bytes(region, offset, lhs, 0, BIT_XOR as u64)?; // start of the lookup line
         let (_, b2) = config.decompose_bytes(region, offset, rhs, 0, 0)?;
         let (output, b3) = config.decompose_bytes(region, offset, &res, 0, 0)?;
-        assert_eq!(field_to_u64(&b2[0].value) ^ field_to_u64(&b1[0].value), field_to_u64(&b3[0].value));
+        assert_eq!(
+            field_to_u64(&b2[0].value) ^ field_to_u64(&b1[0].value),
+            field_to_u64(&b3[0].value)
+        );
         Ok(output)
     }
 
@@ -230,30 +240,48 @@ impl<F: FieldExt> KeccakState<F> {
         let v = field_to_u64(&input.value).rotate_left(n as u32);
         let chunk = n / 8; // how many chunks we have to move
         let rem = n % 8; // how many bits we have to move
-        let (_, bytes) = config.decompose_bytes(region, offset, input, chunk, (BIT_ROTATE_LEFT as usize + rem) as u64)?;
+        let (_, bytes) = config.decompose_bytes(
+            region,
+            offset,
+            input,
+            chunk,
+            (BIT_ROTATE_LEFT as usize + rem) as u64,
+        )?;
         config.assign_witness(
-                region,
-                &mut (),
-                offset,
-                [ Some(bytes[7].clone()), Some(bytes[0].clone()), Some(bytes[1].clone()), Some(bytes[2].clone()), None],
-                0
-            )?;
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes[7].clone()),
+                Some(bytes[0].clone()),
+                Some(bytes[1].clone()),
+                Some(bytes[2].clone()),
+                None,
+            ],
+            0,
+        )?;
         config.assign_witness(
-                region,
-                &mut (),
-                offset,
-                [ Some(bytes[3].clone()), Some(bytes[4].clone()), Some(bytes[5].clone()), Some(bytes[6].clone()), None],
-                0
-            )?;
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes[3].clone()),
+                Some(bytes[4].clone()),
+                Some(bytes[5].clone()),
+                Some(bytes[6].clone()),
+                None,
+            ],
+            0,
+        )?;
         let (v, bs) = config.decompose_bytes(region, offset, &Limb::new(None, F::from(v)), 0, 0)?;
         for i in 0..7 {
             let op1 = field_to_u64(&bytes[i].value);
-            let op2 = field_to_u64(&bytes[(i+7)%8].value);
+            let op2 = field_to_u64(&bytes[(i + 7) % 8].value);
             let op3 = field_to_u64(&bs[i].value);
             if rem == 0 {
                 assert_eq!(op1, op3);
             } else {
-                assert_eq!(((op1 << rem) & 0xff) + (op2 >> (8-rem)), op3);
+                assert_eq!(((op1 << rem) & 0xff) + (op2 >> (8 - rem)), op3);
             }
         }
         Ok(v)

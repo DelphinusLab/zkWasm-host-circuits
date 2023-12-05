@@ -1,10 +1,10 @@
 pub mod anemoi;
 pub mod babyjub;
+pub mod bits_arith;
 pub mod bls;
 pub mod bn256;
 pub mod host;
 pub mod keccak256;
-pub mod bits_arith;
 pub mod merkle;
 pub mod modexp;
 pub mod poseidon;
@@ -12,7 +12,7 @@ pub mod range;
 pub mod rmd160;
 //pub(crate) mod keccak_arith_table;
 
-use crate::utils::{field_to_bn, GateCell, Limb, field_to_u64};
+use crate::utils::{field_to_bn, field_to_u64, GateCell, Limb};
 
 use crate::{
     customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
@@ -98,38 +98,36 @@ impl CommonGateConfig {
             witness,
         };
 
-        lookup_assist_config.register(
-            cs,
-            |c| {
-                vec![config.get_expr(c, CommonGateConfig::l0())
+        lookup_assist_config.register(cs, |c| {
+            vec![
+                config.get_expr(c, CommonGateConfig::l0())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l1())
+                config.get_expr(c, CommonGateConfig::l1())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l2())
+                config.get_expr(c, CommonGateConfig::l2())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l3())
+                config.get_expr(c, CommonGateConfig::l3())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l0().next(2))
+                config.get_expr(c, CommonGateConfig::l0().next(2))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l1().next(2))
+                config.get_expr(c, CommonGateConfig::l1().next(2))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l2().next(2))
+                config.get_expr(c, CommonGateConfig::l2().next(2))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l3().next(2))
+                config.get_expr(c, CommonGateConfig::l3().next(2))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l0().next(4))
+                config.get_expr(c, CommonGateConfig::l0().next(4))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l1().next(4))
+                config.get_expr(c, CommonGateConfig::l1().next(4))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l2().next(4))
+                config.get_expr(c, CommonGateConfig::l2().next(4))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::l3().next(4))
+                config.get_expr(c, CommonGateConfig::l3().next(4))
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                    config.get_expr(c, CommonGateConfig::lookup_hint())
+                config.get_expr(c, CommonGateConfig::lookup_hint())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
-                ]
-            },
-        );
+            ]
+        });
 
         // helper gates for implementing poseidon with 2 cell permute
         cs.create_gate("one line constraint", |meta| {
@@ -342,8 +340,8 @@ impl CommonGateConfig {
         offset: &mut usize,
         limb: &Limb<F>,
         rotate: usize, //how limbs rotated towards high bits
-        hint: u64 // lookup hints
-    ) -> Result<(Limb<F>, [Limb<F>;8]), Error> {
+        hint: u64,     // lookup hints
+    ) -> Result<(Limb<F>, [Limb<F>; 8]), Error> {
         assert!(rotate < 8);
         let rot = |x| (x + ((8 - rotate) as usize)) % 8;
 
@@ -367,7 +365,7 @@ impl CommonGateConfig {
                 Some(bytes_f[rot(2)].clone()),
                 Some(bytes_f[rot(3)].clone()),
                 Some(limb.clone()),
-                Some(mid_f.clone())
+                Some(mid_f.clone()),
             ],
             [
                 Some(F::from(256u64.pow(rot(0) as u32))),
@@ -378,9 +376,9 @@ impl CommonGateConfig {
                 Some(F::one()),
                 None,
                 None,
-                None
+                None,
             ],
-            hint
+            hint,
         )?;
 
         let d = self.assign_line(
@@ -404,14 +402,24 @@ impl CommonGateConfig {
                 None,
                 None,
                 None,
-                None
+                None,
             ],
-            hint
+            hint,
         )?;
-        Ok((c[4].clone(), [c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone(), d[0].clone(), d[1].clone(), d[2].clone(), d[3].clone()]))
+        Ok((
+            c[4].clone(),
+            [
+                c[0].clone(),
+                c[1].clone(),
+                c[2].clone(),
+                c[3].clone(),
+                d[0].clone(),
+                d[1].clone(),
+                d[2].clone(),
+                d[3].clone(),
+            ],
+        ))
     }
-
-
 
     /// put pure witness advices with no constraints.
     fn assign_witness<F: FieldExt, LC: LookupAssistChip<F>>(
@@ -718,15 +726,14 @@ impl CommonGateConfig {
                     Some(Limb::new(None, acc)),
                     Some(Limb::new(None, result)),
                 ]);
-                coeffs.append(
-                    &mut vec![
+                coeffs.append(&mut vec![
                     Some(F::one()),
                     //if firstline { None } else { Some(F::one()) }, TODO FIXME: BUG
                     Some(-F::one()),
                     None,
                     None,
-                    None]
-                );
+                    None,
+                ]);
                 self.assign_line(
                     region,
                     lookup_assist_chip,

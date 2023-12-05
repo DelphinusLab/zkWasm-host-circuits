@@ -205,7 +205,7 @@ impl Keccak {
             self.absorbing.resize(len + padding_total - 1, zero_lane);
             self.absorbing.push(ending_one_lane);
         }
-        let r:Vec<u64> = self.absorbing.clone();
+        let r: Vec<u64> = self.absorbing.clone();
         println!("before absorb is {:?}", &r);
         self.state.absorb(&r.try_into().unwrap());
         println!("after absorb state is {:?}", &self.state);
@@ -223,20 +223,23 @@ lazy_static::lazy_static! {
 mod tests {
     use super::KECCAK_HASHER;
     use crate::host::keccak256::N_R;
+    use itertools::Itertools;
     use rand::RngCore;
     use rand_core::OsRng;
-    use itertools::Itertools;
 
     #[test]
     fn test_keccak() {
-        let exp = [197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182, 83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112];
+        let exp = [
+            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182,
+            83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112,
+        ];
         let expect_str = exp.iter().map(|x| format!("{:02x}", x)).join("");
         let mut hasher = super::KECCAK_HASHER.clone();
         hasher.update(&[]);
         let result = hasher.squeeze();
 
         let hash = result.iter().map(|x| format!("{:02x}", x)).join("");
-        println!("hash result is {:?}", hash);  // endian does not match the reference implementation
+        println!("hash result is {:?}", hash); // endian does not match the reference implementation
         println!("expect result is {:?}", expect_str);
         //assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
     }

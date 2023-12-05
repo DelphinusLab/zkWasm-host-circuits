@@ -1,8 +1,7 @@
 use crate::circuits::{LookupAssistChip, LookupAssistConfig};
 use crate::utils::{GateCell, Limb};
 use crate::{
-    customized_circuits, customized_circuits_expand, item_count, table_item,
-    value_for_assign,
+    customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
 };
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -12,12 +11,11 @@ use halo2_proofs::{
 };
 use std::marker::PhantomData;
 
-pub const BIT_XOR:u8 = 1;
-pub const BIT_AND:u8 = 2;
-pub const BIT_NOT_AND:u8 = 3;
-pub const BIT_ROTATE_LEFT:u8 = 4; // 4 + 7, max 11 ---- total 2^4
-pub const BIT_ROTATE_RIGHT:u8 = 12; // 12 + 7, max 21 -- total 2^5
-
+pub const BIT_XOR: u8 = 1;
+pub const BIT_AND: u8 = 2;
+pub const BIT_NOT_AND: u8 = 3;
+pub const BIT_ROTATE_LEFT: u8 = 4; // 4 + 7, max 11 ---- total 2^4
+pub const BIT_ROTATE_RIGHT: u8 = 12; // 12 + 7, max 21 -- total 2^5
 
 // a0 a1 a2 a3
 // a4 a5 a6 a7
@@ -48,9 +46,9 @@ impl LookupAssistConfig for BitsArithConfig {
                 let icols = cols(meta);
                 vec![
                     (icols[i].clone(), lhs),
-                    (icols[i+4].clone(), rhs),
-                    (icols[i+8].clone(), res),
-                    (icols[12].clone(), op)
+                    (icols[i + 4].clone(), rhs),
+                    (icols[i + 8].clone(), res),
+                    (icols[12].clone(), op),
                 ]
             });
         }
@@ -125,17 +123,22 @@ impl<F: FieldExt> BitsArithChip<F> {
     /// initialize needs to be called before using the BitsArithchip
     pub fn initialize(&mut self, region: &mut Region<F>, offset: &mut usize) -> Result<(), Error> {
         // initialize the XOR table with the encoded value
-        self.assign_table_entries(region, |x,y|{x ^ y}, BIT_XOR, offset)?;
-        self.assign_table_entries(region, |x,y|{x & y}, BIT_AND, offset)?;
-        self.assign_table_entries(region, |x,y|{(!x) & y}, BIT_NOT_AND, offset)?;
+        self.assign_table_entries(region, |x, y| x ^ y, BIT_XOR, offset)?;
+        self.assign_table_entries(region, |x, y| x & y, BIT_AND, offset)?;
+        self.assign_table_entries(region, |x, y| (!x) & y, BIT_NOT_AND, offset)?;
         for i in 0..8 {
-            self.assign_table_entries(region, |x,y|{
-                if i != 0 {
-                    ((x << i) & 0xff) + (y >> (8-i))
-                } else {
-                    x
-                }
-            }, BIT_ROTATE_LEFT  + i, offset)?;
+            self.assign_table_entries(
+                region,
+                |x, y| {
+                    if i != 0 {
+                        ((x << i) & 0xff) + (y >> (8 - i))
+                    } else {
+                        x
+                    }
+                },
+                BIT_ROTATE_LEFT + i,
+                offset,
+            )?;
         }
         Ok(())
     }

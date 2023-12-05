@@ -182,6 +182,7 @@ macro_rules! customized_circuits_expand {
         impl $name {
             fn typ(index: usize) -> usize {
                 let x = index % $col;
+                #[allow(unused_comparisons)]
                 if x < $adv {
                     0
                 } else if x < $adv + $fix {
@@ -193,6 +194,7 @@ macro_rules! customized_circuits_expand {
 
             fn col(index: usize) -> usize {
                 let x = index % $col;
+                #[allow(unused_comparisons)]
                 if x < $adv {
                     x
                 } else if x < $adv + $fix {

@@ -1,15 +1,18 @@
 pub mod anemoi;
 pub mod babyjub;
+pub mod bits_arith;
 pub mod bls;
 pub mod bn256;
 pub mod host;
+pub mod keccak256;
 pub mod merkle;
 pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
+//pub(crate) mod keccak_arith_table;
 
-use crate::utils::{field_to_bn, GateCell, Limb};
+use crate::utils::{field_to_bn, field_to_u64, GateCell, Limb};
 
 use crate::{
     customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
@@ -37,8 +40,7 @@ pub trait LookupAssistConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        cols: impl Fn(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     );
 }
 
@@ -96,14 +98,36 @@ impl CommonGateConfig {
             witness,
         };
 
-        lookup_assist_config.register(
-            cs,
-            |c| {
+        lookup_assist_config.register(cs, |c| {
+            vec![
                 config.get_expr(c, CommonGateConfig::l0())
-                    * config.get_expr(c, CommonGateConfig::lookup_ind())
-            },
-            |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
-        );
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l0().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l0().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::lookup_hint())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+            ]
+        });
 
         // helper gates for implementing poseidon with 2 cell permute
         cs.create_gate("one line constraint", |meta| {
@@ -306,6 +330,95 @@ impl CommonGateConfig {
 
         limbs.truncate(initsize + limbsizeraw);
         Ok(())
+    }
+
+    /// decompose a limb into bytes cells, in little endian
+    /// return (a, [a0,a1,a2,a3,a4,a5,a6,a7])
+    pub fn decompose_bytes<F: FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        limb: &Limb<F>,
+        rotate: usize, //how limbs rotated towards high bits
+        hint: u64,     // lookup hints
+    ) -> Result<(Limb<F>, [Limb<F>; 8]), Error> {
+        assert!(rotate < 8);
+        let rot = |x| (x + ((8 - rotate) as usize)) % 8;
+
+        let limbu64 = field_to_u64(&limb.value);
+        let bytes = limbu64.to_le_bytes().map(|x| x as u64);
+        let mut mid = 0;
+        for i in 0..4 {
+            mid += bytes[rot(i)] * 256u64.pow(rot(i) as u32)
+        }
+        let mid_f = Limb::new(None, F::from(limbu64 - (mid as u64)));
+
+        let bytes_f = bytes.map(|x| Limb::new(None, F::from(x as u64)));
+
+        let c = self.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes_f[rot(0)].clone()),
+                Some(bytes_f[rot(1)].clone()),
+                Some(bytes_f[rot(2)].clone()),
+                Some(bytes_f[rot(3)].clone()),
+                Some(limb.clone()),
+                Some(mid_f.clone()),
+            ],
+            [
+                Some(F::from(256u64.pow(rot(0) as u32))),
+                Some(F::from(256u64.pow(rot(1) as u32))),
+                Some(F::from(256u64.pow(rot(2) as u32))),
+                Some(F::from(256u64.pow(rot(3) as u32))),
+                Some(-F::one()),
+                Some(F::one()),
+                None,
+                None,
+                None,
+            ],
+            hint,
+        )?;
+
+        let d = self.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(bytes_f[rot(4)].clone()),
+                Some(bytes_f[rot(5)].clone()),
+                Some(bytes_f[rot(6)].clone()),
+                Some(bytes_f[rot(7)].clone()),
+                Some(mid_f),
+                None,
+            ],
+            [
+                Some(F::from(256u64.pow(rot(4) as u32))),
+                Some(F::from(256u64.pow(rot(5) as u32))),
+                Some(F::from(256u64.pow(rot(6) as u32))),
+                Some(F::from(256u64.pow(rot(7) as u32))),
+                Some(-F::one()),
+                None,
+                None,
+                None,
+                None,
+            ],
+            hint,
+        )?;
+        Ok((
+            c[4].clone(),
+            [
+                c[0].clone(),
+                c[1].clone(),
+                c[2].clone(),
+                c[3].clone(),
+                d[0].clone(),
+                d[1].clone(),
+                d[2].clone(),
+                d[3].clone(),
+            ],
+        ))
     }
 
     /// put pure witness advices with no constraints.
@@ -613,7 +726,14 @@ impl CommonGateConfig {
                     Some(Limb::new(None, acc)),
                     Some(Limb::new(None, result)),
                 ]);
-                coeffs.append(&mut vec![Some(F::one()), Some(-F::one()), None, None, None]);
+                coeffs.append(&mut vec![
+                    Some(F::one()),
+                    //if firstline { None } else { Some(F::one()) }, TODO FIXME: BUG
+                    Some(-F::one()),
+                    None,
+                    None,
+                    None,
+                ]);
                 self.assign_line(
                     region,
                     lookup_assist_chip,

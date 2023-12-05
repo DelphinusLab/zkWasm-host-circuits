@@ -73,10 +73,30 @@ pub fn field_to_u64<F: FieldExt>(f: &F) -> u64 {
     u64::from_le_bytes(bytes[0..8].try_into().unwrap())
 }
 
-#[derive(Debug)]
+/*
+fn u8_to_bits(num: u8) -> Vec<bool> {
+    let mut result = Vec::with_capacity(8);
+    let mut n = num;
+    for _ in 0..8 {
+        result.push(n & 1 == 1);
+        n >>= 1;
+    }
+    result
+}
+*/
+
+#[derive(Debug, Clone)]
 pub struct GateCell {
     pub cell: [usize; 3],
     pub name: String,
+}
+
+impl GateCell {
+    pub fn next(&self, u: usize) -> Self {
+        let mut r = self.clone();
+        r.cell[2] = r.cell[2] + u;
+        r
+    }
 }
 
 pub mod macros;

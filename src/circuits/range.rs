@@ -30,13 +30,13 @@ impl LookupAssistConfig for RangeCheckConfig {
     fn register<F: FieldExt>(
         &self,
         cs: &mut ConstraintSystem<F>,
-        col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        sz: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        cols: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     ) {
         cs.lookup_any("check ranges", |meta| {
+            let exprs = cols(meta);
             let acc = self.get_expr(meta, RangeCheckConfig::acc());
             let rem = self.get_expr(meta, RangeCheckConfig::rem());
-            vec![(col(meta), acc), (sz(meta), rem)]
+            vec![(exprs[0].clone(), acc), (exprs[12].clone(), rem)]
         });
     }
 }
@@ -80,14 +80,13 @@ impl<F: FieldExt> RangeCheckChip<F> {
         };
 
         // Range Check of all limbs
-        //
         cs.lookup_any("within ranges", |meta| {
             let limb = config.get_expr(meta, RangeCheckConfig::limb());
             let table = config.get_expr(meta, RangeCheckConfig::table());
             vec![(limb, table)]
         });
 
-        // First we require the rem is continus if it is not zero
+        // First we require the rem is continues if it is not zero
         cs.create_gate("range check constraint", |meta| {
             let rem = config.get_expr(meta, RangeCheckConfig::rem());
             let rem_n = config.get_expr(meta, RangeCheckConfig::rem_n());
@@ -111,6 +110,7 @@ impl<F: FieldExt> RangeCheckChip<F> {
                 //(constant_from!(1) - sel) * acc, // if sel is 0 then acc must equal to 0
             ]
         });
+
         cs.create_gate("end with zero", |meta| {
             let sel = config.get_expr(meta, RangeCheckConfig::sel());
             let acc_n = config.get_expr(meta, RangeCheckConfig::acc_n());
@@ -280,11 +280,12 @@ mod tests {
             let rangecheckconfig = RangeCheckChip::<Fr>::configure(meta);
             let helperconfig = HelperChip::configure(meta);
 
-            rangecheckconfig.register(
-                meta,
-                |c| helperconfig.range_check_column(c),
-                |_| Expression::Constant(Fr::from(4 as u64)),
-            );
+            rangecheckconfig.register(meta, |c| {
+                vec![
+                    helperconfig.range_check_column(c),
+                    Expression::Constant(Fr::from(4 as u64)),
+                ]
+            });
 
             Self::Config {
                 rangecheckconfig,

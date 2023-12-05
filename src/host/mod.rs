@@ -4,6 +4,7 @@ pub mod cache;
 pub mod datahash;
 pub mod db;
 pub mod jubjub;
+pub mod keccak256;
 pub mod merkle;
 pub mod mongomerkle;
 pub mod poseidon;
@@ -39,13 +40,13 @@ pub enum ForeignInst {
     Bn254SumScalar,
     Bn254SumG1,
     Bn254SumResult,
-    MerkleSetRoot,   // 11
-    MerkleGetRoot,   // 12
-    MerkleAddress,   // 13
-    MerkleSet,       // 14
-    MerkleGet,       // 15
-    MerklePutData,   // 16
-    MerkleFetchData, // 17
+    MerkleSetRoot,
+    MerkleGetRoot,
+    MerkleAddress,
+    MerkleSet,
+    MerkleGet,
+    MerklePutData,
+    MerkleFetchData,
     SHA256New,
     SHA256Push,
     SHA256Finalize,
@@ -55,6 +56,9 @@ pub enum ForeignInst {
     JubjubSumNew,
     JubjubSumPush,
     JubjubSumResult,
+    Keccak256New,
+    Keccak256Push,
+    Keccak256Finalize,
     LogChar,
     WitnessInsert,
     WitnessPop,
@@ -71,7 +75,7 @@ impl<F: FieldExt> ReduceRule<F> {
         match self {
             ReduceRule::Bytes(_, a) => *a, // a * u64
             ReduceRule::Field(_, _) => 4,  // 4 * u64
-            ReduceRule::U64(_) => 1,       // 4 * u64
+            ReduceRule::U64(_) => 1,       // 1 * u64
         }
     }
     fn reduce(&mut self, v: u64, offset: usize) {

@@ -23,8 +23,7 @@ impl LookupAssistConfig for () {
     fn register<F: FieldExt>(
         &self,
         _cs: &mut ConstraintSystem<F>,
-        _col: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
-        _hint: impl FnOnce(&mut VirtualCells<F>) -> Expression<F>,
+        _col: impl FnOnce(&mut VirtualCells<F>) -> Vec<Expression<F>>,
     ) {
         ()
     }
@@ -156,7 +155,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
         assert!(total_used_instructions <= total_available);
 
-        for _ in 0..total_available - total_used_instructions {
+        for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(PoseidonNew as u64));
 

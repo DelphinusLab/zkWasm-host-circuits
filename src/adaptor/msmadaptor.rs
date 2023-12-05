@@ -124,7 +124,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
         assert!(total_used_instructions <= TOTAL_CONSTRUCTIONS);
 
-        for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
+        for _ in 0..=TOTAL_CONSTRUCTIONS - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(JubjubSumNew as u64));
 

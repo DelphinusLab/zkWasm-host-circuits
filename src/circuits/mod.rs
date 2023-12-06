@@ -221,7 +221,6 @@ impl CommonGateConfig {
         limbs: &mut Vec<Limb<F>>,
         limb_size_raw: usize,
     ) -> Result<(), Error> {
-        let init_size = limbs.len();
         let limb_size = (limb_size_raw + 3) & (!3);
         let extended_bits = limb_size - limb_size_raw;
 

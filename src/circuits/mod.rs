@@ -703,31 +703,42 @@ impl CommonGateConfig {
         Ok(l[0].clone())
     }
 
-    fn sum_with_constant<F: FieldExt, LC: LookupAssistChip<F>>(
+    // Support to return inputs' cells and add eq_constraints for res
+    fn sum_with_constant_ext<F: FieldExt, LC: LookupAssistChip<F>, LB>(
         &self,
         region: &mut Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
-        inputs: Vec<(&Limb<F>, F)>,
+        inputs: Vec<(LB, F)>,
         constant: Option<F>,
-    ) -> Result<Limb<F>, Error> {
+        expected_res: Option<&Limb<F>>,
+    ) -> Result<(Vec<Limb<F>>, Limb<F>), Error>
+    where
+        LB: core::borrow::Borrow<Limb<F>>,
+    {
         let mut acc = F::zero();
-        let mut firstline = true;
-        let operands = inputs.clone();
-        let mut r = None;
-        for chunk in operands.chunks(4) {
-            let result = chunk.iter().fold(acc, |acc, &(l, v)| acc + l.value * v);
-            if inputs.len() <= 3 {
-                // solve it in oneline
-                let result = result + constant.map_or(F::zero(), |x| x);
-                let mut limbs = chunk
-                    .iter()
-                    .map(|&(l, _v)| Some(l.clone()))
-                    .collect::<Vec<Option<Limb<_>>>>();
-                let mut coeffs = chunk
-                    .iter()
-                    .map(|&(_l, v)| Some(v.clone()))
-                    .collect::<Vec<Option<F>>>();
+        let mut assigned_res = None;
+        let mut assigned_inputs = vec![];
+
+        for (i, chunk) in inputs.chunks(4).enumerate() {
+            let result = chunk
+                .iter()
+                .fold(acc, |acc, (l, v)| acc + l.borrow().value * v);
+
+            let mut limbs = chunk
+                .iter()
+                .map(|(l, _)| Some(l.borrow().clone()))
+                .collect::<Vec<Option<Limb<_>>>>();
+            let mut coeffs = chunk
+                .iter()
+                .map(|(_, v)| Some(v.clone()))
+                .collect::<Vec<Option<F>>>();
+
+            let acc_coeff = if i == 0 { None } else { Some(F::one()) };
+
+            if chunk.len() <= 3 {
+                // Solve the last parts in one line
+                let result = result + constant.unwrap_or(F::zero());
                 limbs.resize_with(3, || None);
                 coeffs.resize_with(3, || None);
                 limbs.append(&mut vec![
@@ -737,60 +748,49 @@ impl CommonGateConfig {
                 ]);
                 coeffs.append(&mut vec![
                     Some(-F::one()),
-                    if firstline { None } else { Some(F::one()) },
+                    acc_coeff,
                     None,
                     None,
                     None,
                     constant,
                 ]);
-                let l = self.assign_line(
-                    region,
-                    lookup_assist_chip,
-                    offset,
-                    limbs.try_into().unwrap(),
-                    coeffs.try_into().unwrap(),
-                    0,
-                )?;
-                r = Some(l.get(l.len() - 2).unwrap().clone());
             } else {
-                let mut limbs = chunk
-                    .iter()
-                    .map(|&(l, _v)| Some(l.clone()))
-                    .collect::<Vec<Option<Limb<_>>>>();
-                let mut coeffs = chunk
-                    .iter()
-                    .map(|&(_l, v)| Some(v.clone()))
-                    .collect::<Vec<Option<F>>>();
                 limbs.resize_with(4, || None);
                 coeffs.resize_with(4, || None);
                 limbs.append(&mut vec![
                     Some(Limb::new(None, acc)),
                     Some(Limb::new(None, result)),
                 ]);
-                coeffs.append(&mut vec![
-                    Some(F::one()),
-                    //if firstline { None } else { Some(F::one()) }, TODO FIXME: BUG
-                    Some(-F::one()),
-                    None,
-                    None,
-                    None,
-                ]);
-                self.assign_line(
-                    region,
-                    lookup_assist_chip,
-                    offset,
-                    limbs.try_into().unwrap(),
-                    coeffs.try_into().unwrap(),
-                    0,
-                )?;
+                coeffs.append(&mut vec![acc_coeff, Some(-F::one()), None, None, None]);
             }
-            acc = result;
-            firstline = false;
+
+            let cells = self.assign_line(
+                region,
+                lookup_assist_chip,
+                offset,
+                limbs.try_into().unwrap(),
+                coeffs.try_into().unwrap(),
+                0,
+            )?;
+
+            let mut it = cells.into_iter();
+            for _ in 0..chunk.len() {
+                assigned_inputs.push(it.next().unwrap());
+            }
+
+            if chunk.len() <= 3 {
+                assigned_res = Some(it.next().unwrap());
+            } else {
+                acc = result;
+            }
         }
-        Ok(r.unwrap_or_else(|| {
+
+        let assigned_res = if let Some(assigned_res) = assigned_res {
+            assigned_res
+        } else {
             let result = acc + constant.map_or(F::zero(), |x| x);
             // collect the last acc as result
-            self.assign_line(
+            let cells = self.assign_line(
                 region,
                 lookup_assist_chip,
                 offset,
@@ -814,11 +814,30 @@ impl CommonGateConfig {
                     constant,
                 ],
                 0,
-            )
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap()
-        }))
+            )?;
+            cells[0].clone()
+        };
+
+        if let Some(expected_res) = expected_res {
+            region.constrain_equal(
+                expected_res.get_the_cell().cell(),
+                assigned_res.get_the_cell().cell(),
+            )?;
+        }
+
+        Ok((assigned_inputs, assigned_res))
+    }
+
+    fn sum_with_constant<F: FieldExt, LC: LookupAssistChip<F>>(
+        &self,
+        region: &mut Region<F>,
+        lookup_assist_chip: &mut LC,
+        offset: &mut usize,
+        inputs: Vec<(&Limb<F>, F)>,
+        constant: Option<F>,
+    ) -> Result<Limb<F>, Error> {
+        let (_, res) =
+            self.sum_with_constant_ext(region, lookup_assist_chip, offset, inputs, constant, None)?;
+        Ok(res)
     }
 }

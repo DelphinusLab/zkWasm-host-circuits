@@ -3,7 +3,13 @@ use crate::host::db;
 use crate::host::db::{MongoDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
-use crate::host::poseidon::POSEIDON_HASHER;
+cfg_if::cfg_if! {
+    if #[cfg(feature="complex-leaf")] {
+        use crate::host::poseidon::POSEIDON_HASHER as MERKLE_LEAF_HASHER;
+    } else {
+        use crate::host::poseidon::MERKLE_LEAF_HASHER;
+    }
+}
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
@@ -244,7 +250,7 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         self.hash
     }
     fn set(&mut self, data: &Vec<u8>) {
-        let mut hasher = POSEIDON_HASHER.clone();
+        let mut hasher = MERKLE_LEAF_HASHER.clone();
         self.data = data.clone().try_into().unwrap();
         let batchdata = data
             .chunks(16)
@@ -257,8 +263,15 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
             })
             .collect::<Vec<Fr>>();
         let values: [Fr; 2] = batchdata.try_into().unwrap();
-        hasher.update(&values);
-        self.hash = hasher.squeeze().to_repr();
+
+        cfg_if::cfg_if! {
+            if #[cfg(feature="complex-leaf")] {
+                hasher.update(&values);
+                self.hash = hasher.squeeze().to_repr();
+            } else {
+                self.hash = hasher.update_exact(&values).to_repr();
+            }
+        }
         //println!("update with values {:?}", values);
         //println!("update with new hash {:?}", self.hash);
     }

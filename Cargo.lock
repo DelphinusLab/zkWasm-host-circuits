@@ -3319,6 +3319,7 @@ name = "zkwasm-host-circuits"
 version = "0.1.0"
 dependencies = [
  "ark-std",
+ "cfg-if 1.0.0",
  "circuits-batcher",
  "clap",
  "ff",

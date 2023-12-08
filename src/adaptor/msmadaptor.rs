@@ -67,7 +67,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _k: usize,
+        k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -122,9 +122,11 @@ impl HostOpSelector for AltJubChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        assert!(total_used_instructions <= TOTAL_CONSTRUCTIONS);
+        assert!(k >= 22);
+        let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
+        assert!(total_used_instructions <= total_available);
 
-        for _ in 0..=TOTAL_CONSTRUCTIONS - total_used_instructions {
+        for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(JubjubSumNew as u64));
 

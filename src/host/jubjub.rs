@@ -162,6 +162,12 @@ impl Point {
         }
     }
 
+    pub fn is_on_curve(&self) -> bool {
+        let x2 = self.x.square();
+        let y2 = self.y.square();
+        y2 - x2 == Fr::one() + *D * x2 * y2
+    }
+
     pub fn projective(&self) -> PointProjective {
         PointProjective {
             x: self.x,
@@ -301,5 +307,44 @@ mod tests {
         println!("third round {:?}", rst);
         // assert_eq!(lhs,rhs)
         assert_eq!(Point::identity(), rst);
+    }
+
+    #[test]
+    pub fn must_on_curve() {
+        //p_g.negate()
+        let base_x = BigUint::parse_bytes(
+            b"017054bebd8ed76269b84220f215264ea2e9cc2c72ec13c846bfd7d39d28920a",
+            16,
+        )
+        .unwrap();
+        let base_y = BigUint::parse_bytes(
+            b"05a01167ea785d3f784224644a68e4067532c815f5f6d57d984b5c0e9c6c94b7",
+            16,
+        )
+        .unwrap();
+        let p = Point {
+            x: bn_to_field(&(base_x)),
+            y: bn_to_field(&(base_y)),
+        };
+        assert!(p.is_on_curve());
+
+        let base_x = BigUint::parse_bytes(
+            b"055ebc73738b4f96a75223ce00a62fb13bd650d6fc33b3b11d94de292d380648",
+            16,
+        ).unwrap();
+
+        let base_y = BigUint::parse_bytes(
+            b"12a4e052fd976246fcce65e96da94c5381188da678fdb590a688e050dec026cb",
+            16,
+        ).unwrap();
+
+        let p = Point {
+            x: bn_to_field(&(base_x)),
+            y: bn_to_field(&(base_y)),
+        };
+        assert!(p.is_on_curve());
+
+
+
     }
 }

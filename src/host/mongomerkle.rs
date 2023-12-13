@@ -513,6 +513,12 @@ mod tests {
     }
 
     #[test]
+    fn show_default_root() {
+        println!("default root in bytes {:?}", DEFAULT_HASH_VEC[32]);
+        println!("default root in u64 {:?}", bytes_to_u64(&DEFAULT_HASH_VEC[32]));
+    }
+
+    #[test]
     /* Basic tests for 32 height m tree
      * 1. Update index=2_u32.pow(32) - 1 (first leaf) leave value. Check root.
      * 2. Check index=2_u32.pow(32) - 1 leave value updated.

@@ -315,7 +315,7 @@ impl<F: FieldExt> AltJubChip<F> {
             };
 
             let x_d_lambda_inv = batch_invert * y_d_lambda;
-            let y_d_lambda_inv = y_d_lambda * x_d_lambda;
+            let y_d_lambda_inv = batch_invert * x_d_lambda;
             (x_d_lambda, y_d_lambda, x_d_lambda_inv, y_d_lambda_inv)
         };
 
@@ -556,7 +556,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 offset,
                 &limb,
                 &self.state.identity.x,
-                &rhs.x,
+                &temp.x,
                 0,
             )?;
             let add_y = self.config.select(
@@ -565,7 +565,7 @@ impl<F: FieldExt> AltJubChip<F> {
                 offset,
                 &limb,
                 &self.state.identity.y,
-                &rhs.y,
+                &temp.y,
                 0,
             )?;
             let point_to_add = Point { x: add_x, y: add_y }; // this would be identity element if the cond is not satisfied

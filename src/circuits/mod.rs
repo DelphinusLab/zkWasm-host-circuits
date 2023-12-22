@@ -9,6 +9,7 @@ pub mod range;
 pub mod rmd160;
 pub mod anemoi;
 pub mod map_to_curve;
+pub mod sgn0;
 
 use crate::utils::{field_to_bn, GateCell, Limb};
 

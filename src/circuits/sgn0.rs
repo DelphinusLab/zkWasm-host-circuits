@@ -66,9 +66,18 @@ fn constrain_bits(
     }
 }
 
-// Assumes the input vectors consist only of assigned field elements
-// that are all either equal to zero or one.  This condition can be constrained
-// independently in a prior step if needed.
+/// Takes as input two vectors of assigned base field elements of equal length, 
+/// each of which has all entries equal to either 0 or 1.  *Assumes* that both
+/// input vectors consist only of bits, but *panics* if they are not equal in
+/// length. Thus the condition that each vector consists only of bits must be
+/// constrained in a prior step.
+/// 
+/// Let a an b be the big-endian interpretation of `a_bits` and `b_bits`,
+/// respectively, as integers.  This function returns an assigned base field
+/// element that is equal to:
+///     * 1 if a < b
+///     * 0 if a = b
+///     * -1 (= p-1) if a > b
 fn lexicographical_bitwise_comparison(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a_bits: &Vec<AssignedFq<Fq, Fr>>,
@@ -112,7 +121,7 @@ fn lexicographical_bitwise_comparison(
 
 const P_BINARY_STR: &str = "110100000000100010001111010100011100101111111111001101001101001001011000110111010011110110110010000110100101110101100110101110110010001110111010010111000010011110011100001010001001010111111011001110011000011010010101000001111011010110000111101100010010000011110101010111111111111111110101100010101001111111111111111111011100111111110111111111111111111111111111111111010101010101011";
 
-fn binary_str_to_assigned_bits(
+fn binary_str_to_assigned_constant_bits(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     binary_str: &str
 ) -> Vec<AssignedFq<Fq, Fr>> {
@@ -129,10 +138,16 @@ fn binary_str_to_assigned_bits(
         .collect()
 }
 
-// Small helper function to turn a BigUint into its big-endian bit decomposition
-// expressed as a vector of BigUints.  Used in the assigning step of a bitwise
-// decomposition.
-fn bn_to_bits_bn_be(bn: &BigUint) -> Vec<BigUint> {
+// Small helper function to turn a BigUint into its big-endian bit decomposition,
+// padded to a fixed length, expressed as a vector of BigUints.   Used in the 
+// assigning step of an in-circuit bitwise decomposition.  Panics if the length
+// of the input BigUint in bits is greater than `length`.
+fn bn_to_bits_bn_be_fixed_length(
+    bn: &BigUint,
+    length: usize
+) -> Vec<BigUint> {
+    assert!((bn.bits() as usize) <= length);
+
     let two_bn = BigUint::from_str("2").unwrap();
     
     let mut bits: Vec<BigUint> = vec![];
@@ -142,6 +157,9 @@ fn bn_to_bits_bn_be(bn: &BigUint) -> Vec<BigUint> {
         current_bit = &current_bn % &two_bn;
         current_bn = (&current_bn - &current_bit) / &two_bn;
         bits.insert(0, current_bit);
+    }
+    for i in (bn.bits() as usize)..length {
+        bits.insert(0, BigUint::from_str("0").unwrap());
     }
 
     bits
@@ -155,6 +173,10 @@ fn bn_to_bits_bn_be(bn: &BigUint) -> Vec<BigUint> {
 /// is constrained to be equal to x.
 /// The decomposition is big-endian, because having a big-endian decomposition
 /// makes the constraints for bitwise lexicographical comparison more natural.
+/// `length` must be passed in because we cannot alter the (fixed) behavior of
+/// the circuit based on the (variable) value of x.  When we use this function
+/// later, the value of `length` will be the length of p (the modulus of the
+/// base field) in bits, which in our case is 381.
 fn decompose_into_bits_be(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     x: &AssignedFq<Fq, Fr>,
@@ -164,41 +186,69 @@ fn decompose_into_bits_be(
     let x_reduced = gseccc.base_integer_ctx.reduce(&x);
     let x_fq = gseccc.base_integer_ctx.get_w(&x_reduced);
     let x_bn = field_to_bn(&x_fq);
+    let x_bits_bn_be = bn_to_bits_bn_be_fixed_length(&x_bn, length);
+    let x_bits_be: Vec<AssignedFq<Fq, Fr>> = x_bits_bn_be
+        .into_iter()
+        .map(|bit| {
+            gseccc.base_integer_ctx.assign_w(&bit)
+        })
+        .collect();
+
+    // Constrains each claimed bit (assigned base field element/AssignedFq)
+    // in the given decomposition of x to be a bit (either 0 or 1). 
+    constrain_bits(gseccc, &x_bits_be);
 
     let zero_bn = BigUint::from_str("0").unwrap();
     let one_bn = BigUint::from_str("1").unwrap();
     let two_bn = BigUint::from_str("2").unwrap();
-    let powers_of_two_bn: Vec<BigUint> = (0..length)
+    let powers_of_two_bn_be: Vec<BigUint> = (0..length)
         .map(|i| {
-            two_bn.pow(i as u32)
+            two_bn.pow((length - 1 - i) as u32)
         })
         .collect();
-    let powers_of_two_fq: Vec<Fq> = powers_of_two_bn
+    let powers_of_two_fq_be: Vec<Fq> = powers_of_two_bn_be
         .into_iter()
         .map(|bn| {
             bn_to_field(&bn)
         })
         .collect();
-    let powers_of_two: Vec<AssignedFq<Fq, Fr>> = powers_of_two_fq
+    let powers_of_two_be: Vec<AssignedFq<Fq, Fr>> = powers_of_two_fq_be
         .into_iter()
         .map(|fq| {
             gseccc.base_integer_ctx.assign_int_constant(fq)
         })
         .collect();
 
+    let must_equal_x = dot_product(gseccc, &x_bits_be, &powers_of_two_be);
+    gseccc.base_integer_ctx.assert_int_equal(&must_equal_x, &x);
 
-    todo!()
+    x_bits_be
 }
 
 fn mod2(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    x_bits: &Vec<AssignedFq<Fq, Fr>>,
     x: &AssignedFq<Fq, Fr>
 ) -> AssignedFq<Fq, Fr> {
-    let p_bits = binary_str_to_assigned_bits(gseccc, P_BINARY_STR);
-    
+    let p_bits = binary_str_to_assigned_constant_bits(gseccc, P_BINARY_STR);
+    let x_bits_be = decompose_into_bits_be(gseccc, x, P_BINARY_STR.len());
+    let y = lexicographical_bitwise_comparison(gseccc, &x_bits_be, &p_bits);
 
-    todo!()
+    let one = gseccc.base_integer_ctx.assign_int_constant(Fq::one());
+    let two_bn = BigUint::from_str("2").unwrap();
+    let two_fq = bn_to_field(&two_bn);
+    let two = gseccc.base_integer_ctx.assign_int_constant(two_fq);
+
+    // Let x' be the last entry of x_bits_be.  (This is x mod 2 if the
+    // given bit decomposition of x is canonical, and 1 - (x mod 2) otherwise).
+    // Constrains s = y(2x' + y - 1)/2.  To see why this implies that s = x mod 2,
+    // see https://hackmd.io/@levi-sledd/H1ea4oTYn#sgn0.
+    let aux1 = gseccc.base_integer_ctx.int_mul(&two, &x_bits_be[x_bits_be.len() - 1]);
+    let aux2 = gseccc.base_integer_ctx.int_sub(&y, &one);
+    let aux3 = gseccc.base_integer_ctx.int_add(&aux1, &aux2);
+    let (_, aux4) = gseccc.base_integer_ctx.int_div(&y, &two);
+    let s = gseccc.base_integer_ctx.int_mul(&aux3, &aux4);
+
+    s
 }
 
 #[test]
@@ -231,6 +281,9 @@ fn does_int_add_reduce_mod_p() {
 }
 
 #[test]
-fn test_bn_to_bits_bn_be() {
-    
+fn test_bn_to_bits_bn_be_fixed_length() {
+    let nineteen_bn = BigUint::from_str("19").unwrap();
+    let nineteen_bits_bn_be = bn_to_bits_bn_be_fixed_length(&nineteen_bn, 381);
+    println!("As a 381-bit BigUint vector in big-endian binary, 19 = {:?}", nineteen_bits_bn_be);
+    println!("Length = {:?}", nineteen_bits_bn_be.len());
 }

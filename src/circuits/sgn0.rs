@@ -251,6 +251,48 @@ fn mod2(
     s
 }
 
+fn sgn0(
+    gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
+    x: &AssignedFq2<Fq, Fr>
+) -> AssignedFq<Fq, Fr> {
+    // let x_re = x.0;
+    let x_re_fq = gseccc.base_integer_ctx.get_w(&x.0);
+    // let x_im = x.1;
+    let x_re_mod2 = mod2(gseccc, &x.0);
+    let x_im_mod2 = mod2(gseccc, &x.1);
+
+    let zero = gseccc.base_integer_ctx.assign_int_constant(Fq::zero());
+    let one = gseccc.base_integer_ctx.assign_int_constant(Fq::one());
+
+    // Assigns a new auxiliary variable z_prime, without constraining.
+    // z_prime is not important except to constrain z.
+    let z_prime_fq = if x_re_fq == Fq::zero() {
+        Fq::zero()
+    } else {
+        x_re_fq.invert().unwrap()
+    };
+    let z_prime_bn = field_to_bn(&z_prime_fq);
+    let z_prime = gseccc.base_integer_ctx.assign_w(&z_prime_bn);
+
+    // This constrains a variable z to satisfy z = 
+    // * 1 if x = 0
+    // * 0 otherwise.
+    let aux1 = gseccc.base_integer_ctx.int_mul(&z_prime, &x.0); // z'x_re
+    let z = gseccc.base_integer_ctx.int_sub(&one, &aux1); // 1 - z'x_re
+    let aux2 = gseccc.base_integer_ctx.int_mul(&x.0, &z); // x_re(1 - z'x_re)
+    gseccc.base_integer_ctx.assert_int_equal(&aux2, &zero); // x_re(1 - z'x_re) = 0
+
+    // Constrains sgn0 = x_re_mod2 + (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
+    // To see why these are the right constraints, see
+    // https://hackmd.io/@levi-sledd/H1ea4oTYn#sgn0
+    let aux3 = gseccc.base_integer_ctx.int_mul(&z, &x_im_mod2); // z * x_im_mod2
+    let aux4 = gseccc.base_integer_ctx.int_mul(&x_re_mod2, &aux3); // z * x_re_mod2 * x_im_mod2
+    let aux5 = gseccc.base_integer_ctx.int_sub(&aux3, &aux4); // (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
+    let sgn0 = gseccc.base_integer_ctx.int_add(&x_re_mod2, &aux5); // sgn0 = x_re_mod2 + (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
+
+    sgn0
+}
+
 #[test]
 fn does_int_add_reduce_mod_p() {
     let mut gseccc = GeneralScalarEccContext::<G1Affine, Fr>::new(

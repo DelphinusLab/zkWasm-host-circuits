@@ -12,8 +12,12 @@ pub mod merkleadaptor;
 pub mod msmadaptor;
 
 pub fn get_max_round(k: usize, reference_max: usize) -> usize {
-    assert!(k >= 22);
-    reference_max << (k - 22)
+    if k>=22 {
+        reference_max << (k - 22)
+    } else {
+        // we do not support host when k < 22
+        0
+    }
 }
 
 pub fn fr_to_args<F: BaseExt>(

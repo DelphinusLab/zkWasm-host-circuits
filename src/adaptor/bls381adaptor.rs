@@ -113,6 +113,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         Bls381PairChip::construct(c)
     }
 
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS_PAIR)
+    }
+
     fn opcodes() -> Vec<Fr> {
         vec![
             Fr::from(ForeignInst::BlsPairG1 as u64),
@@ -123,7 +127,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _k: usize,
+        k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -212,7 +216,9 @@ impl HostOpSelector for Bls381PairChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS_PAIR - total_used_instructions {
+        let total_avail_rounds = Self::max_rounds(k);
+
+        for _ in 0..total_avail_rounds - total_used_instructions {
             for i in 0..8 {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
@@ -319,6 +325,10 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         Bls381SumChip::construct(c)
     }
 
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS_SUM)
+    }
+
     fn opcodes() -> Vec<Fr> {
         vec![
             Fr::from(ForeignInst::BlsSumNew as u64),
@@ -330,7 +340,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
-        _k: usize,
+        k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -428,7 +438,9 @@ impl HostOpSelector for Bls381SumChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS_SUM - total_used_instructions {
+        let total_avail_rounds = Self::max_rounds(k);
+
+        for _ in 0..total_avail_rounds - total_used_instructions {
             // whether new is zero or not
             let ((operand, opcode), index) = default_entries[0].clone();
             let (limb, _op) = config.assign_one_line(

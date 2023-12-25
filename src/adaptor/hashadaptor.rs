@@ -73,6 +73,10 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         PoseidonChip::construct(c.0, c.1, POSEIDON_HASHER_SPEC.clone())
     }
 
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS)
+    }
+
     fn opcodes() -> Vec<Fr> {
         vec![
             Fr::from(ForeignInst::PoseidonNew as u64),
@@ -152,7 +156,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         assert!(k >= 22);
-        let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
+        let total_available = Self::max_rounds(k);
         assert!(total_used_instructions <= total_available);
 
         for _ in 0..=total_available - total_used_instructions {

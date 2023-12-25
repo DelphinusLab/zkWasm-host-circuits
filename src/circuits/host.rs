@@ -222,6 +222,7 @@ pub trait HostOpSelector {
     ) -> Self::Config;
     fn construct(c: Self::Config) -> Self;
     fn opcodes() -> Vec<Fr>;
+    fn max_rounds(k: usize) -> usize;
     fn assign(
         region: &mut Region<Fr>,
         k: usize,

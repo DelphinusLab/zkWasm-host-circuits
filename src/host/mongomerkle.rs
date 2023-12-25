@@ -515,7 +515,10 @@ mod tests {
     #[test]
     fn show_default_root() {
         println!("default root in bytes {:?}", DEFAULT_HASH_VEC[32]);
-        println!("default root in u64 {:?}", bytes_to_u64(&DEFAULT_HASH_VEC[32]));
+        println!(
+            "default root in u64 {:?}",
+            bytes_to_u64(&DEFAULT_HASH_VEC[32])
+        );
     }
 
     #[test]

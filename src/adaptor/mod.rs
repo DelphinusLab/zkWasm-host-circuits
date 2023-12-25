@@ -11,6 +11,11 @@ pub mod keccakadaptor;
 pub mod merkleadaptor;
 pub mod msmadaptor;
 
+pub fn get_max_round(k: usize, reference_max: usize) -> usize {
+    assert!(k >= 22);
+    reference_max << (k - 22)
+}
+
 pub fn fr_to_args<F: BaseExt>(
     f: F,
     nblimbs: usize,

@@ -47,6 +47,10 @@ impl HostOpSelector for KeccakChip<Fr> {
         KeccakChip::<Fr>::construct(c)
     }
 
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS)
+    }
+
     fn opcodes() -> Vec<Fr> {
         vec![
             Fr::from(ForeignInst::Keccak256New as u64),
@@ -135,7 +139,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         assert!(k >= 22);
-        let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
+        let total_available = Self::max_rounds(k);
         assert!(total_used_instructions <= total_available);
         for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();

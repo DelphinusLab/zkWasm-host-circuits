@@ -77,6 +77,10 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         MerkleChip::new(c.0, c.1)
     }
 
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS)
+    }
+
     fn opcodes() -> Vec<Fr> {
         vec![
             Fr::from(MerkleSetRoot as u64),
@@ -178,7 +182,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
         assert!(k >= 22);
-        let total_available = TOTAL_CONSTRUCTIONS << (k - 22);
+        let total_available = Self::max_rounds(k);
         assert!(total_used_instructions <= total_available);
         println!("total available instructions {}", total_available);
 

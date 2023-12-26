@@ -64,6 +64,7 @@ pub enum ForeignInst {
     LogChar,
     WitnessInsert,
     WitnessPop,
+    WitnessTraceSize,
 }
 
 pub enum ReduceRule<F: FieldExt> {

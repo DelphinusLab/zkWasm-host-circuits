@@ -67,6 +67,7 @@ pub enum ForeignInst {
     WitnessTraceSize,
     WitnessIndexedInsert,
     WitnessSetIndex,
+    WitnessIndexedPush,
     WitnessIndexedPop,
 }
 

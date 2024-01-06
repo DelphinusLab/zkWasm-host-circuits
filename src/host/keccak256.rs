@@ -126,7 +126,7 @@ impl State {
 
 impl State {
     pub fn absorb(&mut self, input: &[u64; RATE]) {
-        println!("absorbing ... {:?}", input);
+        //println!("absorbing ... {:?}", input);
         let mut x = 0;
         let mut y = 0;
         for i in 0..RATE {

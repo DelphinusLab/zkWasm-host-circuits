@@ -29,6 +29,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::str::FromStr;
 
+use crate::circuits::sgn0::sgn0;
+
 // Assigns e = (a == b) within the computation trace (Context),
 // where a and b are elements of Fq2.  In the same computation trace,
 // e is also an element of Fq2, which is constrained so that
@@ -96,6 +98,12 @@ fn fq2_assign_equality_condition(
     e
 }
 
+// Assumes e is equal to either 1 or 0.
+// Technically, since e is actually an assigned fq2, this really means that e is
+// assumed to be either 0 + 0i or 1 + 0i.
+// Constrains the output to be:
+// a if e = 0 (= 0 + 0i)
+// b if e = 1 (= 1 + 0i)
 fn cmov(
     gseccc: &mut GeneralScalarEccContext::<G1Affine, Fr>,
     a: &AssignedFq2::<Fq, Fr>,
@@ -292,10 +300,24 @@ fn simplified_swu_in_context(
     y = cmov(gseccc, &tv1, &y, &e8);
     tv2 = gseccc.fq2_mul(&tv3, &x1n);
     let mut xn: AssignedFq2<Fq, Fr> = cmov(gseccc, &tv2, &x1n, &e8);
+
     // For testing purposes only: replace with constrained sgn0 in the final version
-    if sgn0_unconstrained(gseccc, &u) != sgn0_unconstrained(gseccc, &y) {
-        y = gseccc.fq2_neg(&y);
-    }
+    // if sgn0_unconstrained(gseccc, &u) != sgn0_unconstrained(gseccc, &y) {
+    //     y = gseccc.fq2_neg(&y);
+    // }
+
+    // Note that since sgn0(u) and sgn0(y) are both bits,
+    // we have that sgn0(u) != sgn0(y) iff (sgn0(u)-sgn0(y))^2 = 1.
+    let sgn0_u = sgn0(gseccc, &u);
+    let sgn0_y = sgn0(gseccc, &y);
+    let sgn0_u_minus_sgn0_y = gseccc.base_integer_ctx.int_sub(&sgn0_u, &sgn0_y);
+    let sgn0_u_minus_sgn0_y_squared = gseccc.base_integer_ctx.int_square(&sgn0_u_minus_sgn0_y);
+    let zero_i = gseccc.base_integer_ctx.assign_int_constant(Fq::zero());
+    let sgn0_u_does_not_equal_sgn0_y: AssignedFq2<Fq, Fr> = (sgn0_u_minus_sgn0_y_squared, zero_i);
+
+    let minus_y = gseccc.fq2_neg(&y);
+    y = cmov(gseccc, &y, &minus_y, &sgn0_u_does_not_equal_sgn0_y);
+
     // The straight-line program guarantees that xd is nonzero.
     let xd_inverse: AssignedFq2<Fq, Fr> = gseccc.fq2_unsafe_invert(&xd);
     let x: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&xn, &xd_inverse);

@@ -251,13 +251,11 @@ fn mod2(
     s
 }
 
-fn sgn0(
+pub fn sgn0(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     x: &AssignedFq2<Fq, Fr>
 ) -> AssignedFq<Fq, Fr> {
-    // let x_re = x.0;
     let x_re_fq = gseccc.base_integer_ctx.get_w(&x.0);
-    // let x_im = x.1;
     let x_re_mod2 = mod2(gseccc, &x.0);
     let x_im_mod2 = mod2(gseccc, &x.1);
 

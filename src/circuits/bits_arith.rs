@@ -49,6 +49,7 @@ impl LookupAssistConfig for BitsArithConfig {
                     (icols[i + 4].clone(), rhs),
                     (icols[i + 8].clone(), res),
                     (icols[12].clone(), op),
+                    // add an indicator
                 ]
             });
         }

@@ -101,6 +101,7 @@ impl CommonGateConfig {
         lookup_assist_config.register(cs, |c| {
             vec![
                 config.get_expr(c, CommonGateConfig::l0())
+
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
                 config.get_expr(c, CommonGateConfig::l1())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
@@ -126,6 +127,7 @@ impl CommonGateConfig {
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
                 config.get_expr(c, CommonGateConfig::lookup_hint())
                     * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                // add an indicator in 5th column to control reset or not
             ]
         });
 

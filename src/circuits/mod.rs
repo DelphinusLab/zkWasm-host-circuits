@@ -103,10 +103,41 @@ impl CommonGateConfig {
             cs,
             |c| {
                 config.get_expr(c, CommonGateConfig::l0())
+<<<<<<< Updated upstream
                     * config.get_expr(c, CommonGateConfig::lookup_ind())
             },
             |c| config.get_expr(c, CommonGateConfig::lookup_hint()),
         );
+=======
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l0().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3().next(2))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l0().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l1().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l2().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::l3().next(4))
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                config.get_expr(c, CommonGateConfig::lookup_hint())
+                    * config.get_expr(c, CommonGateConfig::lookup_ind()),
+                // add an indicator in 5th column to control reset or not
+            ]
+        });
+>>>>>>> Stashed changes
 
         // helper gates for implementing poseidon with 2 cell permute
         cs.create_gate("one line constraint", |meta| {

@@ -18,8 +18,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn deserialize_u64_as_binary<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok({
@@ -32,8 +32,8 @@ where
 }
 
 fn serialize_u64_as_binary<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
+    where
+        S: Serializer,
 {
     let binary = Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
@@ -43,8 +43,8 @@ where
 }
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(bytes.bytes.try_into().unwrap()),
@@ -54,8 +54,8 @@ where
 }
 
 fn serialize_bytes_as_binary<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
+    where
+        S: Serializer,
 {
     let binary = Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
@@ -217,7 +217,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_u64_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u64_as_binary")]

@@ -76,6 +76,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
+    //fn construct(addr: Self::Id, id: Self::Root, db: Option<Arc<Mutex<dyn TreeDB>>>) -> Self;
     fn construct(addr: Self::Id, id: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self;
 
     fn hash(a: &H, b: &H) -> H;

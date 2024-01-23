@@ -32,7 +32,7 @@ fn hash_to_host_call_table(inputs: &[Fr; 17], result: &[Fr; 4]) -> ExternalHostC
     ExternalHostCallEntryTable(r.into_iter().flatten().collect())
 }
 
-const TOTAL_CONSTRUCTIONS: usize = 50;
+const TOTAL_CONSTRUCTIONS: usize = 32;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = KeccakGateConfig;

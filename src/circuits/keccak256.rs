@@ -168,13 +168,11 @@ impl<F: FieldExt> KeccakState<F> {
     }
 
     pub fn debug(&mut self) {
-        println!("debug state");
         for i in 0..5 {
             let c = self.state[i]
                 .clone()
                 .map(|x| format!("{:02x}", field_to_u64(&x.value)))
                 .join("-");
-            println!("state({}): {}", i, c);
         }
     }
 
@@ -490,33 +488,6 @@ impl<F: FieldExt> KeccakState<F> {
             }
         }
 
-
-
-        /*
-        let mut c = self.default[0].clone();
-
-        let prev = |x| (x + 4) % 5;
-        let next = |x| (x + 1) % 5;
-
-        for x in 0..5 {
-            let y = &self.state[x];
-            let mut ci = y[0].clone();
-            for i in 1..5 {
-                ci = self.xor(config, region, offset, &ci, &y[i])?;
-            }
-            c[x] = ci;
-        }
-
-        for x in 0..5 {
-            let di = self.rotate_left(config, region, offset, &c[next(x)], 1)?;
-            let di = self.xor(config, region, offset, &c[prev(x)], &di)?;
-            for y in 0..5 {
-                self.state[x][y] = self.xor(config, region, offset, &self.state[x][y], &di)?;
-            }
-        }
-
-         */
-
         Ok(())
     }
 
@@ -548,26 +519,6 @@ impl<F: FieldExt> KeccakState<F> {
             }
         }
 
-
-
-        /*
-        for x in 0..5 {
-            for y in 0..5 {
-                let rc = ROTATION_CONSTANTS[x][y];
-
-                let rotate_limb = self.rotate_left(
-                    config,
-                    region,
-                    offset,
-                    &self.state[x][y],
-                    rc.try_into().unwrap(),
-                )?;
-                out[x][y] = rotate_limb;
-
-            }
-        }
-
-         */
         self.state = out;
 
         Ok(())
@@ -656,31 +607,6 @@ impl<F: FieldExt> KeccakState<F> {
         }
         self.state = out;
         Ok(())
-
-
-
-        /*
-        let next = |x| (x + 1) % 5;
-        let skip = |x| (x + 2) % 5;
-
-        let mut out = self.state.clone();
-
-        for x in 0..5 {
-            for y in 0..5 {
-                out[x][y] = self.xor_not_and(
-                    config,
-                    region,
-                    offset,
-                    &self.state[x][y],
-                    &self.state[next(x)][y],
-                    &self.state[skip(x)][y],
-                )?;
-            }
-        }
-        self.state = out;
-        Ok(())
-         */
-
 
     }
 
@@ -792,8 +718,7 @@ impl<F: FieldExt> KeccakState<F> {
         for round in 0..N_R {
             Self::round(self, config, region, offset, round)?;
         }
-        //self.debug();
-        println!("offset permute {}", offset);
+
         Ok(())
     }
 }

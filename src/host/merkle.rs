@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use crate::host::db::TreeDB;
 use std::cell::RefCell;
 use std::error::Error;
@@ -77,13 +76,9 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
     /// Create a new merkletree and connect it with a given merkle root.
     /// If the root is None then the default root with all leafs are empty is used.
-<<<<<<< Updated upstream
-    fn construct(addr: Self::Id, id: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self;
-
-=======
     //fn construct(addr: Self::Id, id: Self::Root, db: Option<Arc<Mutex<dyn TreeDB>>>) -> Self;
     fn construct(addr: Self::Id, id: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self;
->>>>>>> Stashed changes
+
     fn hash(a: &H, b: &H) -> H;
     fn set_parent(&mut self, index: u64, hash: &H, left: &H, right: &H) -> Result<(), MerkleError>;
     fn set_leaf(&mut self, leaf: &Self::Node) -> Result<(), MerkleError>;

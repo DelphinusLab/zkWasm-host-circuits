@@ -105,7 +105,10 @@ pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
     let mut rol1 = w.clone();
     let mut rol2 = w.clone();
     let mut round = 0;
-    for ((idxs, shift), offset) in O.zip(R).zip(ROUNDS_OFFSET) {
+    for i in 0..DIGEST_BUF_LEN{
+        let idxs = O[i];
+        let shift = R[i];
+        let offset = ROUNDS_OFFSET[i];
         for limb_index in 0..16 {
             let idx = idxs[limb_index];
             rol_modifier(round, &mut rol1, values[idx], offset, shift[limb_index]);
@@ -114,8 +117,11 @@ pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
         }
         round += 1;
     }
-
-    for ((idxs, shift), offset) in PO.zip(PR).zip(PROUNDS_OFFSET) {
+   
+    for i in 0..DIGEST_BUF_LEN{
+        let idxs = PO[i];
+        let shift = PR[i];
+        let offset = PROUNDS_OFFSET[i];
         for limb_index in 0..16 {
             let idx = idxs[limb_index];
             rol_modifier(round - 1, &mut rol2, values[idx], offset, shift[limb_index]);
@@ -127,7 +133,6 @@ pub fn compress(w: &Vec<u32>, values: Vec<u32>) -> Vec<u32> {
         }
         round -= 1;
     }
-
     let mut r = vec![];
     let len = w.len();
     for i in 0..w.len() {

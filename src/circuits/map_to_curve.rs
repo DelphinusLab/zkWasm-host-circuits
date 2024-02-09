@@ -16,16 +16,17 @@
 /// AssignedFq2<Fq, Fr>, which is the representation of an element of Fq2
 /// in the computation trace (Context).
 
-use halo2ecc_s::assign::{AssignedFq, AssignedFq2};
+use halo2ecc_s::assign::{AssignedFq, AssignedFq2, AssignedCondition, AssignedValue, Cell, Chip};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::circuit::fq12::Fq2ChipOps;
 use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
-use halo2ecc_s::context::*;
-use halo2ecc_s::utils::*;
+use halo2ecc_s::context::{Context,GeneralScalarEccContext};
+use halo2ecc_s::utils::{field_to_bn, bn_to_field};
 use halo2_proofs::pairing::bls12_381::{G1Affine, Fq};
 use halo2_proofs::pairing::bn256::{Fr, G1};
 use num_bigint::BigUint;
 use std::cell::RefCell;
+use std::fmt::{Debug, Display, Pointer};
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -51,15 +52,15 @@ fn fq2_assign_equality_condition(
     let b_re_fq = gseccc.base_integer_ctx.get_w(&b.0);
     let b_im_fq = gseccc.base_integer_ctx.get_w(&b.1);
     let a_equals_b = (a_re_fq == b_re_fq) && (a_im_fq == b_im_fq);
-    
+
     // Here we are using assign_w instead of assign_zero because assign_zero 
     // is a special cases of assign_constant.  But e depends on prover input, 
     // and so is not a constant in the computation trace or circuit.
     let a_minus_b_inv0: AssignedFq2<Fq, Fr> = if a_equals_b {
-        let zero_bn = BigUint::from_str("0").unwrap();
+        let zero_bn = BigUint::from(0u64);
         (
             gseccc.base_integer_ctx.assign_w(&zero_bn),
-            gseccc.base_integer_ctx.assign_w(&zero_bn),
+            gseccc.base_integer_ctx.assign_w(&zero_bn)
             
         )
     } else {
@@ -76,7 +77,7 @@ fn fq2_assign_equality_condition(
         let a_minus_b_inv0_im_bn = field_to_bn(&a_minus_b_inv0_im_fq);
         (
             gseccc.base_integer_ctx.assign_w(&a_minus_b_inv0_re_bn),
-            gseccc.base_integer_ctx.assign_w(&a_minus_b_inv0_im_bn),
+            gseccc.base_integer_ctx.assign_w(&a_minus_b_inv0_im_bn)
         )
     };
 
@@ -92,10 +93,13 @@ fn fq2_assign_equality_condition(
     // a_minus_b * a_minus_b_inv0 = 0 if a_minus_b = 0, 1 otherwise.
     // In other words, a_minus_b * a_minus_b_inv0 = !(a_minus_b == 0)
     let not_e: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&a_minus_b, &a_minus_b_inv0);
-    let one: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_one();
-    let e: AssignedFq2<Fq, Fr> = gseccc.fq2_sub(&one, &not_e);
+    //let one: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_one();
+    //let e: AssignedFq2<Fq, Fr> = gseccc.fq2_sub(&one, &not_e);
+    (
+        gseccc.base_integer_ctx.int_neg(&not_e.0),
+        gseccc.base_integer_ctx.int_neg(&not_e.1)
+    )
 
-    e
 }
 
 // Assumes e is equal to either 1 or 0.
@@ -110,13 +114,20 @@ fn cmov(
     b: &AssignedFq2::<Fq, Fr>,
     e: &AssignedFq2::<Fq, Fr>,
 ) -> AssignedFq2::<Fq, Fr> {
+/*
     let one: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_one();
     let not_e: AssignedFq2<Fq, Fr> = gseccc.fq2_sub(&one, e);
     let not_e_times_a: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(&not_e, a);
     let e_times_b: AssignedFq2<Fq, Fr> = gseccc.fq2_mul(e, &b);
     let not_e_times_a_plus_e_times_b: AssignedFq2<Fq, Fr> = gseccc.fq2_add(&not_e_times_a, &e_times_b);
+ */
+    let condition = gseccc.base_integer_chip().is_int_zero(&e.0);
+    (
+        gseccc.base_integer_ctx.bisec_int(&condition, &a.0, &b.0),
+        gseccc.base_integer_ctx.bisec_int(&condition, &a.1, &b.1)
+    )
 
-    not_e_times_a_plus_e_times_b
+    //not_e_times_a_plus_e_times_b
 }
 
 // Only for testing purposes; actual sgn0 must be constrained.
@@ -129,9 +140,9 @@ fn sgn0_unconstrained(
     let u_re_bn = field_to_bn(&u_re_fq);
     let u_im_bn = field_to_bn(&u_im_fq);
 
-    let zero_bn = BigUint::from_str("0").unwrap();
-    let one_bn = BigUint::from_str("1").unwrap();
-    let two_bn = BigUint::from_str("2").unwrap();
+    let zero_bn = BigUint::from(0u64);
+    let one_bn = BigUint::from(1u64);
+    let two_bn = BigUint::from(2u64);
 
     let u_re_bn_parity = &u_re_bn % &two_bn;
     let u_im_bn_parity = &u_im_bn % &two_bn;
@@ -171,13 +182,13 @@ fn simplified_swu_in_context(
 
     // A' = 240i
     let a_prime_re_fq = Fq::zero();
-    let a_prime_im_bn = BigUint::from_str("240").unwrap();
+    let a_prime_im_bn = BigUint::from(240u64);
     let a_prime_im_fq: Fq = bn_to_field(&a_prime_im_bn);
     let a_prime_fq2 = (a_prime_re_fq, a_prime_im_fq);
     let a_prime: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant(a_prime_fq2);
 
     // B' = 1012 + 1012i
-    let b_prime_re_bn = BigUint::from_str("1012").unwrap();
+    let b_prime_re_bn = BigUint::from(1012u64);
     let b_prime_re_fq: Fq = bn_to_field(&b_prime_re_bn);
     let b_prime_im_fq = b_prime_re_fq.clone();
     let b_prime_fq2 = (b_prime_re_fq, b_prime_im_fq);
@@ -411,7 +422,7 @@ fn isogeny_map_in_context(
     let k_4_1_im_fq: Fq = bn_to_field(&k_4_1_im_bn);
     let k_4_1: AssignedFq2<Fq, Fr> = gseccc.fq2_assign_constant((k_4_1_re_fq, k_4_1_im_fq));
 
-    let k_4_2_re_bn = BigUint::from_str("18").unwrap();
+    let k_4_2_re_bn = BigUint::from(18u64);
     let k_4_2_re_fq: Fq = bn_to_field(&k_4_2_re_bn);
     let k_4_2_im_bn = BigUint::from_str("4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559769").unwrap();
     let k_4_2_im_fq: Fq = bn_to_field(&k_4_2_im_bn);
@@ -574,4 +585,8 @@ fn isogeny_map_outputs_correct_test_vector() {
     assert_eq!(should_be_x_im_fq, x_im_fq);
     assert_eq!(should_be_y_re_fq, y_re_fq);
     assert_eq!(should_be_y_im_fq, y_im_fq);
+
+    println!("{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
+    println!("{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().select_offset);
 }

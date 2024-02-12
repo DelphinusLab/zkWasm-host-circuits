@@ -1,22 +1,22 @@
 use ark_std::{end_timer, start_timer};
-use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bls12_381::Fr as Scalar;
+use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
     circuit::{AssignedCell, Chip, Layouter, Region},
     pairing::bls12_381::G1Affine,
     plonk::{ConstraintSystem, Error},
 };
+use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
 use halo2ecc_s::circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps};
-use halo2ecc_s::circuit::fq12::Fq12ChipOps;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
-use halo2ecc_s::assign::{AssignedCondition, AssignedFq, Cell as ContextCell, AssignedInteger};
+use halo2ecc_s::assign::{AssignedCondition, AssignedFq, AssignedInteger, Cell as ContextCell};
 use halo2ecc_s::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::circuit::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps};
@@ -104,10 +104,10 @@ fn assigned_cells_to_bn381(
 
 fn get_scalar_from_cell(
     ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
-    a: &Vec<Limb<Fr>>
+    a: &Vec<Limb<Fr>>,
 ) -> AssignedInteger<Scalar, Fr> {
     let bn = assigned_cells_to_fr(a, 0);
-    let fr= ctx.scalar_integer_ctx.assign_w(&bn);
+    let fr = ctx.scalar_integer_ctx.assign_w(&bn);
     fr
 }
 
@@ -409,7 +409,7 @@ impl Bls381SumChip<Fr> {
 
     pub fn load_bls381_sum_circuit(
         &self,
-        ls: &Vec<Limb<Fr>>,  // n * (new, fr , g1, sum)
+        ls: &Vec<Limb<Fr>>, // n * (new, fr , g1, sum)
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
@@ -478,13 +478,26 @@ impl Bls381SumChip<Fr> {
                     &self.point_select_chip,
                 )?;
                 ais.iter().enumerate().for_each(|(i, x)| {
-                    enable_fr_permute(&mut region, &cells, x, &ls[22*i+1..22*i+4].to_vec()).unwrap()
+                    enable_fr_permute(&mut region, &cells, x, &ls[22 * i + 1..22 * i + 4].to_vec())
+                        .unwrap()
                 });
                 g1s.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(&mut region, &cells, x, &ls[22*i+4..22*i+13].to_vec()).unwrap()
+                    enable_g1affine_permute(
+                        &mut region,
+                        &cells,
+                        x,
+                        &ls[22 * i + 4..22 * i + 13].to_vec(),
+                    )
+                    .unwrap()
                 });
                 sums.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(&mut region, &cells, x, &ls[22*i+13..22*i+22].to_vec()).unwrap()
+                    enable_g1affine_permute(
+                        &mut region,
+                        &cells,
+                        x,
+                        &ls[22 * i + 13..22 * i + 22].to_vec(),
+                    )
+                    .unwrap()
                 });
                 end_timer!(timer);
                 Ok(())

@@ -247,11 +247,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         assist.reverse();
 
         let hash = assist.to_vec().iter().fold(init, |acc, x| {
-            let (left, right) = if p % 2 == 1 {
-                (x, &acc)
-            } else {
-                (&acc, x)
-            };
+            let (left, right) = if p % 2 == 1 { (x, &acc) } else { (&acc, x) };
             //println!("verify hash is {:?} {}, assist {:?}", acc, p % 2 == 1, x);
             p = p / 2;
             Self::hash(left, right)

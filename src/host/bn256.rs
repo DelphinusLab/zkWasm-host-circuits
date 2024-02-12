@@ -2,9 +2,9 @@
 mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
     use crate::utils::field_to_bn;
+    use ff::Field;
     use halo2_proofs::pairing::bn256::pairing;
     use halo2_proofs::pairing::bn256::Fr;
-    use ff::Field;
     use halo2_proofs::pairing::bn256::{Fq as Bn256Fq, G1Affine, G2Affine, Gt as Bn256Gt, G1, G2};
     use halo2_proofs::pairing::group::Group;
     use num_bigint::BigUint;
@@ -155,7 +155,7 @@ mod tests {
         for i in 0..3 {
             let mut z = G1::identity();
             for j in 0..l[i] {
-                let new = if j == 0 {1} else {0};
+                let new = if j == 0 { 1 } else { 0 };
                 let a_j = Fr::random(&mut OsRng);
                 let g_j = G1::random(&mut OsRng);
                 let r = g_j * a_j;

@@ -6,8 +6,11 @@ use halo2_proofs::{
     pairing::bn256::G1Affine,
     plonk::{ConstraintSystem, Error},
 };
-use halo2ecc_s::{circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps}, assign::AssignedValue};
 use halo2ecc_s::circuit::fq12::Fq12ChipOps;
+use halo2ecc_s::{
+    assign::AssignedValue,
+    circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps},
+};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -85,11 +88,8 @@ fn assigned_cells_to_bn256(
     bn
 }
 
-fn get_scalar_from_cell(
-    ctx: &mut NativeScalarEccContext<G1Affine>,
-    a: Fr,
-) -> AssignedValue<Fr> {
-    let v= ctx.base_integer_chip().base_chip().assign(a);
+fn get_scalar_from_cell(ctx: &mut NativeScalarEccContext<G1Affine>, a: Fr) -> AssignedValue<Fr> {
+    let v = ctx.base_integer_chip().base_chip().assign(a);
     v
 }
 
@@ -388,7 +388,7 @@ impl Bn256SumChip<Fr> {
 
     pub fn load_bn256_sum_circuit(
         &self,
-        ls: &Vec<Limb<Fr>>,  // n * (new, fr , g1, sum)
+        ls: &Vec<Limb<Fr>>, // n * (new, fr , g1, sum)
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
@@ -458,13 +458,26 @@ impl Bn256SumChip<Fr> {
                     &self.point_select_chip,
                 )?;
                 ais.iter().enumerate().for_each(|(i, x)| {
-                    enable_fr_permute(&mut region, &cells, x, &ls[16*i+1..16*i+2].to_vec()).unwrap()
+                    enable_fr_permute(&mut region, &cells, x, &ls[16 * i + 1..16 * i + 2].to_vec())
+                        .unwrap()
                 });
                 g1s.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(&mut region, &cells, x, &ls[16*i+2..16*i+9].to_vec()).unwrap()
+                    enable_g1affine_permute(
+                        &mut region,
+                        &cells,
+                        x,
+                        &ls[16 * i + 2..16 * i + 9].to_vec(),
+                    )
+                    .unwrap()
                 });
                 sums.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(&mut region, &cells, x, &ls[16*i+9..16*i+16].to_vec()).unwrap()
+                    enable_g1affine_permute(
+                        &mut region,
+                        &cells,
+                        x,
+                        &ls[16 * i + 9..16 * i + 16].to_vec(),
+                    )
+                    .unwrap()
                 });
                 end_timer!(timer);
                 Ok(())

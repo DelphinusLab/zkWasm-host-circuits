@@ -1,18 +1,18 @@
+use crate::adaptor::field_to_bn;
+use crate::adaptor::get_selected_entries;
+use crate::circuits::babyjub::{AltJubChip, Point as CircuitPoint};
+use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use crate::circuits::CommonGateConfig;
+use crate::host::jubjub::Point;
 use crate::host::ExternalHostCallEntry;
+use crate::host::ForeignInst::{JubjubSumNew, JubjubSumPush, JubjubSumResult};
+use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
-use halo2_proofs::plonk::{Error, Column, Advice};
-use crate::circuits::babyjub::{AltJubChip, Point as CircuitPoint};
-use crate::circuits::CommonGateConfig;
-use crate::host::ForeignInst::{JubjubSumNew, JubjubSumPush, JubjubSumResult};
-use crate::circuits::host::{HostOpConfig, HostOpSelector};
-use crate::adaptor::field_to_bn;
-use crate::adaptor::get_selected_entries;
-use crate::host::jubjub::Point;
-use crate::utils::Limb;
+use halo2_proofs::plonk::{Advice, Column, Error};
 
 const MERGE_SIZE: usize = 4;
 const CHUNK_SIZE: usize = 1 + (2 + 1 + 2) * MERGE_SIZE;
@@ -46,12 +46,19 @@ fn msm_to_host_call_table<F: FieldExt>(inputs: &Vec<(Point, F)>) -> Vec<External
 
 impl HostOpSelector for AltJubChip<Fr> {
     type Config = CommonGateConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, shared_advice: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        shared_advice: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         AltJubChip::<Fr>::configure(meta, shared_advice)
     }
 
     fn construct(c: Self::Config) -> Self {
         AltJubChip::new(c)
+    }
+
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS)
     }
 
     fn opcodes() -> Vec<Fr> {
@@ -64,6 +71,7 @@ impl HostOpSelector for AltJubChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -118,7 +126,11 @@ impl HostOpSelector for AltJubChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS - total_used_instructions {
+        assert!(k >= 22);
+        let total_available = Self::max_rounds(k);
+        assert!(total_used_instructions <= total_available);
+
+        for _ in 0..=total_available - total_used_instructions {
             let ((operand, opcode), index) = default_entries[0].clone();
             assert!(opcode.clone() == Fr::from(JubjubSumNew as u64));
 
@@ -155,44 +167,49 @@ impl HostOpSelector for AltJubChip<Fr> {
         Ok(r)
     }
 
+    fn synthesize_separate(
+        &mut self,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _layouter: &mut impl Layouter<Fr>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn synthesize(
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        region: &mut Region<Fr>,
     ) -> Result<(), Error> {
         println!("msm adaptor total args is {}", arg_cells.len());
-        *offset = layouter.assign_region(
-            || "poseidon hash region",
-            |mut region| {
-                println!("msm adaptor starting offset is {}", offset);
-                let mut local_offset = *offset;
-                let timer = start_timer!(|| "assign");
-                let config = self.config.clone();
-                self.initialize(&config, &mut region, &mut local_offset)?;
-                // arg_cells format 1 + 2 + 1 + 2
-                for arg_group in arg_cells.chunks_exact(6).into_iter() {
-                    let args = arg_group.into_iter().map(|x| x.clone());
-                    let args = args.collect::<Vec<_>>();
-                    self.assign_incremental_msm(
-                        &mut region,
-                        &mut local_offset,
-                        &CircuitPoint {
-                            x: args[1].clone(),
-                            y: args[2].clone(),
-                        },
-                        &args[3],
-                        &args[0],
-                        &CircuitPoint {
-                            x: args[4].clone(),
-                            y: args[5].clone(),
-                        },
-                    )?;
-                }
-                end_timer!(timer);
-                Ok(local_offset)
-            },
-        )?;
+        *offset = {
+            println!("msm adaptor starting offset is {}", offset);
+            let mut local_offset = *offset;
+            let timer = start_timer!(|| "assign");
+            let config = self.config.clone();
+            self.initialize(&config, region, &mut local_offset)?;
+            // arg_cells format 1 + 2 + 1 + 2
+            for arg_group in arg_cells.chunks_exact(6).into_iter() {
+                let args = arg_group.into_iter().map(|x| x.clone());
+                let args = args.collect::<Vec<_>>();
+                self.assign_incremental_msm(
+                    region,
+                    &mut local_offset,
+                    &CircuitPoint {
+                        x: args[1].clone(),
+                        y: args[2].clone(),
+                    },
+                    &args[3],
+                    &args[0],
+                    &CircuitPoint {
+                        x: args[4].clone(),
+                        y: args[5].clone(),
+                    },
+                )?;
+            }
+            end_timer!(timer);
+            local_offset
+        };
         Ok(())
     }
 }

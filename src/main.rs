@@ -1,18 +1,17 @@
 #![feature(array_zip)]
 #![feature(slice_flatten)]
-#![deny(warnings)]
+//#![deny(warnings)]
 mod adaptor;
 pub mod circuits;
 pub mod host;
-pub mod utils;
 pub mod proof;
+pub mod utils;
 
+use crate::proof::{exec_create_host_proof, read_host_call_table, OpType};
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use std::path::PathBuf;
-use crate::proof::{exec_create_host_proof, OpType, read_host_call_table};
 
 const DEFAULT_CIRCUITS_K: u32 = 22;
-
 
 #[derive(clap::Parser)]
 struct ArgOpName {
@@ -101,5 +100,12 @@ fn main() {
     let opname = parse_opname(&matches);
     let k = parse_circuits_k(&matches);
 
-    exec_create_host_proof("host", k as usize, &read_host_call_table(input_file), opname, &cache_folder, &param_folder);
+    exec_create_host_proof(
+        "host",
+        k as usize,
+        &read_host_call_table(input_file),
+        opname,
+        &cache_folder,
+        &param_folder,
+    );
 }

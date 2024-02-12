@@ -2,10 +2,10 @@
 mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable, ForeignInst};
     use crate::utils::field_to_bn;
-    use halo2_proofs::pairing::bls12_381::pairing;
     use ff::Field;
+    use halo2_proofs::pairing::bls12_381::pairing;
     use halo2_proofs::pairing::bls12_381::{
-        Fq as Bls381Fq, G1Affine, G2Affine, Gt as Bls381Gt, G1, G2, Fr
+        Fq as Bls381Fq, Fr, G1Affine, G2Affine, Gt as Bls381Gt, G1, G2,
     };
     use halo2_proofs::pairing::group::Group;
     use num_bigint::BigUint;
@@ -124,7 +124,12 @@ mod tests {
         table
     }
 
-    fn create_bls_sum_input(new: u32, a: Fr, g: G1Affine, sum: G1Affine) -> Vec<ExternalHostCallEntry> {
+    fn create_bls_sum_input(
+        new: u32,
+        a: Fr,
+        g: G1Affine,
+        sum: G1Affine,
+    ) -> Vec<ExternalHostCallEntry> {
         let mut r = vec![];
         r.append(&mut vec![ExternalHostCallEntry {
             op: ForeignInst::BlsSumNew as usize,
@@ -153,12 +158,17 @@ mod tests {
         for i in 0..3 {
             let mut z = G1::identity();
             for j in 0..l[i] {
-                let new = if j == 0 {1} else {0};
+                let new = if j == 0 { 1 } else { 0 };
                 let a_j = Fr::random(&mut OsRng);
                 let g_j = G1::random(&mut OsRng);
                 let r = g_j * a_j;
                 z = z.add(r.clone());
-                inputs.append(&mut create_bls_sum_input(new, a_j, G1Affine::from(g_j), G1Affine::from(z)));
+                inputs.append(&mut create_bls_sum_input(
+                    new,
+                    a_j,
+                    G1Affine::from(g_j),
+                    G1Affine::from(z),
+                ));
             }
         }
         let table = ExternalHostCallEntryTable(inputs);

@@ -1,4 +1,3 @@
-use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
 use crate::utils::bytes_to_field;
@@ -11,10 +10,21 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
 use std::marker::PhantomData;
 
+use crate::circuits::poseidon::PoseidonChip;
 use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
 use crate::host::poseidon::MERKLE_HASHER_SPEC;
-use crate::host::poseidon::POSEIDON_HASHER_SPEC;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="complex-leaf")] {
+        use crate::host::poseidon::POSEIDON_HASHER_SPEC as MERKLE_LEAF_HASHER_SPEC;
+        type MerkleDataHasherChip<F> = PoseidonChip<F, 9, 8>;
+    } else {
+        use crate::host::poseidon::MERKLE_LEAF_HASHER_SPEC;
+        type MerkleDataHasherChip<F> = PoseidonChip<F, 3, 2>;
+    }
+}
+
 use crate::host::ForeignInst::MerkleSet;
 use halo2_proofs::pairing::bn256::Fr;
 
@@ -51,7 +61,7 @@ impl<F: FieldExt, const D: usize> MerkleProofState<F, D> {
 pub struct MerkleChip<F: FieldExt, const D: usize> {
     pub config: CommonGateConfig,
     pub extend: PoseidonGateConfig,
-    data_hasher_chip: PoseidonChip<F, 9, 8>,
+    data_hasher_chip: MerkleDataHasherChip<F>,
     merkle_hasher_chip: PoseidonChip<F, 3, 2>,
     state: MerkleProofState<F, D>,
     _marker: PhantomData<F>,
@@ -73,8 +83,16 @@ impl<F: FieldExt, const D: usize> Chip<F> for MerkleChip<F, D> {
 impl<const D: usize> MerkleChip<Fr, D> {
     pub fn new(config: CommonGateConfig, extend: PoseidonGateConfig) -> Self {
         MerkleChip {
-            merkle_hasher_chip: PoseidonChip::construct(config.clone(), extend.clone(), MERKLE_HASHER_SPEC.clone()),
-            data_hasher_chip: PoseidonChip::construct(config.clone(), extend.clone(), POSEIDON_HASHER_SPEC.clone()),
+            merkle_hasher_chip: PoseidonChip::construct(
+                config.clone(),
+                extend.clone(),
+                MERKLE_HASHER_SPEC.clone(),
+            ),
+            data_hasher_chip: PoseidonChip::construct(
+                config.clone(),
+                extend.clone(),
+                MERKLE_LEAF_HASHER_SPEC.clone(),
+            ),
             config,
             extend,
             state: MerkleProofState::default(),
@@ -96,7 +114,10 @@ impl<const D: usize> MerkleChip<Fr, D> {
         self.data_hasher_chip.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<Fr>, shared_advices: &Vec<Column<Advice>>) -> (CommonGateConfig, PoseidonGateConfig) {
+    pub fn configure(
+        cs: &mut ConstraintSystem<Fr>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> (CommonGateConfig, PoseidonGateConfig) {
         let config = CommonGateConfig::configure(cs, &(), shared_advices);
         let extend = PoseidonGateConfig::configure(cs, &config);
         (config, extend)
@@ -120,7 +141,6 @@ impl<const D: usize> MerkleChip<Fr, D> {
             opcode,
             &Fr::from(MerkleSet as u64),
         )?;
-
 
         let fills = proof
             .assist
@@ -163,26 +183,41 @@ impl<const D: usize> MerkleChip<Fr, D> {
             .decompose_limb(region, &mut (), offset, &address, &mut positions, D)?;
 
         // position = 0 means assist is at right else assist is at left
+        cfg_if::cfg_if! {
+            if #[cfg(feature="complex-leaf")] {
+                let values =
+                    [
+                    value[0].clone(),
+                    value[1].clone(),
+                    self.state.one.clone(),
+                    self.state.zero.clone(),
+                    self.state.zero.clone(),
+                    self.state.zero.clone(),
+                    self.state.zero.clone(),
+                    self.state.zero.clone(),
+                    ];
+            } else {
+                let values =
+                    [
+                    value[0].clone(),
+                    value[1].clone(),
+                    ];
+            }
+        };
+
         let initial_hash = self.data_hasher_chip.get_permute_result(
             region,
             offset,
-            &[
-                value[0].clone(),
-                value[1].clone(),
-                self.state.one.clone(),
-                self.state.zero.clone(),
-                self.state.zero.clone(),
-                self.state.zero.clone(),
-                self.state.zero.clone(),
-                self.state.zero.clone(),
-            ],
+            &values,
             &self.state.one.clone(),
         )?;
         assert_eq!(field_to_bytes(&initial_hash.value), proof.source);
 
-        let final_hash = positions.iter().rev().zip(compare_assist.iter().rev()).fold(
-            initial_hash,
-            |acc, (position, assist)| {
+        let final_hash = positions
+            .iter()
+            .rev()
+            .zip(compare_assist.iter().rev())
+            .fold(initial_hash, |acc, (position, assist)| {
                 let left = self
                     .config
                     .select(region, &mut (), offset, &position, &acc, &assist, 0)
@@ -197,10 +232,11 @@ impl<const D: usize> MerkleChip<Fr, D> {
                     .unwrap();
                 //println!("position check: {} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
                 hash
-            },
-        );
+            });
 
-        let desired_root = self.config.select(region, &mut (), offset, &is_set, root, new_root, 0)?;
+        let desired_root =
+            self.config
+                .select(region, &mut (), offset, &is_set, root, new_root, 0)?;
         assert_eq!(desired_root.value, final_hash.value);
         region.constrain_equal(
             desired_root.cell.as_ref().unwrap().cell(),

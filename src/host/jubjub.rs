@@ -96,7 +96,6 @@ impl PointProjective {
         }
     }
 
-
     #[allow(clippy::many_single_char_names)]
     pub fn double(&self) -> PointProjective {
         // dbl-2008-bbjlp https://hyperelliptic.org/EFD/g1p/auto-twisted-projective.html#dbl-2008-bbjlp
@@ -147,7 +146,6 @@ impl PointProjective {
             z: z3,
         }
     }
-
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -302,6 +300,6 @@ mod tests {
         let rst = lhs.add(&rhs);
         println!("third round {:?}", rst);
         // assert_eq!(lhs,rhs)
-        assert_eq!(Point::identity(),rst);
+        assert_eq!(Point::identity(), rst);
     }
 }

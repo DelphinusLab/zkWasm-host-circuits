@@ -2,19 +2,13 @@ use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
 
-use crate::circuits::{
-    CommonGateConfig,
-    Limb,
-};
+use crate::circuits::{CommonGateConfig, Limb};
 
 use std::marker::PhantomData;
 
 use halo2_proofs::{
     circuit::Region,
-    plonk::{
-        ConstraintSystem,
-        Error
-    },
+    plonk::{ConstraintSystem, Error},
 };
 
 pub const STATE_WIDTH: usize = 2;
@@ -39,15 +33,20 @@ pub struct AnemoiState<F: FieldExt> {
     delta: F,
 }
 
-pub struct AnemoiChip<F:FieldExt> {
+pub struct AnemoiChip<F: FieldExt> {
     pub config: CommonGateConfig,
     anemoi_state: AnemoiState<F>,
-    _marker: PhantomData<F>
+    _marker: PhantomData<F>,
 }
 
 // impl chip
 impl<F: FieldExt> AnemoiChip<F> {
-    pub fn construct(config: CommonGateConfig, const_c: [F; NUM_HASH_ROUNDS], const_d: [F; NUM_HASH_ROUNDS], delta: F) -> Self {
+    pub fn construct(
+        config: CommonGateConfig,
+        const_c: [F; NUM_HASH_ROUNDS],
+        const_d: [F; NUM_HASH_ROUNDS],
+        delta: F,
+    ) -> Self {
         // initialized as all zeros
         let state = [0u32; STATE_WIDTH].map(|_| Limb::new(None, F::zero()));
         let state = AnemoiState {
@@ -75,7 +74,10 @@ impl<F: FieldExt> AnemoiChip<F> {
         Ok(())
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advices: &Vec<Column<Advice>>) -> CommonGateConfig {
+    pub fn configure(
+        cs: &mut ConstraintSystem<F>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> CommonGateConfig {
         CommonGateConfig::configure(cs, &(), shared_advices)
     }
 
@@ -83,7 +85,7 @@ impl<F: FieldExt> AnemoiChip<F> {
         &mut self,
         region: &mut Region<F>,
         offset: &mut usize,
-        inputs: &[Limb<F>; RATE], 
+        inputs: &[Limb<F>; RATE],
         result: &Limb<F>,
     ) -> Result<(), Error> {
         let vals = inputs.clone().map(|x| Some(x));
@@ -91,17 +93,15 @@ impl<F: FieldExt> AnemoiChip<F> {
         vals.push(None);
         vals.push(None);
         vals.push(None);
-        let in_data = self.config.assign_witness(
-            region,
-            &mut (),
-            offset,
-            vals.try_into().unwrap(),
-            0,
-        )?;
+        let in_data =
+            self.config
+                .assign_witness(region, &mut (), offset, vals.try_into().unwrap(), 0)?;
         for ip in in_data {
-            self.anemoi_state.read_input(&self.config, region, offset,&ip.clone())?;
-            self.anemoi_state.apply_permutation(&self.config, region, offset)?;
-        };
+            self.anemoi_state
+                .read_input(&self.config, region, offset, &ip.clone())?;
+            self.anemoi_state
+                .apply_permutation(&self.config, region, offset)?;
+        }
 
         // check result
         assert!(self.anemoi_state.state[0].value == result.value);
@@ -110,7 +110,7 @@ impl<F: FieldExt> AnemoiChip<F> {
 }
 
 // impl state
-impl<F: FieldExt> AnemoiState<F>{
+impl<F: FieldExt> AnemoiState<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
@@ -118,7 +118,7 @@ impl<F: FieldExt> AnemoiState<F>{
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let state = [0u32;STATE_WIDTH].map(|_| zero.clone());  // initialize as all zeros
+        let state = [0u32; STATE_WIDTH].map(|_| zero.clone()); // initialize as all zeros
         self.state = state;
 
         Ok(())
@@ -129,34 +129,63 @@ impl<F: FieldExt> AnemoiState<F>{
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-    ) -> Result<(), Error>{
+    ) -> Result<(), Error> {
         // initialize x and y by spliting original state into two
         // need to copy cell over, let's use select
         let mut x: [Limb<F>; NUM_COLUMNS] = [0u32; NUM_COLUMNS].map(|_| Limb::new(None, F::zero()));
         let mut y: [Limb<F>; NUM_COLUMNS] = [0u32; NUM_COLUMNS].map(|_| Limb::new(None, F::zero()));
         let mut t: [Limb<F>; NUM_COLUMNS] = [0u32; NUM_COLUMNS].map(|_| Limb::new(None, F::zero()));
 
-
         // copy first half of state into x, 2nd half into y
-        x[0] = config.select(region, &mut (), offset, &Limb::new(None, F::zero()), &self.state[0].clone(), &Limb::new(None, F::zero()), 0)?;
-        y[0] = config.select(region, &mut (), offset, &Limb::new(None, F::zero()), &self.state[1].clone(), &Limb::new(None, F::zero()), 0)?;
+        x[0] = config.select(
+            region,
+            &mut (),
+            offset,
+            &Limb::new(None, F::zero()),
+            &self.state[0].clone(),
+            &Limb::new(None, F::zero()),
+            0,
+        )?;
+        y[0] = config.select(
+            region,
+            &mut (),
+            offset,
+            &Limb::new(None, F::zero()),
+            &self.state[1].clone(),
+            &Limb::new(None, F::zero()),
+            0,
+        )?;
 
         for i in 0..NUM_COLUMNS {
             let y_square = self.mul(config, region, offset, &y[i].clone(), &y[i].clone())?;
             let g_y_square = self.mul_by_generator(config, region, offset, &y_square.clone())?;
             let xi = x[i].clone().value - g_y_square.clone().value;
-            let xi_f = config.assign_line(region, &mut (), offset, 
+            let xi_f = config.assign_line(
+                region,
+                &mut (),
+                offset,
                 [
-                Some(x[i].clone()),
-                Some(Limb::new(None, xi)),
-                Some(g_y_square.clone()),
-                None, 
-                None,
-                None
-                ], 
-                [Some(F::one()), Some(-F::one()), Some(-F::one()), None, None, None, None, None, None], 
+                    Some(x[i].clone()),
+                    Some(Limb::new(None, xi)),
+                    Some(g_y_square.clone()),
+                    None,
+                    None,
+                    None,
+                ],
+                [
+                    Some(F::one()),
+                    Some(-F::one()),
+                    Some(-F::one()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
                 0,
-            )?[1].clone();
+            )?[1]
+                .clone();
             x[i] = xi_f;
         }
 
@@ -168,18 +197,32 @@ impl<F: FieldExt> AnemoiState<F>{
         // compute y after sbox
         for i in 0..NUM_COLUMNS {
             let yi = y[i].value.clone() - t[i].clone().value;
-            let yi_f = config.assign_line( region, &mut (), offset, 
+            let yi_f = config.assign_line(
+                region,
+                &mut (),
+                offset,
                 [
-                Some(y[i].clone()),
-                Some(Limb::new(None, yi)),
-                Some(t[i].clone()),
-                None, 
-                None,
-                None
+                    Some(y[i].clone()),
+                    Some(Limb::new(None, yi)),
+                    Some(t[i].clone()),
+                    None,
+                    None,
+                    None,
                 ],
-                [Some(F::one()), Some(-F::one()), Some(-F::one()), None, None, None, None, None, None], 
+                [
+                    Some(F::one()),
+                    Some(-F::one()),
+                    Some(-F::one()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
                 0,
-            )?[1].clone();
+            )?[1]
+                .clone();
             y[i] = yi_f;
         }
 
@@ -188,54 +231,97 @@ impl<F: FieldExt> AnemoiState<F>{
             let yi_square = self.mul(config, region, offset, &y[i].clone(), &y[i].clone())?;
             let g_yi_square = self.mul_by_generator(config, region, offset, &yi_square.clone())?;
             let xi_t = x[i].clone().value + g_yi_square.clone().value;
-            let xi_f = config.assign_line( region, &mut (), offset, 
+            let xi_f = config.assign_line(
+                region,
+                &mut (),
+                offset,
                 [
-                Some(x[i].clone()),
-                Some(Limb::new(None, xi_t)),
-                Some(g_yi_square.clone()),
-                None, 
-                None,
-                None
+                    Some(x[i].clone()),
+                    Some(Limb::new(None, xi_t)),
+                    Some(g_yi_square.clone()),
+                    None,
+                    None,
+                    None,
                 ],
-                [Some(F::one()), Some(-F::one()), Some(F::one()), None, None, None, None, None, None], 
+                [
+                    Some(F::one()),
+                    Some(-F::one()),
+                    Some(F::one()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
                 0,
-            )?[1].clone();
-            let xi_s = self.add(config, region, offset, &xi_f.clone(), &Limb::new(None, self.delta))?;
+            )?[1]
+                .clone();
+            let xi_s = self.add(
+                config,
+                region,
+                offset,
+                &xi_f.clone(),
+                &Limb::new(None, self.delta),
+            )?;
 
             x[i] = xi_s;
             *offset += 1;
         }
-        
+
         // need a constrain here
         self.state[0] = x[0].clone();
         self.state[1] = y[0].clone();
 
-
         Ok(())
     }
-    
+
     pub fn apply_linear_layer(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-    ) -> Result<(), Error>{
-        self.state[1] = self.add(config, region, offset, &self.state[1].clone(), &self.state[0].clone())?;
-        self.state[0] = self.add(config, region, offset, &self.state[0].clone(), &self.state[1].clone())?;
-        
+    ) -> Result<(), Error> {
+        self.state[1] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[1].clone(),
+            &self.state[0].clone(),
+        )?;
+        self.state[0] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[0].clone(),
+            &self.state[1].clone(),
+        )?;
+
         Ok(())
     }
-    
+
     pub fn apply_round(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        offset: &mut usize, 
-        step: usize
-    )  -> Result<(), Error> {
-        self.state[0] = self.add(config, region, offset, &self.state[0].clone(), &Limb::new(None, self.const_c[step % NUM_HASH_ROUNDS].clone()))?;
-        self.state[1] = self.add(config, region, offset, &self.state[1].clone(), &Limb::new(None, self.const_d[step % NUM_HASH_ROUNDS].clone()))?;
- 
+        offset: &mut usize,
+        step: usize,
+    ) -> Result<(), Error> {
+        self.state[0] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[0].clone(),
+            &Limb::new(None, self.const_c[step % NUM_HASH_ROUNDS].clone()),
+        )?;
+        self.state[1] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[1].clone(),
+            &Limb::new(None, self.const_d[step % NUM_HASH_ROUNDS].clone()),
+        )?;
+
         self.apply_linear_layer(config, region, offset)?;
         self.apply_sbox_layer(config, region, offset)?;
 
@@ -246,9 +332,15 @@ impl<F: FieldExt> AnemoiState<F>{
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        offset: &mut usize, 
+        offset: &mut usize,
     ) -> Result<(), Error> {
-        self.state[STATE_WIDTH-1] = self.add(config, region, offset, &self.state[STATE_WIDTH-1].clone(), &Limb::new(None, F::one()))?;
+        self.state[STATE_WIDTH - 1] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[STATE_WIDTH - 1].clone(),
+            &Limb::new(None, F::one()),
+        )?;
         Ok(())
     }
 
@@ -256,10 +348,16 @@ impl<F: FieldExt> AnemoiState<F>{
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        offset: &mut usize, 
-        input: &Limb<F>, 
+        offset: &mut usize,
+        input: &Limb<F>,
     ) -> Result<(), Error> {
-        self.state[0] = self.add(config, region, offset, &self.state[0].clone(), &input.clone())?;
+        self.state[0] = self.add(
+            config,
+            region,
+            offset,
+            &self.state[0].clone(),
+            &input.clone(),
+        )?;
 
         Ok(())
     }
@@ -268,13 +366,12 @@ impl<F: FieldExt> AnemoiState<F>{
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
-        offset: &mut usize, 
+        offset: &mut usize,
     ) -> Result<(), Error> {
-
         for i in 0..NUM_HASH_ROUNDS {
             self.apply_round(config, region, offset, i)?;
         }
-    
+
         self.apply_linear_layer(config, region, offset)?;
 
         Ok(())
@@ -285,11 +382,14 @@ impl<F: FieldExt> AnemoiState<F>{
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-        a: &Limb<F>, 
-        b: &Limb<F>
-    ) -> Result<Limb<F>, Error>{
+        a: &Limb<F>,
+        b: &Limb<F>,
+    ) -> Result<Limb<F>, Error> {
         let rhs_f = a.clone().value + b.clone().value;
-        let rhs = config.assign_line(region, &mut (), offset,
+        let rhs = config.assign_line(
+            region,
+            &mut (),
+            offset,
             [
                 Some(a.clone()),
                 Some(b.clone()),
@@ -298,9 +398,20 @@ impl<F: FieldExt> AnemoiState<F>{
                 None,
                 None,
             ],
-            [Some(F::one()), Some(F::one()), None, Some(-F::one()), None, None, None, None, None],
-            0
-        )?[2].clone();
+            [
+                Some(F::one()),
+                Some(F::one()),
+                None,
+                Some(-F::one()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            0,
+        )?[2]
+            .clone();
 
         Ok(rhs)
     }
@@ -312,7 +423,7 @@ impl<F: FieldExt> AnemoiState<F>{
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-        x: &Limb<F>, 
+        x: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
         let t14 = self.mul(config, region, offset, &x.clone(), &x.clone())?; //          1: 2
         let t2 = self.mul(config, region, offset, &t14.clone(), &x.clone())?; //         2: 3
@@ -326,7 +437,7 @@ impl<F: FieldExt> AnemoiState<F>{
         let t12 = self.mul(config, region, offset, &t13.clone(), &t13.clone())?; //      10: 16
         let t8 = self.mul(config, region, offset, &t6.clone(), &t1.clone())?; //         11: 22
         let t3 = self.mul(config, region, offset, &t6.clone(), &t6.clone())?; //         12: 26
-        let t15 = self.mul(config, region, offset, &t12.clone(), &t0.clone())?;//        13: 30
+        let t15 = self.mul(config, region, offset, &t12.clone(), &t0.clone())?; //        13: 30
         let t4 = self.mul(config, region, offset, &t8.clone(), &t1.clone())?; //         14: 31
         let t9 = self.mul(config, region, offset, &t3.clone(), &t12.clone())?; //        15: 42
         let t20 = self.mul(config, region, offset, &t4.clone(), &t0.clone())?; //        16: 45
@@ -334,10 +445,10 @@ impl<F: FieldExt> AnemoiState<F>{
         let t5 = self.mul(config, region, offset, &t4.clone(), &t4.clone())?; //         18: 62
         let t7 = self.mul(config, region, offset, &t20.clone(), &t8.clone())?; //        19: 67
         let t10 = self.mul(config, region, offset, &t3.clone(), &t12.clone())?; //       20: 69
-        let t18 = self.mul(config, region, offset, &t9.clone(), &t4.clone())?;//         21: 73
+        let t18 = self.mul(config, region, offset, &t9.clone(), &t4.clone())?; //         21: 73
         let t3 = self.mul(config, region, offset, &t10.clone(), &t6.clone())?; //        22: 82
         let t11 = self.mul(config, region, offset, &t18.clone(), &t5.clone())?; //       23: 135
-        let t21 = self.mul(config, region, offset, &t11.clone(), &t15.clone())?;//       24: 165
+        let t21 = self.mul(config, region, offset, &t11.clone(), &t15.clone())?; //       24: 165
         let t16 = self.mul(config, region, offset, &t21.clone(), &t12.clone())?; //      25: 181
         let t12 = self.mul(config, region, offset, &t21.clone(), &t9.clone())?; //       26: 207
         let t14 = self.mul(config, region, offset, &t12.clone(), &t14.clone())?; //      27: 209
@@ -629,21 +740,35 @@ impl<F: FieldExt> AnemoiState<F>{
         region: &mut Region<F>,
         offset: &mut usize,
         a: &Limb<F>,
-        b: &Limb<F>
+        b: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
         let result_t = a.clone().value * b.clone().value;
-        let result_f = config.assign_line(region, &mut (), offset, 
-        [
-            Some(a.clone()),
-            Some(Limb::new(None, result_t)),
-            None,
-            Some(b.clone()),
-            None,
-            None,
-        ], 
-        [None, Some(-F::one()), None, None, None, None, Some(F::one()), None, None], 
-        0
-        )?[1].clone();
+        let result_f = config.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(a.clone()),
+                Some(Limb::new(None, result_t)),
+                None,
+                Some(b.clone()),
+                None,
+                None,
+            ],
+            [
+                None,
+                Some(-F::one()),
+                None,
+                None,
+                None,
+                None,
+                Some(F::one()),
+                None,
+                None,
+            ],
+            0,
+        )?[1]
+            .clone();
         *offset += 1;
 
         Ok(result_f)
@@ -655,182 +780,186 @@ impl<F: FieldExt> AnemoiState<F>{
         config: &CommonGateConfig,
         region: &mut Region<F>,
         offset: &mut usize,
-        x: &Limb<F>, 
+        x: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
         let x2_f = x.value.clone() + x.value.clone() + x.value.clone();
-        let rhs = config.assign_line(region, &mut (), offset,
-        [
-            Some(x.clone()),
-            Some(x.clone()),
-            Some(x.clone()),
-            Some(Limb::new(None, x2_f.clone())),
-            None,
-            None,
-        ],
-        [Some(F::one()), Some(F::one()), Some(F::one()), Some(-F::one()), None, None, None, None, None],
-        0
-        )?[3].clone();
+        let rhs = config.assign_line(
+            region,
+            &mut (),
+            offset,
+            [
+                Some(x.clone()),
+                Some(x.clone()),
+                Some(x.clone()),
+                Some(Limb::new(None, x2_f.clone())),
+                None,
+                None,
+            ],
+            [
+                Some(F::one()),
+                Some(F::one()),
+                Some(F::one()),
+                Some(-F::one()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+            0,
+        )?[3]
+            .clone();
         *offset += 1;
         Ok(rhs)
     }
-
 }
-
 
 // test
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::pairing::bn256::Fq as Felt;
     use halo2_proofs::dev::MockProver;
+    use halo2_proofs::pairing::bn256::Fq as Felt;
 
     use crate::circuits::CommonGateConfig;
     use crate::value_for_assign;
 
     use halo2_proofs::{
         circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
-        plonk::{
-            Advice, Circuit, Column, ConstraintSystem, Error
-        },
+        plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
-    use super::{
-        Limb,
-        AnemoiChip,
-        NUM_HASH_ROUNDS, 
-        RATE,
-    };
-
+    use super::{AnemoiChip, Limb, NUM_HASH_ROUNDS, RATE};
 
     // CONSTANTS
     // ================================================================================================
 
     const C: [Felt; NUM_HASH_ROUNDS] = [
-    Felt::from_raw([
-        0x0000000000000023,
-        0x0000000000000000,
-        0x0000000000000000,
-        0x0000000000000000, // converted
-    ]), // should be 35
-    Felt::from_raw([
-        0x775b1f206923c47d,
-        0xa8f87a7963284fbb,
-        0x3bae816d61d6132a,
-        0xdeaee26fa771e0b, // converted
-    ]),
-    Felt::from_raw([
-        0x22a976e6d07d60f5,
-        0xc34df41e5fe46ab6,
-        0x260d3da3fedf84b,
-        0x2f4c8ca1724196cf, // converted
-    ]),
-    Felt::from_raw([
-        0xc30db64d510ee564,
-        0x95744059950b323d,
-        0x650e5c6bd5cfcb3e,
-        0x5d30d8a084ddd31,  // converted
-    ]),
-    Felt::from_raw([
-        0xcd05768f1b651e71,
-        0xad09e76646f8fc45,
-        0xdad4ecd80712fe07,
-        0x21d0c94592289e73, // converted
-    ]),
-    Felt::from_raw([
-        0xeee4a5b31c720775,
-        0xe685edbf1f0f875e,
-        0xecda8089d8eb9a3d,
-        0xad405df9e60b24e,  // converted 5
-    ]),
-    Felt::from_raw([
-        0x37019677c912b86e,
-        0xf1b16555957afe6c,
-        0x3631c2568a36f711,
-        0xcc03a758b72c918, // converted
-    ]),
-    Felt::from_raw([
-        0x433a8db6250f1315,
-        0x16c912d5d9d4ed48,
-        0x7d7c67b60ccdf98d,
-        0xbc1b9119e2f8d32,  // converted
-    ]),
-    Felt::from_raw([
-        0x46cb1f57666d0206,
-        0x8a58a8f27efdb933,
-        0x83e8dd8a41625cd6,
-        0xfdefd9a0f81cc28,  // converted
-    ]),
-    Felt::from_raw([
-        0x8add6292e2e1e661,
-        0xf1f53531867319e8,
-        0x3d6fcf9e000ccbcd,
-        0x545268f14d1ef2d,  // converted
-    ]),
-    Felt::from_raw([
-        0xa2def1f14b524aae,
-        0x275d597192211146,
-        0xa42c1f3e6a1f7e3b,
-        0x304083d89066c255, // converted 10
-    ]),
-    Felt::from_raw([
-        0x250db07064b2c906,
-        0x1b6b4eeb73bd34db,
-        0x33427c42db863ba9,
-        0x2f6c68f4f14399a4, // converted
-    ]),
-    Felt::from_raw([
-        0xc316649d3fc3381d,
-        0xc0454a7c949fa493,
-        0xafc8f158a8e78784,
-        0x2c253abeaa8f1309, // converted
-    ]),
-    Felt::from_raw([
-        0x28ee11171ca3660e,
-        0xeb197941a15815a9,
-        0xd6329fa5a982a43,
-        0x28a62c2fcdf31601, // converted
-    ]),
-    Felt::from_raw([
-        0x4e0f7d84e1129058,
-        0x940999a2a073a089,
-        0xcceab807358a652f,
-        0xb8c0b1fdb7e110a,  // converted
-    ]),
-    Felt::from_raw([
-        0x70cf039d739d1046,
-        0xf569e914e8d94eee,
-        0xfb255b7fde25b695,
-        0x1468c3253afd5301, // converted 15
-    ]),
-    Felt::from_raw([
-        0x3d2a365c3b57cd1b,
-        0x4312821f06af1a11,
-        0xd30bc6c4014eb88e,
-        0x76505a8aac3ed67, // converted
-    ]),
-    Felt::from_raw([
-        0x671b73192354638f,
-        0x7001d04e2195dd2,
-        0xfaeb9a1e631fc8f5,
-        0x1989a97904a6cc74, // converted
-    ]),
-    Felt::from_raw([
-        0xf1e8b99b2fe59e14,
-        0x6c3bcc9fa9f0c3ee,
-        0x7fb680e63a8b45a4,
-        0xcc2035b47d9bb9e,  // converted
-    ]),
-    Felt::from_raw([
-        0xe55901d82eafa11d,
-        0x38694ed7495dc378,
-        0x85acb7120a4ca071,
-        0x218d252816b694c5, // converted
-    ]),
-    Felt::from_raw([
-        0x7b2bfc5a6086dccd,
-        0x2a44cbfa06667305,
-        0xa335ab84fa3fd829,
-        0xf083607ff8712f6,  // converted 20
-    ]),
+        Felt::from_raw([
+            0x0000000000000023,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000, // converted
+        ]), // should be 35
+        Felt::from_raw([
+            0x775b1f206923c47d,
+            0xa8f87a7963284fbb,
+            0x3bae816d61d6132a,
+            0xdeaee26fa771e0b, // converted
+        ]),
+        Felt::from_raw([
+            0x22a976e6d07d60f5,
+            0xc34df41e5fe46ab6,
+            0x260d3da3fedf84b,
+            0x2f4c8ca1724196cf, // converted
+        ]),
+        Felt::from_raw([
+            0xc30db64d510ee564,
+            0x95744059950b323d,
+            0x650e5c6bd5cfcb3e,
+            0x5d30d8a084ddd31, // converted
+        ]),
+        Felt::from_raw([
+            0xcd05768f1b651e71,
+            0xad09e76646f8fc45,
+            0xdad4ecd80712fe07,
+            0x21d0c94592289e73, // converted
+        ]),
+        Felt::from_raw([
+            0xeee4a5b31c720775,
+            0xe685edbf1f0f875e,
+            0xecda8089d8eb9a3d,
+            0xad405df9e60b24e, // converted 5
+        ]),
+        Felt::from_raw([
+            0x37019677c912b86e,
+            0xf1b16555957afe6c,
+            0x3631c2568a36f711,
+            0xcc03a758b72c918, // converted
+        ]),
+        Felt::from_raw([
+            0x433a8db6250f1315,
+            0x16c912d5d9d4ed48,
+            0x7d7c67b60ccdf98d,
+            0xbc1b9119e2f8d32, // converted
+        ]),
+        Felt::from_raw([
+            0x46cb1f57666d0206,
+            0x8a58a8f27efdb933,
+            0x83e8dd8a41625cd6,
+            0xfdefd9a0f81cc28, // converted
+        ]),
+        Felt::from_raw([
+            0x8add6292e2e1e661,
+            0xf1f53531867319e8,
+            0x3d6fcf9e000ccbcd,
+            0x545268f14d1ef2d, // converted
+        ]),
+        Felt::from_raw([
+            0xa2def1f14b524aae,
+            0x275d597192211146,
+            0xa42c1f3e6a1f7e3b,
+            0x304083d89066c255, // converted 10
+        ]),
+        Felt::from_raw([
+            0x250db07064b2c906,
+            0x1b6b4eeb73bd34db,
+            0x33427c42db863ba9,
+            0x2f6c68f4f14399a4, // converted
+        ]),
+        Felt::from_raw([
+            0xc316649d3fc3381d,
+            0xc0454a7c949fa493,
+            0xafc8f158a8e78784,
+            0x2c253abeaa8f1309, // converted
+        ]),
+        Felt::from_raw([
+            0x28ee11171ca3660e,
+            0xeb197941a15815a9,
+            0xd6329fa5a982a43,
+            0x28a62c2fcdf31601, // converted
+        ]),
+        Felt::from_raw([
+            0x4e0f7d84e1129058,
+            0x940999a2a073a089,
+            0xcceab807358a652f,
+            0xb8c0b1fdb7e110a, // converted
+        ]),
+        Felt::from_raw([
+            0x70cf039d739d1046,
+            0xf569e914e8d94eee,
+            0xfb255b7fde25b695,
+            0x1468c3253afd5301, // converted 15
+        ]),
+        Felt::from_raw([
+            0x3d2a365c3b57cd1b,
+            0x4312821f06af1a11,
+            0xd30bc6c4014eb88e,
+            0x76505a8aac3ed67, // converted
+        ]),
+        Felt::from_raw([
+            0x671b73192354638f,
+            0x7001d04e2195dd2,
+            0xfaeb9a1e631fc8f5,
+            0x1989a97904a6cc74, // converted
+        ]),
+        Felt::from_raw([
+            0xf1e8b99b2fe59e14,
+            0x6c3bcc9fa9f0c3ee,
+            0x7fb680e63a8b45a4,
+            0xcc2035b47d9bb9e, // converted
+        ]),
+        Felt::from_raw([
+            0xe55901d82eafa11d,
+            0x38694ed7495dc378,
+            0x85acb7120a4ca071,
+            0x218d252816b694c5, // converted
+        ]),
+        Felt::from_raw([
+            0x7b2bfc5a6086dccd,
+            0x2a44cbfa06667305,
+            0xa335ab84fa3fd829,
+            0xf083607ff8712f6, // converted 20
+        ]),
     ];
 
     /// Additive round constants D for Anemoi.
@@ -869,7 +998,7 @@ mod tests {
             0x15162795759ef68,
             0x1727676991bd7352,
             0x5f43de4dc2cd5c9c,
-            0x148baca8bb5a730c,   // 5
+            0x148baca8bb5a730c, // 5
         ]),
         Felt::from_raw([
             0x7aad2edb101c1926,
@@ -899,7 +1028,7 @@ mod tests {
             0x55f14c562a9a9308,
             0xd5c8c8fd76fab00b,
             0x6feeb1125758e33b,
-            0x23f26cea6945ec15,         // 10
+            0x23f26cea6945ec15, // 10
         ]),
         Felt::from_raw([
             0xe1342a430bee2f41,
@@ -929,7 +1058,7 @@ mod tests {
             0x23398e1996ad0ff8,
             0xf5b7bae9cc1d59bb,
             0x6612bce50cb34e4d,
-            0x395e21f8759fb40,          // 15
+            0x395e21f8759fb40, // 15
         ]),
         Felt::from_raw([
             0xd623a49CAB9C1525,
@@ -981,8 +1110,8 @@ mod tests {
     const BETA: u32 = 3;
 
     /// First added constant of the Anemoi S-Box
-    const DELTA: Felt = Felt::from_raw(
-        [0xd2c05d6490535385,
+    const DELTA: Felt = Felt::from_raw([
+        0xd2c05d6490535385,
         0xba56470b9af68708,
         0xd03583cf0100e593,
         0x2042def740cbc01b,
@@ -991,12 +1120,12 @@ mod tests {
     // test circuit
     #[derive(Clone, Debug)]
     pub struct HelperChipConfig {
-        limb: Column<Advice>
+        limb: Column<Advice>,
     }
 
     #[derive(Clone, Debug)]
     pub struct HelperChip {
-        config: HelperChipConfig
+        config: HelperChipConfig,
     }
 
     impl Chip<Felt> for HelperChip {
@@ -1014,17 +1143,13 @@ mod tests {
 
     impl HelperChip {
         fn new(config: HelperChipConfig) -> Self {
-            HelperChip{
-                config,
-            }
+            HelperChip { config }
         }
 
         fn configure(cs: &mut ConstraintSystem<Felt>) -> HelperChipConfig {
-            let limb= cs.advice_column();
+            let limb = cs.advice_column();
             cs.enable_equality(limb);
-            HelperChipConfig {
-                limb,
-            }
+            HelperChipConfig { limb }
         }
 
         fn assign_inputs(
@@ -1034,18 +1159,19 @@ mod tests {
             inputs: &[Felt; RATE],
         ) -> Result<[Limb<Felt>; RATE], Error> {
             let r = inputs.map(|x| {
-                let c = region.assign_advice(
-                    || format!("assign input"),
-                    self.config.limb,
-                    *offset,
-                    || value_for_assign!(x.clone())
-                ).unwrap();
+                let c = region
+                    .assign_advice(
+                        || format!("assign input"),
+                        self.config.limb,
+                        *offset,
+                        || value_for_assign!(x.clone()),
+                    )
+                    .unwrap();
                 *offset += 1;
                 Limb::new(Some(c), x.clone())
             });
             Ok(r)
         }
-
 
         fn assign_result(
             &self,
@@ -1057,12 +1183,11 @@ mod tests {
                 || format!("assign result"),
                 self.config.limb,
                 *offset,
-                || value_for_assign!(result.clone())
+                || value_for_assign!(result.clone()),
             )?;
             *offset += 1;
             Ok(Limb::new(Some(c), result.clone()))
         }
-
     }
 
     #[derive(Clone, Debug, Default)]
@@ -1094,8 +1219,8 @@ mod tests {
                 cs.advice_column(),
             ];
             Self::Config {
-               anemoiconfig: AnemoiChip::<Felt>::configure(cs, &witness),
-               helperconfig: HelperChip::configure(cs),
+                anemoiconfig: AnemoiChip::<Felt>::configure(cs, &witness),
+                helperconfig: HelperChip::configure(cs),
             }
         }
 
@@ -1104,24 +1229,29 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<Felt>,
         ) -> Result<(), Error> {
-            let mut anemoichip = AnemoiChip::<Felt>::construct(config.clone().anemoiconfig, C, D, DELTA);
+            let mut anemoichip =
+                AnemoiChip::<Felt>::construct(config.clone().anemoiconfig, C, D, DELTA);
             let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
                 || "assign anemoi test",
                 |mut region| {
                     let mut offset = 0;
-                    let result = helperchip.assign_result(&mut region, &mut offset, &self.result)?;
-                    let input = helperchip.assign_inputs(&mut region, &mut offset, &self.inputs.clone().try_into().unwrap())?;
-                    offset = 0;
-                    anemoichip.anemoi_state.initialize(&config.anemoiconfig, &mut region, &mut offset)?;    // init to all zeros
-                    anemoichip.hash(
+                    let result =
+                        helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    let input = helperchip.assign_inputs(
                         &mut region,
                         &mut offset,
-                        &input,
-                        &result,
+                        &self.inputs.clone().try_into().unwrap(),
                     )?;
+                    offset = 0;
+                    anemoichip.anemoi_state.initialize(
+                        &config.anemoiconfig,
+                        &mut region,
+                        &mut offset,
+                    )?; // init to all zeros
+                    anemoichip.hash(&mut region, &mut offset, &input, &result)?;
                     Ok(())
-                }
+                },
             )?;
             Ok(())
         }
@@ -1134,60 +1264,62 @@ mod tests {
             vec![Felt::one(), Felt::one()],
             vec![Felt::zero(), Felt::one()],
             vec![Felt::one(), Felt::zero()],
-            vec![Felt::from_raw([
-                0x1c25e48625ed6689,
-                0x2c4b560cc6d4310b,
-                0xb9180634b3117226,
-                0x6f41ed4dc66617c,
-            ]),
-            Felt::from_raw([
-                0xc2623c038b4e4821,
-                0xa296c787ff3bfaf7,
-                0x4376df758f37558f,
-                0xf5cb7e5e6e8e60b,
-            ]),]
-        ]; 
+            vec![
+                Felt::from_raw([
+                    0x1c25e48625ed6689,
+                    0x2c4b560cc6d4310b,
+                    0xb9180634b3117226,
+                    0x6f41ed4dc66617c,
+                ]),
+                Felt::from_raw([
+                    0xc2623c038b4e4821,
+                    0xa296c787ff3bfaf7,
+                    0x4376df758f37558f,
+                    0xf5cb7e5e6e8e60b,
+                ]),
+            ],
+        ];
 
         let expected = [
             Felt::from_raw([
                 0x94672c47f345700a,
                 0xe5168077fd5eeb90,
                 0xae14f132fcc041ec,
-                0x2ac427786f4818bf,]
-            ),
+                0x2ac427786f4818bf,
+            ]),
             Felt::from_raw([
                 0x9f72277137a37266,
                 0x17bdddc79f44f08b,
                 0x76008edf3b0d7d10,
-                0x11f013adb9e0ff65,]
-            ),
+                0x11f013adb9e0ff65,
+            ]),
             Felt::from_raw([
                 0x9d1c52ced652aaa4,
                 0x7906980e70afe1f3,
                 0xe62de82fa248f127,
-                0x1a5486526f2983a4]
-            ),
+                0x1a5486526f2983a4,
+            ]),
             Felt::from_raw([
                 0xf8f9b631df3b5946,
                 0x457b76a4dd3a7232,
                 0xc961800cfaeb18c,
-                0x2ef87685dfc3d604]
-            ),
+                0x2ef87685dfc3d604,
+            ]),
             Felt::from_raw([
                 0xe36fdee96b617406,
                 0x18371710b0763c58,
                 0xed30f47d4936b9d0,
                 0x2a61789d490e1fd4,
-            ])
+            ]),
         ];
 
         for i in 0..4 {
-            let test_circuit = TestCircuit {inputs: input_data[i].clone(), result: expected[i]};
+            let test_circuit = TestCircuit {
+                inputs: input_data[i].clone(),
+                result: expected[i],
+            };
             let prover = MockProver::run(16, &test_circuit, vec![]).unwrap();
             assert_eq!(prover.verify(), Ok(()));
         }
-
     }
-
 }
-

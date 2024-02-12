@@ -9,7 +9,7 @@ use std::ops::{Div, Mul};
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Chip, Region},
-    plonk::{ConstraintSystem, Error, Advice, Column},
+    plonk::{Advice, Column, ConstraintSystem, Error},
 };
 use num_bigint::BigUint;
 use std::marker::PhantomData;
@@ -85,7 +85,7 @@ impl<F: FieldExt> ModExpChip<F> {
     pub fn configure(
         cs: &mut ConstraintSystem<F>,
         range_check_config: &RangeCheckConfig,
-        shared_advices: &Vec<Column<Advice>>
+        shared_advices: &Vec<Column<Advice>>,
     ) -> CommonGateConfig {
         CommonGateConfig::configure(cs, range_check_config, shared_advices)
     }

@@ -1,10 +1,10 @@
 use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::pairing::bls12_381::pairing;
 use halo2_proofs::pairing::bls12_381::{G1Affine, G2Affine};
+use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     circuit::{Layouter, Region},
-    plonk::{ConstraintSystem, Error, Advice, Column},
+    plonk::{Advice, Column, ConstraintSystem, Error},
 };
 
 pub const BLS381FR_SIZE: usize = 5;
@@ -20,8 +20,8 @@ use crate::circuits::bls::{Bls381ChipConfig, Bls381PairChip, Bls381SumChip};
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::utils::Limb;
 
-use crate::host::{ExternalHostCallEntry, ForeignInst};
 use super::get_selected_entries;
+use crate::host::{ExternalHostCallEntry, ForeignInst};
 
 const TOTAL_CONSTRUCTIONS_PAIR: usize = 1;
 const TOTAL_CONSTRUCTIONS_SUM: usize = 16;
@@ -102,12 +102,19 @@ fn bls381_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bls381PairChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bls381PairChip::<Fr>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
         Bls381PairChip::construct(c)
+    }
+
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS_PAIR)
     }
 
     fn opcodes() -> Vec<Fr> {
@@ -120,6 +127,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -208,7 +216,9 @@ impl HostOpSelector for Bls381PairChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS_PAIR - total_used_instructions {
+        let total_avail_rounds = Self::max_rounds(k);
+
+        for _ in 0..total_avail_rounds - total_used_instructions {
             for i in 0..8 {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
@@ -238,7 +248,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
-                    vec![&default_entries[2 * i + 17], &default_entries[2 * i + 1 + 17]],
+                    vec![
+                        &default_entries[2 * i + 17],
+                        &default_entries[2 * i + 1 + 17],
+                    ],
                     Fr::from_u128(1u128 << 54),
                     false,
                 )?;
@@ -263,7 +276,10 @@ impl HostOpSelector for Bls381PairChip<Fr> {
                 let (limb, _op) = config.assign_merged_operands(
                     region,
                     &mut offset,
-                    vec![&default_entries[2 * i + 50], &default_entries[2 * i + 1 + 50]],
+                    vec![
+                        &default_entries[2 * i + 50],
+                        &default_entries[2 * i + 1 + 50],
+                    ],
                     Fr::from_u128(1u128 << 54),
                     false,
                 )?;
@@ -273,9 +289,8 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         Ok(r)
     }
 
-    fn synthesize(
+    fn synthesize_separate(
         &mut self,
-        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
@@ -286,16 +301,32 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         self.load_bls381_pair_circuit(&a, &b, &ab, layouter)?;
         Ok(())
     }
+
+    fn synthesize(
+        &mut self,
+        _offset: &mut usize,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _local_region: &mut Region<Fr>,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl HostOpSelector for Bls381SumChip<Fr> {
     type Config = Bls381ChipConfig;
-    fn configure(meta: &mut ConstraintSystem<Fr>, _shared_advices: &Vec<Column<Advice>>) -> Self::Config {
+    fn configure(
+        meta: &mut ConstraintSystem<Fr>,
+        _shared_advices: &Vec<Column<Advice>>,
+    ) -> Self::Config {
         Bls381SumChip::<Fr>::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
         Bls381SumChip::construct(c)
+    }
+
+    fn max_rounds(k: usize) -> usize {
+        super::get_max_round(k, TOTAL_CONSTRUCTIONS_SUM)
     }
 
     fn opcodes() -> Vec<Fr> {
@@ -309,6 +340,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
 
     fn assign(
         region: &mut Region<Fr>,
+        k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
         shared_opcodes: &Vec<Fr>,
@@ -392,7 +424,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         }
 
         let mut default_table = vec![];
-        default_table.push(ExternalHostCallEntry{
+        default_table.push(ExternalHostCallEntry {
             op: ForeignInst::BlsSumNew as usize,
             value: 1u64,
             is_ret: false,
@@ -406,7 +438,9 @@ impl HostOpSelector for Bls381SumChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        for _ in 0..TOTAL_CONSTRUCTIONS_SUM - total_used_instructions {
+        let total_avail_rounds = Self::max_rounds(k);
+
+        for _ in 0..total_avail_rounds - total_used_instructions {
             // whether new is zero or not
             let ((operand, opcode), index) = default_entries[0].clone();
             let (limb, _op) = config.assign_one_line(
@@ -445,13 +479,16 @@ impl HostOpSelector for Bls381SumChip<Fr> {
             )?;
             r.push(limb);
 
-             //G1 and Sum
+            //G1 and Sum
             for k in 0..2 {
                 for i in 0..8 {
                     let (limb, _op) = config.assign_merged_operands(
                         region,
                         &mut offset,
-                        vec![&default_entries[6 + 2 * i + 17 * k], &default_entries[6 + 2 * i + 17 * k + 1]],
+                        vec![
+                            &default_entries[6 + 2 * i + 17 * k],
+                            &default_entries[6 + 2 * i + 17 * k + 1],
+                        ],
                         Fr::from_u128(1u128 << 54),
                         false,
                     )?;
@@ -476,14 +513,22 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         Ok(r)
     }
 
-    fn synthesize(
+    fn synthesize_separate(
         &mut self,
-        _offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         self.load_bls381_sum_circuit(&arg_cells, layouter)?;
+        Ok(())
+    }
+
+    fn synthesize(
+        &mut self,
+        _offset: &mut usize,
+        _arg_cells: &Vec<Limb<Fr>>,
+        _local_region: &mut Region<Fr>,
+    ) -> Result<(), Error> {
         Ok(())
     }
 }

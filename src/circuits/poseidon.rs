@@ -10,8 +10,8 @@ use crate::{
     customized_circuits, customized_circuits_expand, item_count, table_item, value_for_assign,
 };
 
-use std::marker::PhantomData;
 use crate::utils::GateCell;
+use std::marker::PhantomData;
 
 use halo2_proofs::{
     circuit::Region,
@@ -24,7 +24,6 @@ customized_circuits!(PoseidonGateConfig, 2, 5, 13, 0,
     | x0   | x1    | x2   | x0_2   | x0_5_c   |  c0  | c1  | c2  | e1  | c   | cdn | e2   | c03  | c12  | lookup_hint | lookup_ind  | common_sel | permute_sel
     | x0_n | x1_n  | x2_n | nil    | d_n      |  nil | nil | nil | nil | nil | nil | nil  | nil  | nil  | nil         | nil         |    nil     |      nil
 );
-
 
 pub struct PoseidonState<F: FieldExt, const T: usize> {
     state: [Limb<F>; T],
@@ -43,7 +42,10 @@ pub struct PoseidonChip<F: FieldExt, const T: usize, const RATE: usize> {
 
 impl PoseidonGateConfig {
     // configured as an extend of CommonGateConfig
-    pub fn configure<F:FieldExt>(cs: &mut ConstraintSystem<F>, config: &CommonGateConfig) -> PoseidonGateConfig {
+    pub fn configure<F: FieldExt>(
+        cs: &mut ConstraintSystem<F>,
+        config: &CommonGateConfig,
+    ) -> PoseidonGateConfig {
         let extend = PoseidonGateConfig {
             fixed: config.fixed,
             selector: config.selector,
@@ -82,6 +84,45 @@ impl PoseidonGateConfig {
         extend
     }
 
+    fn sbox_full<F: FieldExt, const T: usize>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        state: &mut [Limb<F>; T],
+        constants: &[F; T],
+    ) -> Result<(), Error> {
+        for (x, constant) in state.iter_mut().zip(constants.iter()) {
+            *x = self.assign_x5_c_line(region, offset, x, *constant)?;
+        }
+        Ok(())
+    }
+
+    fn assign_x5_c_line<F: FieldExt>(
+        &self,
+        region: &mut Region<F>,
+        offset: &mut usize,
+        x: &Limb<F>,
+        c_value: F,
+    ) -> Result<Limb<F>, Error> {
+        let x0 = Self::x0();
+        let x0_2 = Self::x0_2();
+        let x0_5_c = Self::x0_5_c();
+        let c = Self::c();
+
+        let x2_value = x.value.square();
+        let x5_c_value = x2_value.square() * x.value + c_value;
+
+        let cell = self.assign_cell(region, *offset, &x0, x.value)?;
+        region.constrain_equal(x.get_the_cell().cell(), cell.get_the_cell().cell())?;
+        self.assign_cell(region, *offset, &x0_2, x2_value)?;
+        self.assign_cell(region, *offset, &c, c_value)?;
+        let ret = self.assign_cell(region, *offset, &x0_5_c, x5_c_value)?;
+
+        *offset += 2;
+
+        Ok(ret)
+    }
+
     fn assign_permute_helper_line<F: FieldExt, const RATE: usize, const T: usize>(
         &self,
         region: &mut Region<F>,
@@ -102,11 +143,7 @@ impl PoseidonGateConfig {
         let x0_5_c = Self::x0_5_c();
 
         let x5_c = Self::c();
-        let c = [
-            Self::c0(),
-            Self::c1(),
-            Self::c2(),
-        ];
+        let c = [Self::c0(), Self::c1(), Self::c2()];
         let e = [Self::e1(), Self::e2()];
 
         self.assign_cell(region, *offset, &Self::permute_sel(), F::one())?;
@@ -164,11 +201,14 @@ impl PoseidonGateConfig {
 
         Ok(())
     }
-
 }
 
 impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
-    pub fn construct(config: CommonGateConfig, extend: PoseidonGateConfig, spec: Spec<F, T, RATE>) -> Self {
+    pub fn construct(
+        config: CommonGateConfig,
+        extend: PoseidonGateConfig,
+        spec: Spec<F, T, RATE>,
+    ) -> Self {
         let state = [0u32; T].map(|_| Limb::new(None, F::zero()));
         let state = PoseidonState {
             default: state.clone(),
@@ -195,13 +235,14 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         self.poseidon_state.initialize(config, region, offset)
     }
 
-    pub fn configure(cs: &mut ConstraintSystem<F>, shared_advices: &Vec<Column<Advice>>) -> (CommonGateConfig, PoseidonGateConfig) {
+    pub fn configure(
+        cs: &mut ConstraintSystem<F>,
+        shared_advices: &Vec<Column<Advice>>,
+    ) -> (CommonGateConfig, PoseidonGateConfig) {
         let config = CommonGateConfig::configure(cs, &(), shared_advices);
         let extend = PoseidonGateConfig::configure(cs, &config);
         (config, extend)
     }
-
-
 
     pub(crate) fn get_permute_result(
         &mut self,
@@ -228,8 +269,14 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
             )?);
         }
         self.poseidon_state.state = new_state.try_into().unwrap();
-        self.poseidon_state
-            .permute(&self.config, &self.extend, &self.spec, region, offset, values)?;
+        self.poseidon_state.permute(
+            &self.config,
+            &self.extend,
+            &self.spec,
+            region,
+            offset,
+            values,
+        )?;
         Ok(self.poseidon_state.state[1].clone())
     }
 
@@ -258,7 +305,6 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         region: &mut Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        *offset = 0;
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
         let mut state = [0u32; T].map(|_| zero.clone());
         state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128 << 64))?;
@@ -360,7 +406,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         Ok(x5)
     }
 
-    fn sbox_full(
+    fn _sbox_full(
         &mut self,
         config: &CommonGateConfig,
         region: &mut Region<F>,
@@ -401,12 +447,12 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         self.absorb_with_pre_constants(config, region, offset, inputs, &constants[0])?;
 
         for constants in constants.iter().skip(1).take(r_f - 1) {
-            self.sbox_full(config, region, offset, constants)?;
+            extend.sbox_full(region, offset, &mut self.state, constants)?;
             self.apply_mds(config, region, offset, mds)?;
         }
 
         let pre_sparse_mds = &spec.mds_matrices().pre_sparse_mds().rows();
-        self.sbox_full(config, region, offset, constants.last().unwrap())?;
+        extend.sbox_full(region, offset, &mut self.state, constants.last().unwrap())?;
         self.apply_mds(config, region, offset, &pre_sparse_mds)?;
 
         let sparse_matrices = &spec.mds_matrices().sparse_matrices();
@@ -433,10 +479,10 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
 
         let constants = &spec.constants().end();
         for constants in constants.iter() {
-            self.sbox_full(config, region, offset, constants)?;
+            extend.sbox_full(region, offset, &mut self.state, constants)?;
             self.apply_mds(config, region, offset, mds)?;
         }
-        self.sbox_full(config, region, offset, &[F::zero(); T])?;
+        extend.sbox_full(region, offset, &mut self.state, &[F::zero(); T])?;
         self.apply_mds(config, region, offset, mds)?;
         Ok(())
     }
@@ -543,8 +589,8 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::circuits::CommonGateConfig;
     use crate::circuits::poseidon::PoseidonGateConfig;
+    use crate::circuits::CommonGateConfig;
     use crate::host::poseidon::POSEIDON_HASHER_SPEC;
     use crate::value_for_assign;
     use halo2_proofs::dev::MockProver;
@@ -679,7 +725,7 @@ mod tests {
                 cs.advice_column(),
             ];
 
-            let (commonconfig, poseidonconfig)  = PoseidonChip::<Fr, 9, 8>::configure(cs, &witness);
+            let (commonconfig, poseidonconfig) = PoseidonChip::<Fr, 9, 8>::configure(cs, &witness);
             Self::Config {
                 commonconfig,
                 poseidonconfig,

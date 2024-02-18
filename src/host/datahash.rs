@@ -1,7 +1,6 @@
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 //use lazy_static;
-use crate::host::cache::DATA_CACHE;
 use crate::host::db::{MongoDB, TreeDB};
 use crate::host::poseidon::POSEIDON_HASHER;
 use mongodb::bson::doc;
@@ -80,16 +79,8 @@ impl MongoDataHash {
         &self,
         hash: &[u8; 32],
     ) -> Result<Option<DataHashRecord>, mongodb::error::Error> {
-        let mut cache = DATA_CACHE.lock().unwrap();
-        if let Some(record) = cache.get(hash) {
-            Ok(record.clone())
-        } else {
-            let record = self.db.borrow().get_data_record(hash);
-            if let Ok(value) = record.clone() {
-                cache.push(*hash, value);
-            };
-            record
-        }
+        let record = self.db.borrow().get_data_record(hash);
+        record
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
@@ -98,8 +89,6 @@ impl MongoDataHash {
         r.map_or_else(
             || {
                 self.db.borrow_mut().set_data_record(record.clone())?;
-                let mut cache = DATA_CACHE.lock().unwrap();
-                cache.push(record.hash, Some(record.clone()));
                 Ok(())
             },
             |bytes| {

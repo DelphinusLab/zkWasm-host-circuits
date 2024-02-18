@@ -5,7 +5,8 @@ use mongodb::{
 
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
-use mongodb::bson::{spec::BinarySubtype, Bson};
+use mongodb::bson::{spec::BinarySubtype, to_bson, Bson};
+use mongodb::options::UpdateOptions;
 
 const MONGODB_URI: &str = "mongodb://localhost:27017";
 pub const MONGODB_DATABASE: &str = "zkwasm-mongo-merkle";
@@ -78,8 +79,14 @@ impl TreeDB for MongoDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
+        let options = UpdateOptions::builder().upsert(true).build();
+        let mut filter = doc! {};
+        filter.insert("index", u64_to_bson(record.index));
+        filter.insert("hash", u256_to_bson(&record.hash));
+        let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
+        let update = doc! {"$set": record_doc};
         let collection = self.merkel_collection()?;
-        collection.insert_one(record, None)?;
+        collection.update_one(filter, update, options)?;
         Ok(())
     }
 
@@ -87,8 +94,16 @@ impl TreeDB for MongoDB {
         &mut self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
+        let options = UpdateOptions::builder().upsert(true).build();
         let collection = self.merkel_collection()?;
-        collection.insert_many(records, None)?;
+        for record in records {
+            let mut filter = doc! {};
+            filter.insert("index", u64_to_bson(record.index));
+            filter.insert("hash", u256_to_bson(&record.hash));
+            let record_doc = to_bson(record).unwrap().as_document().unwrap().to_owned();
+            let update = doc! {"$set": record_doc};
+            collection.update_one(filter, update, options.clone())?;
+        }
         Ok(())
     }
 
@@ -103,8 +118,13 @@ impl TreeDB for MongoDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
+        let options = UpdateOptions::builder().upsert(true).build();
+        let mut filter = doc! {};
+        filter.insert("hash", u256_to_bson(&record.hash));
+        let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
+        let update = doc! {"$set": record_doc};
         let collection = self.data_collection()?;
-        collection.insert_one(record, None)?;
+        collection.update_one(filter, update, options)?;
         Ok(())
     }
 }

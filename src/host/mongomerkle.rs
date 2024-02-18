@@ -1,4 +1,3 @@
-use crate::host::cache::MERKLE_CACHE;
 use crate::host::db;
 use crate::host::db::{MongoDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
@@ -98,16 +97,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         index: u64,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let mut cache = MERKLE_CACHE.lock().unwrap();
-        if let Some(record) = cache.get(&(index, *hash)) {
-            Ok(record.clone())
-        } else {
-            let record = self.db.borrow().get_merkle_record(index, hash);
-            if let Ok(value) = record.clone() {
-                cache.push((index, *hash), value);
-            };
-            record
-        }
+        let record = self.db.borrow().get_merkle_record(index, hash);
+        record
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
@@ -121,8 +112,6 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                 r.map_or_else(
                     || {
                         //println!("Do update record to DB for index {:?}, hash: {:?}", record.index, record.hash);
-                        let mut cache = MERKLE_CACHE.lock().unwrap();
-                        cache.push((record.index, record.hash), Some(record.clone()));
                         self.db.borrow_mut().set_merkle_record(record)?;
                         Ok(())
                     },
@@ -160,10 +149,6 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
 
         if new_records.len() > 0 {
-            let mut cache = MERKLE_CACHE.lock().unwrap();
-            for record in new_records.iter() {
-                cache.push((record.index, record.hash), Some(record.clone()));
-            }
             self.db.borrow_mut().set_merkle_records(&new_records)?;
         }
         Ok(())

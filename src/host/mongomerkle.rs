@@ -122,35 +122,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     //the input records must be in one leaf path
-    pub fn update_leaf_path_records(
+    pub fn update_records(
         &mut self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
-        // sort records by index to ensure the parent node is processed before its child nodes.
-        let mut sort_records: Vec<MerkleRecord> = records.clone();
-        sort_records.sort_by(|r1, r2| r1.index.cmp(&r2.index));
-
-        let mut new_records: Vec<MerkleRecord> = vec![];
-        let mut check = true;
-        for record in sort_records {
-            // figure out whether a parent node had been added or not,
-            // to save the cache/db reading for its child nodes for optimizing.
-            if check {
-                match self.get_record(record.index, &record.hash) {
-                    Ok(Some(_)) => {}
-                    _ => {
-                        check = false;
-                        new_records.push(record);
-                    }
-                }
-            } else {
-                new_records.push(record);
-            }
-        }
-
-        if new_records.len() > 0 {
-            self.db.borrow_mut().set_merkle_records(&new_records)?;
-        }
+        self.db.borrow_mut().set_merkle_records(records)?;
         Ok(())
     }
 
@@ -394,7 +370,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             .to_vec();
 
         records.push(leaf.clone());
-        self.update_leaf_path_records(&records)
+        self.update_records(&records)
             .expect("Unexpected DB Error when update records.");
 
         Ok(())

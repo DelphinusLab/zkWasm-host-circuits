@@ -85,17 +85,8 @@ impl MongoDataHash {
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
-        let r: Option<DataHashRecord> = self.get_record(&record.hash)?;
-        r.map_or_else(
-            || {
-                self.db.borrow_mut().set_data_record(record.clone())?;
-                Ok(())
-            },
-            |bytes| {
-                assert_eq!(record.data, bytes.data);
-                Ok(())
-            },
-        )
+        self.db.borrow_mut().set_data_record(record.clone())?;
+        Ok(())
     }
 }
 

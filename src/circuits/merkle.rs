@@ -8,6 +8,7 @@ use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
+use itertools::Itertools;
 use std::marker::PhantomData;
 
 use crate::circuits::poseidon::PoseidonChip;
@@ -166,18 +167,17 @@ impl<const D: usize> MerkleChip<Fr, D> {
         let compare_assist = self
             .state
             .assist
-            .clone()
-            .zip(new_assist.clone().try_into().unwrap())
+            .as_slice().iter()
+            .zip(new_assist.iter())
             .map(|(old, new)| {
                 self.config
                     .select(region, &mut (), offset, &is_set, &new, &old, 0)
                     .unwrap()
-            });
-        for (a, b) in compare_assist.to_vec().into_iter().zip(new_assist) {
+            }).collect_vec();
+        for (a, b) in compare_assist.iter().zip(new_assist) {
             region.constrain_equal(a.get_the_cell().cell(), b.get_the_cell().cell())?;
         }
-        self.state.assist = compare_assist.clone();
-
+        self.state.assist.clone_from_slice(&compare_assist);
         let mut positions = vec![];
         self.config
             .decompose_limb(region, &mut (), offset, &address, &mut positions, D)?;

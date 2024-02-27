@@ -1,5 +1,3 @@
-
-#![feature(slice_flatten)]
 //#![deny(warnings)]
 mod adaptor;
 pub mod circuits;

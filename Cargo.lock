@@ -75,6 +75,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-std"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
+dependencies = [
+ "num-traits",
+ "rand",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -441,10 +451,10 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git#7b486f9eef386c6262fe0d812cb62cc031c0c753"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git?branch=keccak-test#3d20ae4ea33bea097d209258debea386aece5c53"
 dependencies = [
  "anyhow",
- "ark-std",
+ "ark-std 0.4.0",
  "bitvec",
  "clap",
  "downcast-rs",
@@ -469,6 +479,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sha3",
  "strum",
  "strum_macros",
  "uuid",
@@ -836,7 +847,7 @@ name = "ec-gpu-gen"
 version = "0.4.0"
 source = "git+https://github.com/lanbones/ec-gpu?branch=halo2-opt-v2#784eda53754a5344f75e4b3c533361d628ad1402"
 dependencies = [
- "ark-std",
+ "ark-std 0.3.0",
  "bitvec",
  "crossbeam-channel",
  "ec-gpu",
@@ -1182,7 +1193,7 @@ name = "halo2_proofs"
 version = "0.1.0-beta.1"
 source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git#3d92486eac82722f0519c6f25387e5019abaa8ce"
 dependencies = [
- "ark-std",
+ "ark-std 0.3.0",
  "blake2b_simd",
  "bumpalo",
  "cfg-if 0.1.10",
@@ -1208,9 +1219,9 @@ dependencies = [
 [[package]]
 name = "halo2aggregator-s"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?branch=main#ce9772bfdd8c263ddbfd955f81d1f8351f41d5d2"
+source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?branch=keccak#d2e3cbeb3c26a0fb562b1a4b8ac9f32afbcb6c08"
 dependencies = [
- "ark-std",
+ "ark-std 0.4.0",
  "blake2b_simd",
  "halo2_proofs",
  "halo2ecc-s",
@@ -1219,6 +1230,7 @@ dependencies = [
  "num-integer",
  "poseidon",
  "sha2",
+ "sha3",
  "tera",
 ]
 
@@ -1458,6 +1470,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "445dde2150c55e483f3d8416706b97ec8e8237c307e5b7b4b8dd15e6af2a0730"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "keccak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+dependencies = [
+ "cpufeatures",
 ]
 
 [[package]]
@@ -2412,6 +2433,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha3"
+version = "0.10.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
+dependencies = [
+ "digest",
+ "keccak",
+]
+
+[[package]]
 name = "signal-hook"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3318,7 +3349,7 @@ dependencies = [
 name = "zkwasm-host-circuits"
 version = "0.1.0"
 dependencies = [
- "ark-std",
+ "ark-std 0.3.0",
  "cfg-if 1.0.0",
  "circuits-batcher",
  "clap",

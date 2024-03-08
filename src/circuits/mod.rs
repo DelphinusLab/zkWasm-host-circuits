@@ -10,7 +10,6 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
-pub mod anemoi;
 pub mod map_to_curve;
 pub mod sgn0;
 

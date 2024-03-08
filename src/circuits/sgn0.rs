@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
-use halo2ecc_s::assign::{AssignedFq, AssignedFq2};
+use halo2ecc_s::assign::{AssignedFq, AssignedFq2, AssignedInteger};
 use halo2ecc_s::circuit::ecc_chip::EccBaseIntegerChipWrapper;
 use halo2ecc_s::circuit::fq12::Fq2ChipOps;
 use halo2ecc_s::circuit::general_scalar_ecc_chip;
@@ -14,12 +14,12 @@ use halo2_proofs::pairing::bn256::{Fr, G1};
 use num_bigint::BigUint;
 use ripemd::digest::typenum::NonZero;
 use std::cell::RefCell;
-use std::fmt::Debug;
 use std::num::NonZeroI128;
 use std::rc::Rc;
 use std::str::FromStr;
 use ark_std::{One, Zero};
 use ff::Field;
+use std::fmt::Debug;
 
 /// Constrains the output to be the dot product (in the base field) of
 /// two input vectors of assigned base field elements of the same length.
@@ -31,15 +31,11 @@ fn dot_product(
 ) -> AssignedFq<Fq, Fr> {
     assert_eq!(a.len(), b.len());
 
-    let mut a_dot_b = gseccc.base_integer_ctx.assign_int_constant(Fq::zero());
-    //let mut a_dot_b = gseccc.base_integer_ctx.assign_w(&zero_bn);
-    let mut ai_times_bi = gseccc.base_integer_ctx.assign_w(&BigUint::zero());
-    for i in 0..a.len() {
-        ai_times_bi = gseccc.base_integer_ctx.int_mul(&a[i], &b[i]);
-        a_dot_b = gseccc.base_integer_ctx.int_add(&a_dot_b, &ai_times_bi);
-    }
-
-    a_dot_b
+    a.iter().zip(b.iter())
+        .fold(gseccc.base_integer_ctx.assign_int_constant(Fq::zero()), |acc, (ai, bi)| {
+            let ai_times_bi = gseccc.base_integer_ctx.int_mul(ai, bi);
+            gseccc.base_integer_ctx.int_add(&acc, &ai_times_bi)
+        })
 }
 
 /// Constrains each assigned base field element in a vector a to be either 0 or 1.
@@ -47,79 +43,69 @@ fn constrain_bits(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a: &Vec<AssignedFq<Fq, Fr>>
 ) {
+    println!("base before cons is {:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("range before cons is{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
+
     let zero = gseccc.base_integer_ctx.assign_int_constant(Fq::zero());
-    let a_squared_componentwise: Vec<AssignedFq<Fq, Fr>> = a
-        .into_iter()
-        .map(|a_i| {
-            gseccc.base_integer_ctx.int_square(&a_i)
-        })
-        .collect();
-    let mut should_be_zero_vector: Vec<AssignedFq<Fq, Fr>> = vec![];
-    for i in 0..a.len() {
-        should_be_zero_vector.push(
-            gseccc.base_integer_ctx.int_sub(
-                &a_squared_componentwise[i], 
-                &a[i]
-            )
-        );
-        gseccc.base_integer_ctx.assert_int_equal(
-            &should_be_zero_vector[i], 
-            &zero,
-        );
+    let one = gseccc.base_integer_ctx.assign_int_constant(Fq::one());
+
+    for a_i in a.iter() {
+        let ai_square = gseccc.base_integer_ctx.int_square(&a_i);
+        let ai_square_minus_ai = gseccc.base_integer_ctx.int_sub(&ai_square, &a_i);
+        gseccc.base_integer_ctx.assert_int_equal(&ai_square_minus_ai, &zero);
     }
+
+    println!("base after cons is {:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("range after cons is{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
 }
 
-/// Takes as input two vectors of assigned base field elements of equal length, 
+/// Takes as input two vectors of assigned base field elements of equal length,
 /// each of which has all entries equal to either 0 or 1.  *Assumes* that both
 /// input vectors consist only of bits, but *panics* if they are not equal in
 /// length. Thus the condition that each vector consists only of bits must be
 /// constrained in a prior step.
-/// 
+///
 /// Let a an b be the big-endian interpretation of `a_bits` and `b_bits`,
 /// respectively, as integers.  This function returns an assigned base field
 /// element that is equal to:
 ///     * 1 if a < b
 ///     * 0 if a = b
 ///     * -1 (= p-1) if a > b
-fn lexicographical_bitwise_comparison(
+fn lexicographical_comparison(
     gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a_bits: &Vec<AssignedFq<Fq, Fr>>,
-    b_bits: &Vec<AssignedFq<Fq, Fr>>
+    b_bits: &Vec<AssignedFq<Fq, Fr>>,
 ) -> AssignedFq<Fq, Fr> {
     assert_eq!(a_bits.len(), b_bits.len());
-    let difference: Vec<AssignedFq<Fq, Fr>> = a_bits
-        .into_iter()
-        .enumerate()
-        .map(|(i, ai)| {
-            gseccc.base_integer_ctx.int_sub(&ai, &b_bits[i])
-        })
-        .collect();
-    
-    // Assigns c_0 = b_0 - a_0 without constraining.
-    let difference_0_fq = gseccc.base_integer_ctx.get_w(&difference[0]);
-    let difference_0_bn = field_to_bn(&difference_0_fq);
-    let difference_0 = gseccc.base_integer_ctx.assign_w(&difference_0_bn);
 
-    // Constrains c_0 = b_0 - a_0
-    gseccc.base_integer_ctx.assert_int_equal(&difference_0, &difference[0]);
-    
-    let mut c_vec: Vec<AssignedFq<Fq, Fr>> = vec![difference_0];
+    println!("base before lex is {:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("range before lex is{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
 
-    let zero_bn = BigUint::zero();
+    let zero = gseccc.base_integer_ctx.assign_int_constant(Fq::zero());
     let one = gseccc.base_integer_ctx.assign_int_constant(Fq::one());
-    let mut previous_squared: AssignedFq<Fq, Fr>;
-    let mut one_minus_previous_squared: AssignedFq<Fq, Fr>;
-    for i in 1..a_bits.len() {
-        previous_squared = gseccc.base_integer_ctx.int_square(&c_vec[i-1]);
-        one_minus_previous_squared = gseccc.base_integer_ctx.int_sub(&one, &previous_squared);
-        c_vec.push(gseccc.base_integer_ctx.int_mul(
-            &one_minus_previous_squared, 
-            &difference[i])
-        );
+    let minus_one = gseccc.base_integer_ctx.int_sub(&zero, &one);
+
+    let mut result = zero.clone();
+
+    for (ai, bi) in a_bits.iter().zip(b_bits.iter()) {
+        let diff = gseccc.base_integer_ctx.int_sub(bi, ai);
+        let is_diff_zero = gseccc.base_integer_ctx.is_int_equal(&diff, &zero);
+        let is_diff_one = gseccc.base_integer_ctx.is_int_equal(&diff, &one);
+
+        if is_diff_zero.0.val == Fr::zero() {
+            continue;
+        } else { // diff != 0
+            if is_diff_one.0.val == Fr::one() {
+                result = one.clone();
+                break;
+            } else { // diff != 0 and diff != 1
+                result = minus_one.clone();
+                break;
+            }
+        }
     }
-    
-    let c: AssignedFq<Fq, Fr> = c_vec[c_vec.len() - 1].clone();
-    c
+
+    result
 }
 
 const P_BINARY_STR: &str = "110100000000100010001111010100011100101111111111001101001101001001011000110111010011110110110010000110100101110101100110101110110010001110111010010111000010011110011100001010001001010111111011001110011000011010010101000001111011010110000111101100010010000011110101010111111111111111110101100010101001111111111111111111011100111111110111111111111111111111111111111111010101010101011";
@@ -142,7 +128,7 @@ fn binary_str_to_assigned_constant_bits(
 }
 
 // Small helper function to turn a BigUint into its big-endian bit decomposition,
-// padded to a fixed length, expressed as a vector of BigUints.   Used in the 
+// padded to a fixed length, expressed as a vector of BigUints.   Used in the
 // assigning step of an in-circuit bitwise decomposition.  Panics if the length
 // of the input BigUint in bits is greater than `length`.
 fn bn_to_bits_bn_be_fixed_length(
@@ -151,25 +137,10 @@ fn bn_to_bits_bn_be_fixed_length(
 ) -> Vec<BigUint> {
     assert!((bn.bits() as usize) <= length);
 
-    /*
-    let two_bn = BigUint::from(2u64);
-    
-    let mut bits: Vec<BigUint> = vec![];
-    let mut current_bn = bn.clone();
-    let mut current_bit: BigUint;
-    for i in 0..bn.bits() {
-        current_bit = &current_bn % &two_bn;
-        current_bn = (&current_bn - &current_bit) / &two_bn;
-        bits.insert(0, current_bit);
-    }
-    for i in (bn.bits() as usize)..length {
-        bits.insert(0, BigUint::from(0u64));
-    }
-
-    bits
-     */
     let mut bn_bit = bn.to_radix_be(2);
-    bn_bit.resize_with(length, || 0);
+    for i in (bn.bits() as usize)..length {
+        bn_bit.insert(0, 0u8);
+    }
     let result: Vec<BigUint> = bn_bit.into_iter().map(|x| BigUint::from(x as u64)).collect();
 
     result
@@ -193,6 +164,8 @@ fn decompose_into_bits_be(
     length: usize
 ) -> Vec<AssignedFq<Fq, Fr>> {
     // Assigns without constraining.
+    println!("base before dec is {:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("range before dec is{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
     let x_reduced = gseccc.base_integer_ctx.reduce(&x);
     let x_fq = gseccc.base_integer_ctx.get_w(&x_reduced);
     let x_bn = field_to_bn(&x_fq);
@@ -205,34 +178,18 @@ fn decompose_into_bits_be(
         .collect();
 
     // Constrains each claimed bit (assigned base field element/AssignedFq)
-    // in the given decomposition of x to be a bit (either 0 or 1). 
+    // in the given decomposition of x to be a bit (either 0 or 1).
     constrain_bits(gseccc, &x_bits_be);
 
-    /*
-    let zero_bn = BigUint::zero();
-    let one_bn = BigUint::one();
-    let two_bn = BigUint::from(2u64);
-    let powers_of_two_bn_be: Vec<BigUint> = (0..length)
-        .map(|i| {
-            two_bn.pow((length - 1 - i) as u32)
-        })
-        .collect();
-    let powers_of_two_fq_be: Vec<Fq> = powers_of_two_bn_be
-        .into_iter()
-        .map(|bn| {
-            bn_to_field(&bn)
-        })
-        .collect();
-
-     */
     let mut acc = Fq::one();
     let one_fq = Fq::one();
 
     let mut powers_of_two_fq_be: Vec<Fq> = vec![one_fq];
 
-    (1..length).map(|_| {
+    for _ in 1..length {
         powers_of_two_fq_be.push(acc.double());
-    });
+        acc = acc.double();
+    };
 
     powers_of_two_fq_be.reverse();
 
@@ -246,6 +203,9 @@ fn decompose_into_bits_be(
     let must_equal_x = dot_product(gseccc, &x_bits_be, &powers_of_two_be);
     gseccc.base_integer_ctx.assert_int_equal(&must_equal_x, &x);
 
+    println!("base after dec is {:?}", gseccc.base_integer_ctx.ctx.borrow_mut().base_offset);
+    println!("range after dec is{:?}", gseccc.base_integer_ctx.ctx.borrow_mut().range_offset);
+
     x_bits_be
 }
 
@@ -255,16 +215,11 @@ fn mod2(
 ) -> AssignedFq<Fq, Fr> {
     let p_bits = binary_str_to_assigned_constant_bits(gseccc, P_BINARY_STR);
     let x_bits_be = decompose_into_bits_be(gseccc, x, P_BINARY_STR.len());
-    let y = lexicographical_bitwise_comparison(gseccc, &x_bits_be, &p_bits); // since x is reduced, this is equivalent to x mod p
-    // and y is also 1 cuz x is reduced
+    let y = lexicographical_comparison(gseccc, &x_bits_be, &p_bits);
 
     let one = gseccc.base_integer_ctx.assign_int_constant(Fq::one());
     let two = gseccc.base_integer_ctx.assign_int_constant(Fq::one().double());
 
-    // Let x' be the last entry of x_bits_be.  (This is x mod 2 if the
-    // given bit decomposition of x is canonical, and 1 - (x mod 2) otherwise).
-    // Constrains s = y(2x' + y - 1)/2.  To see why this implies that s = x mod 2,
-    // see https://hackmd.io/@levi-sledd/H1ea4oTYn#sgn0.
     let aux1 = gseccc.base_integer_ctx.int_mul(&two, &x_bits_be[x_bits_be.len() - 1]);
     let aux2 = gseccc.base_integer_ctx.int_sub(&y, &one);
     let aux3 = gseccc.base_integer_ctx.int_add(&aux1, &aux2);
@@ -295,7 +250,7 @@ pub fn sgn0(
     let z_prime_bn = field_to_bn(&z_prime_fq);
     let z_prime = gseccc.base_integer_ctx.assign_w(&z_prime_bn);
 
-    // This constrains a variable z to satisfy z = 
+    // This constrains a variable z to satisfy z =
     // * 1 if x = 0
     // * 0 otherwise.
     let aux1 = gseccc.base_integer_ctx.int_mul(&z_prime, &x.0); // z'x_re
@@ -303,15 +258,20 @@ pub fn sgn0(
     let aux2 = gseccc.base_integer_ctx.int_mul(&x.0, &z); // x_re(1 - z'x_re)
     gseccc.base_integer_ctx.assert_int_equal(&aux2, &zero); // x_re(1 - z'x_re) = 0
 
-    // Constrains sgn0 = x_re_mod2 + (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
-    // To see why these are the right constraints, see
-    // https://hackmd.io/@levi-sledd/H1ea4oTYn#sgn0
     let aux3 = gseccc.base_integer_ctx.int_mul(&z, &x_im_mod2); // z * x_im_mod2
     let aux4 = gseccc.base_integer_ctx.int_mul(&x_re_mod2, &aux3); // z * x_re_mod2 * x_im_mod2
     let aux5 = gseccc.base_integer_ctx.int_sub(&aux3, &aux4); // (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
     let sgn0 = gseccc.base_integer_ctx.int_add(&x_re_mod2, &aux5); // sgn0 = x_re_mod2 + (z * x_im_mod2) - (z * x_re_mod2 * x_im_mod2)
 
     sgn0
+}
+
+fn pretty_print_assigned_fq(
+    gseccc: &mut GeneralScalarEccContext<G1Affine, Fr>,
+    x: &AssignedFq<Fq, Fr>,
+) {
+    let x_fq = gseccc.base_integer_ctx.get_w(x);
+    println!("{:?}", x_fq);
 }
 
 #[test]
@@ -344,8 +304,57 @@ fn does_int_add_reduce_mod_p() {
 }
 
 #[test]
+fn test_binary_str_to_assigned_constant_bits() {
+    let mut gseccc =
+        GeneralScalarEccContext::<G1Affine, Fr>::new(Rc::new(RefCell::new(Context::new())));
+    let six_binary_str_be: &str = "110";
+    let six_assigned_constant_bits_be =
+        binary_str_to_assigned_constant_bits(&mut gseccc, six_binary_str_be);
+
+    println!(
+        "6 in assigned constant bits (big-endian) is {:?}",
+        six_assigned_constant_bits_be
+    );
+}
+
+#[test]
+fn test_lexicographical_bitwise_comparison() {
+    let mut gseccc =
+        GeneralScalarEccContext::<G1Affine, Fr>::new(Rc::new(RefCell::new(Context::new())));
+
+    // 4 decimal big-endian = 100 binary big-endian
+    let four_bn = BigUint::from_str("4").unwrap();
+    let four = gseccc.base_integer_ctx.assign_w(&four_bn);
+
+    // 11 decimal big-endian = 1011 binary big-endian
+    let eleven_bn = BigUint::from_str("11").unwrap();
+    let eleven = gseccc.base_integer_ctx.assign_w(&eleven_bn);
+
+    // 100 decimal big-endian = 1100100 binary big-endian
+    let one_hundred_bn = BigUint::from_str("100").unwrap();
+    let one_hundred = gseccc.base_integer_ctx.assign_w(&eleven_bn);
+
+    // Longest number that we want to compare is 1100100 with a length of 7.
+    let four_bits_be = decompose_into_bits_be(&mut gseccc, &four, 7);
+    // println!("Four expressed as seven bits big-endian = ");
+    // pretty_print_vec_assigned_fq(&mut gseccc, &four_bits_be);
+
+    let eleven_bits_be = decompose_into_bits_be(&mut gseccc, &eleven, 7);
+
+    let one_hundred_bits_be = decompose_into_bits_be(&mut gseccc, &one_hundred, 7);
+
+    // 4 < 11 so should output 1
+    let is_eleven_less_than_four =
+        lexicographical_comparison(&mut gseccc, &eleven_bits_be, &four_bits_be);
+
+    // Printed out 0, so there is an issue here.
+    println!("Is 11 < 4?  Should be -1 = ");
+    pretty_print_assigned_fq(&mut gseccc, &is_eleven_less_than_four);
+}
+
+#[test]
 fn test_bn_to_bits_bn_be_fixed_length() {
-    let nineteen_bn = BigUint::from(19u64);
+    let nineteen_bn = BigUint::from_str("19").unwrap();
     let nineteen_bits_bn_be = bn_to_bits_bn_be_fixed_length(&nineteen_bn, 381);
     println!("As a 381-bit BigUint vector in big-endian binary, 19 = {:?}", nineteen_bits_bn_be);
     println!("Length = {:?}", nineteen_bits_bn_be.len());

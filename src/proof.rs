@@ -175,7 +175,7 @@ pub fn exec_create_host_proof(
             let mut proof_load_info = ProofLoadInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
             prover.exec_create_proof(
                 &$circuit,
-                &vec![vec![]],
+                &vec![],
                 cache_folder.as_path(),
                 param_folder.as_path(),
                 param_file,

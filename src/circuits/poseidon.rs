@@ -86,7 +86,7 @@ impl PoseidonGateConfig {
 
     fn sbox_full<F: FieldExt, const T: usize>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         state: &mut [Limb<F>; T],
         constants: &[F; T],
@@ -99,7 +99,7 @@ impl PoseidonGateConfig {
 
     fn assign_x5_c_line<F: FieldExt>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         x: &Limb<F>,
         c_value: F,
@@ -125,7 +125,7 @@ impl PoseidonGateConfig {
 
     fn assign_permute_helper_line<F: FieldExt, const RATE: usize, const T: usize>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         state: &mut [Limb<F>; T],
         x5_c_v: F,
@@ -229,7 +229,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.poseidon_state.initialize(config, region, offset)
@@ -246,7 +246,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
 
     pub(crate) fn get_permute_result(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE],
         reset: &Limb<F>,
@@ -282,7 +282,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
 
     pub fn assign_permute(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE],
         reset: &Limb<F>,
@@ -302,7 +302,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
@@ -320,7 +320,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
 
     fn x_power5_with_constant(
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         x: &Limb<F>,
         constant: F,
@@ -409,7 +409,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     fn _sbox_full(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         constants: &[F; T],
     ) -> Result<(), Error> {
@@ -422,7 +422,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     fn sbox_part(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         constant: &F,
     ) -> Result<(), Error> {
@@ -436,7 +436,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
         config: &CommonGateConfig,
         extend: &PoseidonGateConfig,
         spec: &Spec<F, T, RATE>,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
     ) -> Result<(), Error> {
@@ -490,7 +490,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     fn absorb_with_pre_constants<const RATE: usize>(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
         pre_constants: &[F; T],
@@ -525,7 +525,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     fn apply_mds(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         mds: &[[F; T]; T],
     ) -> Result<(), Error> {
@@ -552,7 +552,7 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     fn apply_sparse_mds<const RATE: usize>(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         mds: &SparseMDSMatrix<F, T, RATE>,
     ) -> Result<(), Error> {
@@ -593,11 +593,12 @@ mod tests {
     use crate::circuits::CommonGateConfig;
     use crate::host::poseidon::POSEIDON_HASHER_SPEC;
     use crate::value_for_assign;
+    use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
@@ -639,7 +640,7 @@ mod tests {
 
         fn assign_reset(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             reset: bool,
         ) -> Result<Limb<Fr>, Error> {
@@ -656,7 +657,7 @@ mod tests {
 
         fn assign_inputs(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             inputs: &Vec<Fr>,
         ) -> Result<Vec<Limb<Fr>>, Error> {
@@ -680,7 +681,7 @@ mod tests {
 
         fn assign_result(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             result: &Fr,
         ) -> Result<Limb<Fr>, Error> {
@@ -710,7 +711,7 @@ mod tests {
 
     impl Circuit<Fr> for TestCircuit {
         type Config = TestConfig;
-        type FloorPlanner = SimpleFloorPlanner;
+        type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
             Self::default()
@@ -736,31 +737,31 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let mut poseidonchip = PoseidonChip::<Fr, 9, 8>::construct(
-                config.clone().commonconfig,
-                config.clone().poseidonconfig,
-                POSEIDON_HASHER_SPEC.clone(),
-            );
-            let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
                 || "assign poseidon test",
-                |mut region| {
+                |region| {
+                    let mut poseidonchip = PoseidonChip::<Fr, 9, 8>::construct(
+                        config.clone().commonconfig,
+                        config.clone().poseidonconfig,
+                        POSEIDON_HASHER_SPEC.clone(),
+                    );
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+
                     let mut offset = 0;
-                    let result =
-                        helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    let result = helperchip.assign_result(&region, &mut offset, &self.result)?;
                     let inputs =
-                        helperchip.assign_inputs(&mut region, &mut offset, &self.inputs.clone())?;
-                    let reset = helperchip.assign_reset(&mut region, &mut offset, true)?;
+                        helperchip.assign_inputs(&region, &mut offset, &self.inputs.clone())?;
+                    let reset = helperchip.assign_reset(&region, &mut offset, true)?;
                     offset = 0;
                     poseidonchip.poseidon_state.initialize(
                         &config.commonconfig,
-                        &mut region,
+                        &region,
                         &mut offset,
                     )?;
                     poseidonchip.assign_permute(
-                        &mut region,
+                        &region,
                         &mut offset,
                         &inputs.try_into().unwrap(),
                         &reset,

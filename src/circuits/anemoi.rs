@@ -66,7 +66,7 @@ impl<F: FieldExt> AnemoiChip<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.anemoi_state.initialize(config, region, offset)?;
@@ -83,7 +83,7 @@ impl<F: FieldExt> AnemoiChip<F> {
 
     pub fn hash(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         inputs: &[Limb<F>; RATE],
         result: &Limb<F>,
@@ -114,7 +114,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
@@ -127,7 +127,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn apply_sbox_layer(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         // initialize x and y by spliting original state into two
@@ -279,7 +279,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn apply_linear_layer(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.state[1] = self.add(
@@ -303,7 +303,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn apply_round(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         step: usize,
     ) -> Result<(), Error> {
@@ -347,7 +347,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn read_input(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         input: &Limb<F>,
     ) -> Result<(), Error> {
@@ -365,7 +365,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn apply_permutation(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         for i in 0..NUM_HASH_ROUNDS {
@@ -380,7 +380,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn add(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         a: &Limb<F>,
         b: &Limb<F>,
@@ -421,7 +421,7 @@ impl<F: FieldExt> AnemoiState<F> {
     pub fn exp_inv_alpha(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         x: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
@@ -737,7 +737,7 @@ impl<F: FieldExt> AnemoiState<F> {
     fn mul(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         a: &Limb<F>,
         b: &Limb<F>,
@@ -778,7 +778,7 @@ impl<F: FieldExt> AnemoiState<F> {
     fn mul_by_generator(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         x: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
@@ -817,14 +817,14 @@ impl<F: FieldExt> AnemoiState<F> {
 // test
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fq as Felt;
+    use halo2_proofs::{circuit::floor_planner::FlatFloorPlanner, dev::MockProver};
 
     use crate::circuits::CommonGateConfig;
     use crate::value_for_assign;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
@@ -1154,7 +1154,7 @@ mod tests {
 
         fn assign_inputs(
             &self,
-            region: &mut Region<Felt>,
+            region: &Region<Felt>,
             offset: &mut usize,
             inputs: &[Felt; RATE],
         ) -> Result<[Limb<Felt>; RATE], Error> {
@@ -1175,7 +1175,7 @@ mod tests {
 
         fn assign_result(
             &self,
-            region: &mut Region<Felt>,
+            region: &Region<Felt>,
             offset: &mut usize,
             result: &Felt,
         ) -> Result<Limb<Felt>, Error> {
@@ -1204,7 +1204,7 @@ mod tests {
 
     impl Circuit<Felt> for TestCircuit {
         type Config = TestConfig;
-        type FloorPlanner = SimpleFloorPlanner;
+        type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
             Self::default()
@@ -1227,29 +1227,28 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Felt>,
+            layouter: impl Layouter<Felt>,
         ) -> Result<(), Error> {
-            let mut anemoichip =
-                AnemoiChip::<Felt>::construct(config.clone().anemoiconfig, C, D, DELTA);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
             layouter.assign_region(
                 || "assign anemoi test",
-                |mut region| {
+                |region| {
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut anemoichip =
+                        AnemoiChip::<Felt>::construct(config.clone().anemoiconfig, C, D, DELTA);
                     let mut offset = 0;
-                    let result =
-                        helperchip.assign_result(&mut region, &mut offset, &self.result)?;
+                    let result = helperchip.assign_result(&region, &mut offset, &self.result)?;
                     let input = helperchip.assign_inputs(
-                        &mut region,
+                        &region,
                         &mut offset,
                         &self.inputs.clone().try_into().unwrap(),
                     )?;
                     offset = 0;
                     anemoichip.anemoi_state.initialize(
                         &config.anemoiconfig,
-                        &mut region,
+                        &region,
                         &mut offset,
                     )?; // init to all zeros
-                    anemoichip.hash(&mut region, &mut offset, &input, &result)?;
+                    anemoichip.hash(&region, &mut offset, &input, &result)?;
                     Ok(())
                 },
             )?;

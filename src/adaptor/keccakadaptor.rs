@@ -60,7 +60,7 @@ impl HostOpSelector for KeccakChip<Fr> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -178,7 +178,7 @@ impl HostOpSelector for KeccakChip<Fr> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
-        _layouter: &mut impl Layouter<Fr>,
+        _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -187,7 +187,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
     ) -> Result<(), Error> {
         println!("keccak total args is {}", arg_cells.len());
         *offset = {

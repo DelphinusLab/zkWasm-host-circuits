@@ -92,7 +92,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn assign_constant_number(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: Number<F>,
@@ -114,7 +114,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn assign_number(
         &self,
-        _region: &mut Region<F>,
+        _region: &Region<F>,
         _range_check_chip: &mut RangeCheckChip<F>,
         _offset: &mut usize,
         number: Number<F>,
@@ -124,7 +124,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     pub fn mod_add(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         lhs: &Number<F>,
@@ -175,7 +175,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn mod_native_mul(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         rem: &Number<F>,
@@ -212,7 +212,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn mod_power108m1(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: &Number<F>,
@@ -248,7 +248,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn mod_power216(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         number: &Number<F>,
@@ -284,7 +284,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn mod_power108m1_mul(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         lhs: &Number<F>,
@@ -326,7 +326,7 @@ impl<F: FieldExt> ModExpChip<F> {
     ///
     fn mod_power216_mul(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         lhs: &Number<F>,
@@ -421,7 +421,7 @@ impl<F: FieldExt> ModExpChip<F> {
 
     fn mod_power108m1_zero(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         limbs: Vec<Limb<F>>,
@@ -467,7 +467,7 @@ impl<F: FieldExt> ModExpChip<F> {
     ///
     fn mod_power216_zero(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         limbs: Vec<Limb<F>>,
@@ -519,7 +519,7 @@ impl<F: FieldExt> ModExpChip<F> {
     ///   x*y = q*m + r
     fn mod_mult(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         lhs: &Number<F>,
@@ -588,7 +588,7 @@ impl<F: FieldExt> ModExpChip<F> {
     /// * `one`  - the value of 1 as a Number<F>
     fn select(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         cond: &Limb<F>,
@@ -616,7 +616,7 @@ impl<F: FieldExt> ModExpChip<F> {
     /// base^exp mod modulus
     pub fn mod_exp(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         range_check_chip: &mut RangeCheckChip<F>,
         offset: &mut usize,
         base: &Number<F>,
@@ -670,12 +670,13 @@ mod tests {
     use crate::circuits::CommonGateConfig;
     use crate::utils::Limb;
     use crate::value_for_assign;
+    use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
     use num_bigint::BigUint;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
@@ -717,7 +718,7 @@ mod tests {
 
         fn assign_base(
             &self,
-            _region: &mut Region<Fr>,
+            _region: &Region<Fr>,
             _offset: &mut usize,
             base: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -726,7 +727,7 @@ mod tests {
 
         fn assign_modulus(
             &self,
-            _region: &mut Region<Fr>,
+            _region: &Region<Fr>,
             _offset: &mut usize,
             modulus: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -735,7 +736,7 @@ mod tests {
 
         fn assign_exp(
             &self,
-            _region: &mut Region<Fr>,
+            _region: &Region<Fr>,
             _offset: &mut usize,
             exponent: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -744,7 +745,7 @@ mod tests {
 
         fn assign_results(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             result: &BigUint,
         ) -> Result<Number<Fr>, Error> {
@@ -798,7 +799,7 @@ mod tests {
 
             impl Circuit<Fr> for $circuit_name {
                 type Config = TestConfig;
-                type FloorPlanner = SimpleFloorPlanner;
+                type FloorPlanner = FlatFloorPlanner;
 
                 fn without_witnesses(&self) -> Self {
                     //Self::default()
@@ -982,24 +983,24 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "mod_power108m1",
-                |mut region| {
-                    range_chip.initialize(&mut region)?;
+                |region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+                    range_chip.initialize(&region)?;
                     let mut offset = 0;
                     let _ = &self.op_b;
                     let _ = &self.op_c;
                     let _ = &self.op_d;
-                    let a = helperchip.assign_base(&mut region, &mut offset, &self.op_a)?;
+                    let a = helperchip.assign_base(&region, &mut offset, &self.op_a)?;
                     let result =
-                        helperchip.assign_results(&mut region, &mut offset, &self.bn_test_res)?;
+                        helperchip.assign_results(&region, &mut offset, &self.bn_test_res)?;
                     let rem =
-                        modexpchip.mod_power108m1(&mut region, &mut range_chip, &mut offset, &a)?;
+                        modexpchip.mod_power108m1(&region, &mut range_chip, &mut offset, &a)?;
                     println!("\nbn_res \t\t= 0x{}", &self.bn_test_res.to_str_radix(16));
                     println!("\nrem is (hex):");
                     for i in 0..4 {
@@ -1027,24 +1028,24 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "mod_power108m1_mul",
-                |mut region| {
-                    range_chip.initialize(&mut region)?;
+                |region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
+                    range_chip.initialize(&region)?;
                     let mut offset = 0;
                     let _ = &self.op_c;
                     let _ = &self.op_d;
                     let _result =
-                        helperchip.assign_results(&mut region, &mut offset, &self.bn_test_res)?;
-                    let lhs = helperchip.assign_modulus(&mut region, &mut offset, &self.op_a)?;
-                    let rhs = helperchip.assign_base(&mut region, &mut offset, &self.op_b)?;
+                        helperchip.assign_results(&region, &mut offset, &self.bn_test_res)?;
+                    let lhs = helperchip.assign_modulus(&region, &mut offset, &self.op_a)?;
+                    let rhs = helperchip.assign_base(&region, &mut offset, &self.op_b)?;
                     let res = modexpchip.mod_power108m1_mul(
-                        &mut region,
+                        &region,
                         &mut range_chip,
                         &mut offset,
                         &lhs,
@@ -1066,14 +1067,14 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "test circuit mod_power216_mul",
                 |mut region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let _ = &self.op_c;
@@ -1105,14 +1106,14 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "test circuit 108m1 vs 216",
                 |mut region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let lhs = helperchip.assign_base(&mut region, &mut offset, &self.op_a)?;
@@ -1197,14 +1198,14 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "test circuit mod_mult",
                 |mut region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let _ = &self.op_d;
@@ -1250,14 +1251,14 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
-            let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
             layouter.assign_region(
                 || "assign mod exp",
                 |mut region| {
+                    let modexpchip = ModExpChip::<Fr>::new(config.clone().modexpconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
+                    let mut range_chip = RangeCheckChip::<Fr>::new(config.clone().rangecheckconfig);
                     range_chip.initialize(&mut region)?;
                     let mut offset = 0;
                     let _ = &self.op_d;

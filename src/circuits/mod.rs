@@ -47,7 +47,7 @@ pub trait LookupAssistConfig {
 pub trait LookupAssistChip<F: FieldExt> {
     fn provide_lookup_evidence(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         value: F,
         sz: u64,
     ) -> Result<(), Error>;
@@ -168,7 +168,7 @@ impl CommonGateConfig {
     /// Select between f and t: if cond then t else f
     pub fn select<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         cond: &Limb<F>,
@@ -214,7 +214,7 @@ impl CommonGateConfig {
     /// limbsize needs to be a multiple of 4
     pub fn decompose_limb<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         limb: &Limb<F>,
@@ -371,7 +371,7 @@ impl CommonGateConfig {
     /// return (a, [a0,a1,a2,a3,a4,a5,a6,a7])
     pub fn decompose_bytes<F: FieldExt>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         limb: &Limb<F>,
         rotate: usize, //how limbs rotated towards high bits
@@ -459,7 +459,7 @@ impl CommonGateConfig {
     /// put pure witness advices with no constraints.
     fn assign_witness<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         _lookup_assist_chip: &mut LC,
         offset: &mut usize,
         value: [Option<Limb<F>>; 5],
@@ -504,7 +504,7 @@ impl CommonGateConfig {
 
     fn assign_line<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         value: [Option<Limb<F>>; 6],
@@ -593,7 +593,7 @@ impl CommonGateConfig {
     /// check if limb is equal to constant F
     pub fn eq_constant<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         limb: &Limb<F>,
@@ -670,7 +670,7 @@ impl CommonGateConfig {
 
     pub fn assign_constant<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         value: &F,
@@ -706,7 +706,7 @@ impl CommonGateConfig {
     // Support to return inputs' cells and add eq_constraints for res
     fn sum_with_constant_ext<F: FieldExt, LC: LookupAssistChip<F>, LB>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         inputs: Vec<(LB, F)>,
@@ -830,7 +830,7 @@ impl CommonGateConfig {
 
     fn sum_with_constant<F: FieldExt, LC: LookupAssistChip<F>>(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         lookup_assist_chip: &mut LC,
         offset: &mut usize,
         inputs: Vec<(&Limb<F>, F)>,

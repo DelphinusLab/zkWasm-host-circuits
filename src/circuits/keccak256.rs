@@ -49,7 +49,7 @@ impl<F: FieldExt> KeccakChip<F> {
     pub fn initialize(
         &mut self,
         config: &KeccakGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let mut bitschip = BitsArithChip::new(self.config.arith.clone());
@@ -71,7 +71,7 @@ impl<F: FieldExt> KeccakChip<F> {
     // assign the r as witness to call the permutation function and constrain the result to be the same as the digest
     pub fn get_permute_result(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
@@ -132,7 +132,7 @@ impl<F: FieldExt> KeccakChip<F> {
 
     pub(crate) fn assign_permute(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         values: &[Limb<F>; RATE_LANES],
         reset: &Limb<F>,
@@ -154,7 +154,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
@@ -181,7 +181,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn xor_not_and(
         &self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         a: &Limb<F>,
         b: &Limb<F>,
@@ -210,7 +210,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn xor(
         &self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         lhs: &Limb<F>,
         rhs: &Limb<F>,
@@ -232,7 +232,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn rotate_left(
         &self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         input: &Limb<F>,
         n: usize,
@@ -290,7 +290,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn theta(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let mut c = self.default[0].clone();
@@ -321,7 +321,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn rho(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let mut out = self.default.clone();
@@ -348,7 +348,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn pi(
         &mut self,
         _config: &CommonGateConfig,
-        _region: &mut Region<F>,
+        _region: &Region<F>,
         _offset: &mut usize,
     ) -> Result<(), Error> {
         let mut out = self.default.clone();
@@ -366,7 +366,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn xi(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let next = |x| (x + 1) % 5;
@@ -394,7 +394,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn iota(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         round: usize,
     ) -> Result<(), Error> {
@@ -405,7 +405,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn round(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         round: usize,
     ) -> Result<(), Error> {
@@ -420,7 +420,7 @@ impl<F: FieldExt> KeccakState<F> {
     pub fn permute(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         for round in 0..N_R {

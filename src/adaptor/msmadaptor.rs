@@ -70,7 +70,7 @@ impl HostOpSelector for AltJubChip<Fr> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -170,7 +170,7 @@ impl HostOpSelector for AltJubChip<Fr> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
-        _layouter: &mut impl Layouter<Fr>,
+        _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -179,7 +179,7 @@ impl HostOpSelector for AltJubChip<Fr> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
     ) -> Result<(), Error> {
         println!("msm adaptor total args is {}", arg_cells.len());
         *offset = {

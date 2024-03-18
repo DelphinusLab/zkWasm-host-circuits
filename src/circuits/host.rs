@@ -139,7 +139,7 @@ impl HostOpConfig {
 
     pub fn assign_merged_operands(
         &self,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         offset: &mut usize,
         values: Vec<&((Fr, Fr), Fr)>, //(operand, opcode), index
         indicator: Fr,
@@ -188,7 +188,7 @@ impl HostOpConfig {
 
     pub fn assign_one_line(
         &self,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         offset: &mut usize,
         operand: Fr,
         opcode: Fr,
@@ -224,7 +224,7 @@ pub trait HostOpSelector {
     fn opcodes() -> Vec<Fr>;
     fn max_rounds(k: usize) -> usize;
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -235,12 +235,12 @@ pub trait HostOpSelector {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
     ) -> Result<(), Error>;
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error>;
 }
 
@@ -301,7 +301,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
 
     pub fn assign(
         &self,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         arg_offset: &mut usize,
         shared_operands: &Vec<Fr>,

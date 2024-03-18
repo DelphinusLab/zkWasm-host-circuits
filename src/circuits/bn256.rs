@@ -147,7 +147,7 @@ fn get_cell_of_ctx(
 }
 
 fn enable_fr_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fr: &AssignedValue<Fr>,
     input: &Vec<Limb<Fr>>,
@@ -159,7 +159,7 @@ fn enable_fr_permute(
 }
 
 fn enable_fq_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq: &AssignedFq<Bn256Fq, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -173,7 +173,7 @@ fn enable_fq_permute(
 }
 
 fn enable_g1affine_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -188,7 +188,7 @@ fn enable_g1affine_permute(
 }
 
 fn enable_g2affine_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedG2Affine<G1Affine, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -205,7 +205,7 @@ fn enable_g2affine_permute(
 }
 
 fn enable_fq12_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq12: &AssignedFq12<Bn256Fq, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -310,7 +310,7 @@ impl Bn256PairChip<Fr> {
         a: &Vec<Limb<Fr>>,  //G1 (3 * 2 + 1)
         b: &Vec<Limb<Fr>>,  //G2 (3 * 4 + 1)
         ab: &Vec<Limb<Fr>>, // Fq_12 (3 * 12)
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
         let ctx = IntegerContext::<Bn256Fq, Fr>::new(context);
@@ -327,17 +327,17 @@ impl Bn256PairChip<Fr> {
 
         layouter.assign_region(
             || "base",
-            |mut region| {
+            |region| {
                 let timer = start_timer!(|| "assign");
                 let cells = records.assign_all(
-                    &mut region,
+                    &region,
                     &self.base_chip,
                     &self.range_chip,
                     &self.point_select_chip,
                 )?;
-                enable_g1affine_permute(&mut region, &cells, &a_g1, a)?;
-                enable_g2affine_permute(&mut region, &cells, &b_g2, b)?;
-                enable_fq12_permute(&mut region, &cells, &ab_fq12, ab)?;
+                enable_g1affine_permute(region, &cells, &a_g1, a)?;
+                enable_g2affine_permute(region, &cells, &b_g2, b)?;
+                enable_fq12_permute(region, &cells, &ab_fq12, ab)?;
                 end_timer!(timer);
                 Ok(())
             },
@@ -389,7 +389,7 @@ impl Bn256SumChip<Fr> {
     pub fn load_bn256_sum_circuit(
         &self,
         ls: &Vec<Limb<Fr>>, // n * (new, fr , g1, sum)
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let context = Rc::new(RefCell::new(Context::new()));
         let ctx = IntegerContext::<Bn256Fq, Fr>::new(context);

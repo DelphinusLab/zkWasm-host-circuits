@@ -92,7 +92,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -259,7 +259,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
-        _layouter: &mut impl Layouter<Fr>,
+        _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -268,7 +268,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
     ) -> Result<(), Error> {
         let default_index = 1u64 << DEPTH;
         *offset = {

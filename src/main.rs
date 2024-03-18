@@ -1,4 +1,3 @@
-#![feature(array_zip)]
 #![feature(slice_flatten)]
 //#![deny(warnings)]
 mod adaptor;

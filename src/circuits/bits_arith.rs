@@ -63,7 +63,7 @@ pub struct BitsArithChip<F: FieldExt> {
 impl<F: FieldExt> LookupAssistChip<F> for BitsArithChip<F> {
     fn provide_lookup_evidence(
         &mut self,
-        _region: &mut Region<F>,
+        _region: &Region<F>,
         _value: F,
         _sz: u64,
     ) -> Result<(), Error> {
@@ -94,7 +94,7 @@ impl<F: FieldExt> BitsArithChip<F> {
 
     fn assign_table_entries(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         opcall: impl Fn(u8, u8) -> u8,
         opcode: u8,
         offset: &mut usize,
@@ -121,7 +121,7 @@ impl<F: FieldExt> BitsArithChip<F> {
 
     /// initialize the table columns that contains every possible result of 8-bit value via XOR or ADD operation
     /// initialize needs to be called before using the BitsArithchip
-    pub fn initialize(&mut self, region: &mut Region<F>, offset: &mut usize) -> Result<(), Error> {
+    pub fn initialize(&mut self, region: &Region<F>, offset: &mut usize) -> Result<(), Error> {
         // initialize the XOR table with the encoded value
         self.assign_table_entries(region, |x, y| x ^ y, BIT_XOR, offset)?;
         self.assign_table_entries(region, |x, y| x & y, BIT_AND, offset)?;

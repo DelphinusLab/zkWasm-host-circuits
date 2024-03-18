@@ -264,7 +264,7 @@ impl<F: FieldExt> RMD160Chip<F> {
 
     fn assign_next(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         start_offset: usize,
         previous: &[Limb<F>; 5],
         input: &Limb<F>,
@@ -557,7 +557,7 @@ impl<F: FieldExt> RMD160Chip<F> {
 
     pub fn assign_compress(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         start_offset: usize,
         r0: &[Limb<F>; 5],
         r1: &[Limb<F>; 5],
@@ -795,13 +795,13 @@ impl<F: FieldExt> RMD160Chip<F> {
     ) -> Result<[Limb<F>; 5], Error> {
         let r = layouter.assign_region(
             || "leaf layer",
-            |mut region| {
+            |region| {
                 let mut r1 = start_buf.clone();
                 let mut start_offset = 0;
                 for round in 0..5 {
                     for index in 0..16 {
                         r1 = self.assign_next(
-                            &mut region,
+                            &region,
                             start_offset,
                             &r1,
                             &self.rotate_inputs(inputs, O[round])[index],
@@ -828,7 +828,7 @@ impl<F: FieldExt> RMD160Chip<F> {
                 for round in 0..5 {
                     for index in 0..16 {
                         r2 = self.assign_next(
-                            &mut region,
+                            region,
                             start_offset,
                             &r2,
                             &self.rotate_inputs(&inputs, PO[round])[index],
@@ -841,7 +841,7 @@ impl<F: FieldExt> RMD160Chip<F> {
                         start_offset += 5;
                     }
                 }
-                self.assign_compress(&mut region, start_offset, start_buf, &r1, &r2)
+                self.assign_compress(region, start_offset, start_buf, &r1, &r2)
             },
         )?;
         Ok(r)
@@ -850,11 +850,12 @@ impl<F: FieldExt> RMD160Chip<F> {
 
 #[cfg(test)]
 mod tests {
+    use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
     use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, SimpleFloorPlanner},
+        circuit::{Chip, Layouter},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
@@ -906,7 +907,7 @@ mod tests {
         ) -> Result<[Limb<Fr>; 5], Error> {
             layouter.assign_region(
                 || "leaf layer",
-                |mut region| {
+                |region| {
                     let mut r = vec![];
                     for round in 0..5 {
                         let cell = region.assign_advice(
@@ -930,7 +931,7 @@ mod tests {
         ) -> Result<[Limb<Fr>; 16], Error> {
             layouter.assign_region(
                 || "leaf layer",
-                |mut region| {
+                |region| {
                     let mut r = vec![];
                     for i in 0..16 {
                         let cell = region.assign_advice(
@@ -960,7 +961,7 @@ mod tests {
 
     impl Circuit<Fr> for RMD160Circuit {
         type Config = TestConfig;
-        type FloorPlanner = SimpleFloorPlanner;
+        type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
             Self::default()

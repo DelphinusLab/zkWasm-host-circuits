@@ -165,7 +165,7 @@ fn get_cell_of_ctx(
 }
 
 fn enable_fr_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fr: &AssignedInteger<Scalar, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -179,7 +179,7 @@ fn enable_fr_permute(
 }
 
 fn enable_fq_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq: &AssignedFq<Bls381Fq, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -193,7 +193,7 @@ fn enable_fq_permute(
 }
 
 fn enable_g1affine_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedPoint<G1Affine, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -208,7 +208,7 @@ fn enable_g1affine_permute(
 }
 
 fn enable_g2affine_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     point: &AssignedG2Affine<G1Affine, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -225,7 +225,7 @@ fn enable_g2affine_permute(
 }
 
 fn enable_fq12_permute(
-    region: &mut Region<'_, Fr>,
+    region: &Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq12: &AssignedFq12<Bls381Fq, Fr>,
     input: &Vec<Limb<Fr>>,
@@ -330,7 +330,7 @@ impl Bls381PairChip<Fr> {
         a: &Vec<Limb<Fr>>,  //G1 (4 * 2 + 1)
         b: &Vec<Limb<Fr>>,  //G2 (4 * 4 + 1)
         ab: &Vec<Limb<Fr>>, // Fq_12 (4 * 12)
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);
@@ -410,7 +410,7 @@ impl Bls381SumChip<Fr> {
     pub fn load_bls381_sum_circuit(
         &self,
         ls: &Vec<Limb<Fr>>, // n * (new, fr , g1, sum)
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         let contex = Rc::new(RefCell::new(Context::new()));
         let mut ctx = GeneralScalarEccContext::<G1Affine, Fr>::new(contex);

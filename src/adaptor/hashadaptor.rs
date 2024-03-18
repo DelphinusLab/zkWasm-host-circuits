@@ -32,7 +32,7 @@ impl LookupAssistConfig for () {
 impl<F: FieldExt> LookupAssistChip<F> for () {
     fn provide_lookup_evidence(
         &mut self,
-        _region: &mut Region<F>,
+        _region: &Region<F>,
         _value: F,
         _sz: u64,
     ) -> Result<(), Error> {
@@ -86,7 +86,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -199,7 +199,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     fn synthesize_separate(
         &mut self,
         _arg_cells: &Vec<Limb<Fr>>,
-        _layouter: &mut impl Layouter<Fr>,
+        _layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -208,7 +208,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         &mut self,
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
         *offset = {

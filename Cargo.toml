@@ -20,7 +20,7 @@ strum_macros = "0.24.1"
 ff = "0.12"
 cfg-if = "1.0.0"
 halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", default-features = true }
-halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.3.3"}
+halo2ecc-s = { git = "https://github.com/lanbones/halo2ecc-s.git", tag = "bisect-lookup-0.4.0"}
 itertools = "0.10.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/lanbones/poseidon" }
@@ -40,7 +40,9 @@ lru = "0.11.0"
 
 [features]
 default = ["mongo-tokio-sync"]
+perf = ["circuits-batcher/perf"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]
 cuda = ["halo2_proofs/cuda"]
 complex-leaf = []
+

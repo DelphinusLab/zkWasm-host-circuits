@@ -127,7 +127,7 @@ macro_rules! customized_circuits_expand {
 
             pub fn assign_cell<F:FieldExt>(
                 &self,
-                region: &mut Region<F>,
+                region: &Region<F>,
                 start_offset: usize,
                 gate_cell: &GateCell,
                 value: F,
@@ -157,7 +157,7 @@ macro_rules! customized_circuits_expand {
 
             pub fn bind_cell<F:FieldExt>(
                 &self,
-                region: &mut Region<F>,
+                region: &Region<F>,
                 start_offset: usize,
                 cell: &GateCell,
                 value: &Limb<F>,
@@ -170,7 +170,7 @@ macro_rules! customized_circuits_expand {
 
             pub fn enable_selector<F:FieldExt>(
                 &self,
-                region: &mut Region<F>,
+                region: &Region<F>,
                 start_offset: usize,
                 gate_cell: &GateCell,
             ) -> Result<(), Error> {

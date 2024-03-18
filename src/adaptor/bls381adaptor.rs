@@ -126,7 +126,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -292,7 +292,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         let a = arg_cells[0..9].to_vec();
@@ -306,7 +306,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
-        _local_region: &mut Region<Fr>,
+        _local_region: &Region<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -339,7 +339,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     }
 
     fn assign(
-        region: &mut Region<Fr>,
+        region: &Region<Fr>,
         k: usize,
         _offset: &mut usize,
         shared_operands: &Vec<Fr>,
@@ -516,7 +516,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
     fn synthesize_separate(
         &mut self,
         arg_cells: &Vec<Limb<Fr>>,
-        layouter: &mut impl Layouter<Fr>,
+        layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
         self.load_bls381_sum_circuit(&arg_cells, layouter)?;
@@ -527,7 +527,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         &mut self,
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
-        _local_region: &mut Region<Fr>,
+        _local_region: &Region<Fr>,
     ) -> Result<(), Error> {
         Ok(())
     }

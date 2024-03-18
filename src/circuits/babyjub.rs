@@ -44,7 +44,7 @@ impl<F: FieldExt> JubState<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
@@ -96,7 +96,7 @@ impl<F: FieldExt> AltJubChip<F> {
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
         self.state.initialize(config, region, offset)
@@ -104,7 +104,7 @@ impl<F: FieldExt> AltJubChip<F> {
 
     pub fn assign_incremental_msm(
         &mut self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         point: &Point<F>,
         scalar: &Limb<F>,
@@ -157,7 +157,7 @@ impl<F: FieldExt> AltJubChip<F> {
 
     pub fn add(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         lhs: &Point<F>,
         rhs: &Point<F>,
@@ -535,7 +535,7 @@ impl<F: FieldExt> AltJubChip<F> {
 
     pub fn mul_scalar(
         &self,
-        region: &mut Region<F>,
+        region: &Region<F>,
         offset: &mut usize,
         lhs: &Limb<F>,
         rhs: &Point<F>,
@@ -578,14 +578,14 @@ impl<F: FieldExt> AltJubChip<F> {
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::dev::MockProver;
     use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::{circuit::floor_planner::FlatFloorPlanner, dev::MockProver};
 
     use crate::circuits::CommonGateConfig;
     use crate::value_for_assign;
 
     use halo2_proofs::{
-        circuit::{Chip, Layouter, Region, SimpleFloorPlanner},
+        circuit::{Chip, Layouter, Region},
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
     };
 
@@ -659,7 +659,7 @@ mod tests {
 
         fn assign_p1(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             x_val: Fr,
             y_val: Fr,
@@ -686,7 +686,7 @@ mod tests {
 
         fn assign_p2(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             x_val: Fr,
             y_val: Fr,
@@ -713,7 +713,7 @@ mod tests {
 
         fn assign_addition_result(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             p: &Point<Fr>,
         ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
@@ -736,7 +736,7 @@ mod tests {
 
         fn assign_known_val(
             &self,
-            region: &mut Region<Fr>,
+            region: &Region<Fr>,
             offset: &mut usize,
             x_val: Fr,
             y_val: Fr,
@@ -781,7 +781,7 @@ mod tests {
 
     impl Circuit<Fr> for AddTestCircuit {
         type Config = AddTestConfig;
-        type FloorPlanner = SimpleFloorPlanner;
+        type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
             Self::default()
@@ -804,25 +804,22 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let altjubchip = AltJubChip::<Fr>::new(config.clone().altjubconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
             // addition test
             layouter.assign_region(
                 || "test addition",
-                |mut region| {
+                |region| {
+                    let altjubchip = AltJubChip::<Fr>::new(config.clone().altjubconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
                     let mut offset = 0;
                     // point 1
-                    let p1 =
-                        helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
-                    let p2 =
-                        helperchip.assign_p2(&mut region, &mut offset, self.p2_x, self.p2_y)?;
-                    let p3 = altjubchip.add(&mut region, &mut offset, &p1, &p2)?;
-                    let (x, y) =
-                        helperchip.assign_addition_result(&mut region, &mut offset, &p3)?;
+                    let p1 = helperchip.assign_p1(&region, &mut offset, self.p1_x, self.p1_y)?;
+                    let p2 = helperchip.assign_p2(&region, &mut offset, self.p2_x, self.p2_y)?;
+                    let p3 = altjubchip.add(&region, &mut offset, &p1, &p2)?;
+                    let (x, y) = helperchip.assign_addition_result(&region, &mut offset, &p3)?;
                     let (fixed_x, fixed_y) = helperchip.assign_known_val(
-                        &mut region,
+                        &region,
                         &mut offset,
                         self.known_x,
                         self.known_y,
@@ -858,7 +855,7 @@ mod tests {
 
     impl Circuit<Fr> for MulTestCircuit {
         type Config = MulTestConfig;
-        type FloorPlanner = SimpleFloorPlanner;
+        type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
             Self::default()
@@ -881,28 +878,26 @@ mod tests {
         fn synthesize(
             &self,
             config: Self::Config,
-            mut layouter: impl Layouter<Fr>,
+            layouter: impl Layouter<Fr>,
         ) -> Result<(), Error> {
-            let altjubchip = AltJubChip::<Fr>::new(config.clone().altjubconfig);
-            let helperchip = HelperChip::new(config.clone().helperconfig);
             // addition test
             layouter.assign_region(
                 || "test addition",
-                |mut region| {
+                |region| {
+                    let altjubchip = AltJubChip::<Fr>::new(config.clone().altjubconfig);
+                    let helperchip = HelperChip::new(config.clone().helperconfig);
                     let mut offset = 0;
                     // point 1
-                    let p1 =
-                        helperchip.assign_p1(&mut region, &mut offset, self.p1_x, self.p1_y)?;
+                    let p1 = helperchip.assign_p1(&region, &mut offset, self.p1_x, self.p1_y)?;
                     let p3 = altjubchip.mul_scalar(
-                        &mut region,
+                        &region,
                         &mut offset,
                         &Limb::new(None, self.scalar.clone()),
                         &p1,
                     )?;
-                    let (x, y) =
-                        helperchip.assign_addition_result(&mut region, &mut offset, &p3)?;
+                    let (x, y) = helperchip.assign_addition_result(&region, &mut offset, &p3)?;
                     let (fixed_x, fixed_y) = helperchip.assign_known_val(
-                        &mut region,
+                        &region,
                         &mut offset,
                         self.mul_result_x,
                         self.mul_result_y,

@@ -10,7 +10,8 @@ pub mod modexp;
 pub mod poseidon;
 pub mod range;
 pub mod rmd160;
-//pub(crate) mod keccak_arith_table;
+pub mod map_to_curve;
+pub mod sgn0;
 
 use crate::utils::{field_to_bn, field_to_u64, GateCell, Limb};
 

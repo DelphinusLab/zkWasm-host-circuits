@@ -1382,14 +1382,25 @@ dependencies = [
  "ark-std 0.4.0",
  "blake2b_simd",
  "halo2_proofs",
- "halo2ecc-s",
+ "halo2ecc-s 0.3.2 (git+https://github.com/lanbones/halo2ecc-s.git?tag=bisect-lookup-0.4.0)",
  "lazy_static",
  "num-bigint",
  "num-integer",
- "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon.git)",
+ "poseidon",
  "sha2",
  "sha3",
  "tera",
+]
+
+[[package]]
+name = "halo2ecc-s"
+version = "0.3.2"
+source = "git+https://github.com/DelphinusLab/halo2ecc-s.git?tag=bisect-lookup-0.4.0#eef56995f5729083d54b89faa30d5f90277acc22"
+dependencies = [
+ "halo2_proofs",
+ "num-bigint",
+ "num-integer",
+ "rayon",
 ]
 
 [[package]]
@@ -2270,16 +2281,7 @@ dependencies = [
 [[package]]
 name = "poseidon"
 version = "0.2.0"
-source = "git+https://github.com/DelphinusLab/poseidon.git#58835e054512ad7833df6d20479e9e0e034a073b"
-dependencies = [
- "halo2_proofs",
- "subtle",
-]
-
-[[package]]
-name = "poseidon"
-version = "0.2.0"
-source = "git+https://github.com/lanbones/poseidon#58835e054512ad7833df6d20479e9e0e034a073b"
+source = "git+https://github.com/DelphinusLab/poseidon#58835e054512ad7833df6d20479e9e0e034a073b"
 dependencies = [
  "halo2_proofs",
  "subtle",
@@ -3720,14 +3722,14 @@ dependencies = [
  "clap",
  "ff",
  "halo2_proofs",
- "halo2ecc-s",
+ "halo2ecc-s 0.3.2 (git+https://github.com/DelphinusLab/halo2ecc-s.git?tag=bisect-lookup-0.4.0)",
  "hex",
  "itertools",
  "lazy_static",
  "lru",
  "mongodb",
  "num-bigint",
- "poseidon 0.2.0 (git+https://github.com/lanbones/poseidon)",
+ "poseidon",
  "rand",
  "rand_core",
  "ripemd",

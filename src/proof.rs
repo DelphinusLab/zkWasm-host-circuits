@@ -19,6 +19,7 @@ use halo2_proofs::{
 use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use circuits_batcher::args::HashType::Poseidon;
+use circuits_batcher::args::OpenSchema;
 use circuits_batcher::proof::{ProofLoadInfo, ProofPieceInfo};
 
 use crate::host::ExternalHostCallEntryTable;
@@ -182,6 +183,7 @@ pub fn exec_create_host_proof(
                 PKEY_CACHE.lock().as_mut().unwrap(),
                 K_PARAMS_CACHE.lock().as_mut().unwrap(),
                 Poseidon,
+                OpenSchema::GWC
             );
             //prover.mock_proof(k as u32);
             proof_load_info.append_single_proof(prover);

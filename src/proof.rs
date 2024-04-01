@@ -10,6 +10,7 @@ use crate::circuits::{
     poseidon::PoseidonChip,
 };
 use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
+use halo2_proofs::pairing::bn256::Bn256;
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::Layouter,
@@ -20,7 +21,7 @@ use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use circuits_batcher::args::HashType::Poseidon;
 use circuits_batcher::args::OpenSchema;
-use circuits_batcher::proof::{ProofLoadInfo, ProofPieceInfo};
+use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
 
 use crate::host::ExternalHostCallEntryTable;
 use serde::{Deserialize, Serialize};
@@ -164,30 +165,28 @@ pub fn exec_create_host_proof(
 ) {
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
-    use circuits_batcher::proof::K_PARAMS_CACHE;
-    use circuits_batcher::proof::PKEY_CACHE;
+
+    let mut params_cache = ParamsCache::<Bn256>::new(5, param_folder.clone());
+    let mut pkey_cache = ProvingKeyCache::new(5, param_folder.clone());
     macro_rules! gen_proof {
         ($circuit: expr) => {
             let prover: ProofPieceInfo =
                 ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0);
-            let param_file = format!("K{}.params", k);
-            let mut proof_load_info =
-                ProofLoadInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
-            prover.exec_create_proof(
+            let mut proof_gen_info =
+                ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
+            let proof = prover.exec_create_proof(
                 &$circuit,
                 &vec![],
-                cache_folder.as_path(),
-                param_folder.as_path(),
-                param_file,
                 k,
-                PKEY_CACHE.lock().as_mut().unwrap(),
-                K_PARAMS_CACHE.lock().as_mut().unwrap(),
+                &mut pkey_cache,
+                &mut params_cache,
                 Poseidon,
                 OpenSchema::GWC
             );
+            prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
             //prover.mock_proof(k as u32);
-            proof_load_info.append_single_proof(prover);
-            proof_load_info.save(cache_folder);
+            proof_gen_info.append_single_proof(prover);
+            proof_gen_info.save(cache_folder);
         };
     }
 

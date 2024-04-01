@@ -284,6 +284,17 @@ mod tests {
             rangecheckconfig.register(meta, |c| {
                 vec![
                     helperconfig.range_check_column(c),
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
+                    Expression::Constant(Fr::from(0 as u64)), //not used
                     Expression::Constant(Fr::from(4 as u64)),
                 ]
             });

@@ -9,7 +9,6 @@ pub mod merkle;
 pub mod modexp;
 pub mod poseidon;
 pub mod range;
-pub mod rmd160;
 //pub(crate) mod keccak_arith_table;
 
 use crate::utils::{field_to_bn, field_to_u64, GateCell, Limb};

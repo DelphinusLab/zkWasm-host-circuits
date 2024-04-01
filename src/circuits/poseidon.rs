@@ -714,7 +714,19 @@ mod tests {
         type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
-            Self::default()
+            let mut hasher = crate::host::poseidon::POSEIDON_HASHER.clone();
+            let result = hasher.squeeze();
+            let inputs = vec![
+                Fr::one(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+                Fr::zero(),
+            ];
+            TestCircuit { inputs, result }
         }
 
         fn configure(cs: &mut ConstraintSystem<Fr>) -> Self::Config {

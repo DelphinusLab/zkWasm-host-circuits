@@ -289,7 +289,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         result: &Limb<F>,
     ) -> Result<(), Error> {
         let r = self.get_permute_result(region, offset, values, reset)?;
-        assert!(r.value == result.value);
+
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
             r.cell.as_ref().unwrap().cell(),
@@ -714,7 +714,19 @@ mod tests {
         type FloorPlanner = FlatFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
-            Self::default()
+            Self {
+                inputs: vec![
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                    Fr::zero(),
+                ],
+                result: Fr::zero(),
+            }
         }
 
         fn configure(cs: &mut ConstraintSystem<Fr>) -> Self::Config {

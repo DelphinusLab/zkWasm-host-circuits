@@ -9,6 +9,7 @@ use crate::circuits::{
     merkle::MerkleChip,
     poseidon::PoseidonChip,
 };
+use crate::host::merkle::MerkleProof;
 use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
 use halo2_proofs::pairing::bn256::Bn256;
 use halo2_proofs::{
@@ -22,6 +23,8 @@ use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 use circuits_batcher::args::HashType::Poseidon;
 use circuits_batcher::args::OpenSchema;
 use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
+use std::collections::HashMap;
+use std::io::{Read, Write};
 
 use crate::host::ExternalHostCallEntryTable;
 use serde::{Deserialize, Serialize};
@@ -54,6 +57,7 @@ pub enum OpType {
 pub struct HostOpCircuit<F: FieldExt, S: HostOpSelector> {
     shared_operands: Vec<F>,
     shared_opcodes: Vec<F>,
+    helper: S::Helper,
     k: usize,
     _marker: PhantomData<(F, S)>,
 }
@@ -64,6 +68,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
             k: 22,
+            helper: S::Helper::default(),
             _marker: PhantomData,
         }
     }
@@ -118,7 +123,7 @@ impl<S: HostOpSelector> Circuit<Fr> for HostOpCircuit<Fr, S> {
 
                 println!("total arg cells: {:?}", all_arg_cells.len());
                 println!("selector offset start at: {:?}", offset);
-                selector_chip.synthesize(&mut offset, &all_arg_cells, &region)?;
+                selector_chip.synthesize(&mut offset, &all_arg_cells, &region, &self.helper)?;
                 Ok((all_arg_cells, selector_chip))
             },
         )?;
@@ -139,9 +144,51 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
     v
 }
 
+pub fn read_merkle_proof(f: &mut File) -> Option<MerkleProof<[u8; 32], 32>> {
+    let mut bytes = [0u8; 32];
+    f.read_exact(&mut bytes).ok()?;
+    let source = bytes.clone();
+    f.read_exact(&mut bytes).ok()?;
+    let root = bytes.clone();
+    let mut assist = [[0; 32]; 32];
+    for i in 0..32 {
+        f.read_exact(&mut assist[i]).ok()?;
+    }
+    let mut index = [0u8; 8];
+    f.read_exact(&mut index).ok()?;
+    Some(MerkleProof {
+        source,
+        root,
+        assist,
+        index: u64::from_le_bytes(index),
+    })
+}
+
+pub fn write_merkle_proof(f: &mut dyn Write, proof: MerkleProof<[u8; 32], 32>) {
+    f.write_all(proof.source.as_slice()).unwrap();
+    f.write_all(proof.root.as_slice()).unwrap();
+    for i in 0..32 {
+        f.write_all(proof.assist[i].as_slice()).unwrap();
+    }
+    f.write_all(&proof.index.to_le_bytes()).unwrap();
+    println!("writing proof with key {} {:?}", proof.index, proof.root);
+}
+
+pub fn read_merkle_assist_proofs(
+    input_file: PathBuf,
+) -> HashMap<([u8; 32], u64), MerkleProof<[u8; 32], 32>> {
+    let mut map = HashMap::new();
+    let mut file = File::open(input_file).expect("File does not exist");
+    while let Some(proof) = read_merkle_proof(&mut file) {
+        map.insert((proof.root, proof.index), proof.clone());
+    }
+    map
+}
+
 pub fn build_host_circuit<S: HostOpSelector>(
     v: &ExternalHostCallEntryTable,
     k: usize,
+    helper: S::Helper,
 ) -> HostOpCircuit<Fr, S> {
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
@@ -151,6 +198,7 @@ pub fn build_host_circuit<S: HostOpSelector>(
         shared_operands,
         shared_opcodes,
         k,
+        helper,
         _marker: PhantomData,
     }
 }
@@ -159,6 +207,7 @@ pub fn exec_create_host_proof(
     name: &str,
     k: usize,
     v: &ExternalHostCallEntryTable,
+    assist_file: Option<PathBuf>,
     opname: OpType,
     cache_folder: &PathBuf,
     param_folder: &PathBuf,
@@ -181,7 +230,7 @@ pub fn exec_create_host_proof(
                 &mut pkey_cache,
                 &mut params_cache,
                 Poseidon,
-                OpenSchema::GWC
+                OpenSchema::GWC,
             );
             prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
             //prover.mock_proof(k as u32);
@@ -192,35 +241,36 @@ pub fn exec_create_host_proof(
 
     match opname {
         OpType::BLS381PAIR => {
-            let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::BLS381SUM => {
-            let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::BN256PAIR => {
-            let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::BN256SUM => {
-            let circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::POSEIDONHASH => {
-            let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k);
+            let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::MERKLE => {
-            let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k);
+            let proof_map = assist_file.map(|file| read_merkle_assist_proofs(file));
+            let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, proof_map);
             gen_proof!(circuit);
         }
         OpType::JUBJUBSUM => {
-            let circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
         OpType::KECCAKHASH => {
-            let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k);
+            let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k, ());
             gen_proof!(circuit);
         }
     };

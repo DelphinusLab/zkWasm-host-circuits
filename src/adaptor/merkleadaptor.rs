@@ -4,16 +4,16 @@ use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
+use crate::host::merkle::MerkleProofCache;
 use crate::host::merkle::{MerkleNode, MerkleTree};
 use crate::host::mongomerkle::MongoMerkle;
-use crate::host::mongomerkle::DEFAULT_HASH_VEC;
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleGetRoot, MerkleSet, MerkleSetRoot};
-use crate::utils::bytes_to_u64;
 use crate::utils::data_to_bytes;
 use crate::utils::field_to_bytes;
 use crate::utils::Limb;
+use ff::PrimeField;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
@@ -66,6 +66,7 @@ fn kvpair_to_host_call_table(
 
 impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
+    type Helper = Option<MerkleProofCache<[u8; 32], DEPTH>>; // known merkle proofs if provided
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advices: &Vec<Column<Advice>>,
@@ -167,10 +168,14 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             r.push(setget);
         }
 
+        let mt: MongoMerkle<DEPTH> = MongoMerkle::<DEPTH>::default();
+        let default_proof = mt.default_proof();
+        assert!(mt.verify_proof(&default_proof).unwrap() == true);
+
         let default_table = kvpair_to_host_call_table(&vec![(
             0,
-            Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])),
-            Fr::from_raw(bytes_to_u64(&DEFAULT_HASH_VEC[DEPTH])),
+            Fr::from_repr(default_proof.root).unwrap(),
+            Fr::from_repr(default_proof.root).unwrap(),
             [Fr::zero(), Fr::zero()],
             MerkleGet,
         )]);
@@ -269,6 +274,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
+        helper: &Self::Helper,
     ) -> Result<(), Error> {
         let default_index = 1u64 << DEPTH;
         *offset = {
@@ -281,7 +287,8 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             // 2: new_root
             // 3: value[]
             // 5: op_code
-            let mut mt: Option<MongoMerkle<DEPTH>> = None;
+            let mut mt: MongoMerkle<DEPTH> = MongoMerkle::<DEPTH>::default();
+            let default_proof = mt.default_proof();
             for args in arg_cells.chunks_exact(6) {
                 let [address, root, value0, value1, new_root, opcode] = args else { unreachable!() };
                 //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
@@ -290,36 +297,41 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                 //println!("value is {:?} {:?}", value0.value, value1.value);
                 let addr = address.value.get_lower_128();
                 let index = (addr as u64) + default_index - 1;
-                let proof = if opcode.value == Fr::from(MerkleSet as u64) {
-                    //println!("op is set, process set:");
-                    let (mut leaf, _) = mt
-                        .as_ref()
-                        .unwrap()
-                        .get_leaf_with_proof(index)
-                        .expect("get leaf error");
-                    leaf.set(&data_to_bytes(vec![value0.value, value1.value]).to_vec());
-                    mt.as_mut()
-                        .unwrap()
-                        .set_leaf_with_proof(&leaf)
-                        .expect("set leaf error")
+                let is_set = opcode.value == Fr::from(MerkleSet as u64);
+                let proof = if index == default_proof.index
+                    && field_to_bytes(&new_root.value) == default_proof.root
+                {
+                    default_proof.clone()
+                } else if let Some(proofs) = helper {
+                    proofs
+                        .get(&(
+                            field_to_bytes(&new_root.value),
+                            index, //address.value.get_lower_128() as u64,
+                        ))
+                        .expect(
+                            format!(
+                                "can not get proof from proof cache {:?} {:?} [set = {}]",
+                                new_root.value, index, is_set
+                            )
+                            .as_str(),
+                        )
+                        .clone()
                 } else {
-                    // the case of get value:
-                    // 1. load db
-                    // 2. get leaf
-                    //println!("op is get, process get");
-                    mt = Some(MongoMerkle::construct(
-                        [0u8; 32],
-                        field_to_bytes(&root.value),
-                        None,
-                    ));
+                    if is_set {
+                        //println!("op is set, process set:");
+                        let (mut leaf, _) = mt.get_leaf_with_proof(index).expect("get leaf error");
+                        leaf.set(&data_to_bytes(vec![value0.value, value1.value]).to_vec());
+                        mt.set_leaf_with_proof(&leaf).expect("set leaf error")
+                    } else {
+                        // the case of get value:
+                        // 1. load db
+                        // 2. get leaf
+                        //println!("op is get, process get");
+                        mt.update_root_hash(&field_to_bytes(&root.value));
+                        let (_, proof) = mt.get_leaf_with_proof(index).expect("get leaf error");
 
-                    let (_, proof) = mt
-                        .as_ref()
-                        .unwrap()
-                        .get_leaf_with_proof(index)
-                        .expect("get leaf error");
-
-                    proof
+                        proof
+                    }
                 };
                 /*
                 println!("assist: {:?}", bytes_to_field::<Fr>(&proof.assist[0]));
@@ -352,10 +364,12 @@ mod tests {
     use crate::host::mongomerkle::DEFAULT_HASH_VEC;
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{MerkleGet, MerkleSet};
+    use crate::proof::write_merkle_proof;
     use crate::proof::MERKLE_DEPTH;
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
+    use ff::PrimeField;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
@@ -370,11 +384,22 @@ mod tests {
             DEFAULT_HASH_VEC[MERKLE_DEPTH].clone(),
             None,
         );
-        let (mut leaf, _) = mt.get_leaf_with_proof(address).unwrap();
+
+        let mut assist_file =
+            File::create("kvpair_test1_assist.data").expect("can not create file");
+
+        let (mut leaf, proof1) = mt.get_leaf_with_proof(address).unwrap();
+        println!("default hash is {:?}", Fr::from_repr(DEFAULT_HASH_VEC[0]));
+        println!("default proof is {:?}", Fr::from_repr(proof1.root));
+        println!("default source is {:?}", Fr::from_repr(proof1.source));
+        for assist in proof1.assist {
+            println!("assist is {:?}", Fr::from_repr(assist));
+        }
+        println!("default leaf is {:?}", leaf);
         let bytesdata = field_to_bytes(&data).to_vec();
-        println!("bytes_data is {:?}", bytesdata);
         leaf.set(&bytesdata);
-        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let proof2 = mt.set_leaf_with_proof(&leaf).unwrap();
 
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
@@ -397,6 +422,9 @@ mod tests {
         let file = File::create("kvpair_test1.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
             .expect("can not write to file");
+
+        write_merkle_proof(&mut assist_file, proof1);
+        write_merkle_proof(&mut assist_file, proof2);
     }
 
     #[test]
@@ -411,11 +439,13 @@ mod tests {
             DEFAULT_HASH_VEC[MERKLE_DEPTH].clone(),
             None,
         );
-        let (mut leaf, _) = mt.get_leaf_with_proof(address).unwrap();
+        let (_, proof0) = mt.get_leaf_with_proof(address + 1).unwrap();
+        let (mut leaf, proof1) = mt.get_leaf_with_proof(address).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
-        println!("bytes_data is {:?}", bytesdata);
+
         leaf.set(&bytesdata);
-        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        let proof2 = mt.set_leaf_with_proof(&leaf).unwrap();
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
@@ -444,5 +474,11 @@ mod tests {
         let file = File::create("kvpair_test2.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
             .expect("can not write to file");
+
+        let mut assist_file =
+            File::create("kvpair_test2_assist.data").expect("can not create file");
+        write_merkle_proof(&mut assist_file, proof0);
+        write_merkle_proof(&mut assist_file, proof1);
+        write_merkle_proof(&mut assist_file, proof2);
     }
 }

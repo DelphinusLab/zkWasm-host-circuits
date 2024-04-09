@@ -1,5 +1,6 @@
 use crate::host::db::TreeDB;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
@@ -55,13 +56,15 @@ pub trait MerkleNode<H: Debug + Clone + PartialEq> {
     fn right(&self) -> Option<H>; // hash of right child
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MerkleProof<H: Debug + Clone + PartialEq, const D: usize> {
-    pub source: H,
-    pub root: H, // last is root
+    pub source: H, // hash of the leaf data
+    pub root: H,   // last is root
     pub assist: [H; D],
     pub index: u64,
 }
+
+pub type MerkleProofCache<H, const D: usize> = HashMap<(H, u64), MerkleProof<H, D>>;
 
 pub fn get_offset(index: u64) -> u64 {
     let height = (index + 1).ilog2();

@@ -286,6 +286,19 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             ))
         }
     }
+
+    pub fn default_proof(&self) -> MerkleProof<[u8; 32], DEPTH> {
+        let mut assist = [0; DEPTH];
+        for i in 0..DEPTH {
+            assist[i] = i;
+        }
+        MerkleProof {
+            source: self.get_default_hash(DEPTH).unwrap(),
+            root: self.get_default_hash(0).unwrap(),
+            assist: assist.map(|x| self.get_default_hash(x + 1).unwrap()),
+            index: (1_u64 << DEPTH) - 1,
+        }
+    }
 }
 
 // In default_hash vec, it is from leaf to root.
@@ -313,7 +326,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     fn construct(addr: Self::Id, root: Self::Root, db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self {
         MongoMerkle {
             root_hash: root,
-            default_hash: (*DEFAULT_HASH_VEC).clone(),
+            default_hash: DEFAULT_HASH_VEC.clone(),
             db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr)))),
         }
     }
@@ -427,6 +440,17 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
                 index,
             },
         ))
+    }
+}
+
+impl<const DEPTH: usize> MongoMerkle<DEPTH> {
+    pub fn default() -> Self {
+        let addr = [0u8; 32];
+        MongoMerkle {
+            root_hash: DEFAULT_HASH_VEC[DEPTH],
+            default_hash: (*DEFAULT_HASH_VEC).clone(),
+            db: Rc::new(RefCell::new(MongoDB::new(addr))),
+        }
     }
 }
 

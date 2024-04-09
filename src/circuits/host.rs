@@ -216,6 +216,7 @@ impl HostOpConfig {
 
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
+    type Helper: Clone + std::fmt::Debug + Default;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,
@@ -236,6 +237,7 @@ pub trait HostOpSelector {
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
+        helper: &Self::Helper,
     ) -> Result<(), Error>;
     fn synthesize_separate(
         &mut self,

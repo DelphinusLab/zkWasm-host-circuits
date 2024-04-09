@@ -46,6 +46,7 @@ fn msm_to_host_call_table<F: FieldExt>(inputs: &Vec<(Point, F)>) -> Vec<External
 
 impl HostOpSelector for AltJubChip<Fr> {
     type Config = CommonGateConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,
@@ -180,6 +181,7 @@ impl HostOpSelector for AltJubChip<Fr> {
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         println!("msm adaptor total args is {}", arg_cells.len());
         *offset = {

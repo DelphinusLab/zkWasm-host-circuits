@@ -36,6 +36,7 @@ const TOTAL_CONSTRUCTIONS: usize = 50;
 
 impl HostOpSelector for KeccakChip<Fr> {
     type Config = KeccakGateConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,
@@ -188,6 +189,7 @@ impl HostOpSelector for KeccakChip<Fr> {
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         println!("keccak total args is {}", arg_cells.len());
         *offset = {

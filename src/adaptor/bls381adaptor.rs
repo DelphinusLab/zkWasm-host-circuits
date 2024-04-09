@@ -102,6 +102,7 @@ fn bls381_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bls381PairChip<Fr> {
     type Config = Bls381ChipConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         _shared_advices: &Vec<Column<Advice>>,
@@ -307,6 +308,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
         _local_region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -314,6 +316,7 @@ impl HostOpSelector for Bls381PairChip<Fr> {
 
 impl HostOpSelector for Bls381SumChip<Fr> {
     type Config = Bls381ChipConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         _shared_advices: &Vec<Column<Advice>>,
@@ -528,6 +531,7 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
         _local_region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         Ok(())
     }

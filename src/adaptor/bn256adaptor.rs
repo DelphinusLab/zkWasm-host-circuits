@@ -105,6 +105,7 @@ fn bn256_gt_pairing_generator(op: ForeignInst) -> Vec<ExternalHostCallEntry> {
 
 impl HostOpSelector for Bn256PairChip<Fr> {
     type Config = Bn256ChipConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         _shared_advice: &Vec<Column<Advice>>,
@@ -404,6 +405,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
         _region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -411,6 +413,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
 impl HostOpSelector for Bn256SumChip<Fr> {
     type Config = Bn256ChipConfig;
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         _shared_advices: &Vec<Column<Advice>>,
@@ -634,6 +637,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         _offset: &mut usize,
         _arg_cells: &Vec<Limb<Fr>>,
         _region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         Ok(())
     }

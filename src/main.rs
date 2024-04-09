@@ -63,11 +63,23 @@ fn input_file<'a>() -> Arg<'a> {
         .value_parser(value_parser!(PathBuf))
 }
 
+fn assist_file<'a>() -> Arg<'a> {
+    arg!(-a --assist[ASSIST_FILES]... "assist file that contains all assisting data for synthesize")
+        .max_values(1)
+        .value_parser(value_parser!(PathBuf))
+}
+
 fn parse_input_file(matches: &ArgMatches) -> PathBuf {
     matches
         .get_one::<PathBuf>("input")
         .expect("input file is required")
         .clone()
+}
+
+fn parse_assist_file(matches: &ArgMatches) -> Option<PathBuf> {
+    matches
+        .get_one::<PathBuf>("assist")
+        .map_or_else(|| None, |v| Some(v.clone()))
 }
 
 fn opname<'a>() -> Arg<'a> {
@@ -87,6 +99,7 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
 fn main() {
     let clap_app = App::new("hostcircuit")
         .arg(input_file())
+        .arg(assist_file())
         .arg(output_folder())
         .arg(param_folder())
         .arg(opname())
@@ -94,6 +107,7 @@ fn main() {
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
+    let assist_file = parse_assist_file(&matches);
     let cache_folder = parse_output_folder(&matches);
     let param_folder = parse_param_folder(&matches);
     let opname = parse_opname(&matches);
@@ -103,6 +117,7 @@ fn main() {
         "host",
         k as usize,
         &read_host_call_table(input_file),
+        assist_file,
         opname,
         &cache_folder,
         &param_folder,

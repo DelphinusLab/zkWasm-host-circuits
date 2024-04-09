@@ -62,6 +62,7 @@ const TOTAL_CONSTRUCTIONS: usize = 2048;
 
 impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
+    type Helper = ();
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advices: &Vec<Column<Advice>>,
@@ -209,6 +210,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         offset: &mut usize,
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
+        _helper: &(),
     ) -> Result<(), Error> {
         println!("total args is {}", arg_cells.len());
         *offset = {

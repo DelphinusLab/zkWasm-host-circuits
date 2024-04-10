@@ -2,7 +2,7 @@ use itertools::Itertools;
 pub const BITRATE: usize = (1600 / LANE_SIZE) as usize;
 pub const CAPACITY: usize = (512 / LANE_SIZE) as usize;
 pub const L: usize = 6;
-pub const RATE: usize = (1088 / LANE_SIZE) as usize;
+pub const RATE: usize = (1088 / LANE_SIZE) as usize; //17
 pub const LANE_SIZE: u32 = 64;
 
 /// The range of x and y coordinates for the sponge state.
@@ -327,8 +327,8 @@ mod tests {
         let mut keccak = KECCAK_HASHER.clone();
         let mut inputs = inputs.clone();
         let mut extra_padding = vec![0u64; 17];
-        extra_padding[0] = 1u64 << 63;
-        extra_padding[16] = 1u64;
+        extra_padding[16] = 1u64 << 63;
+        extra_padding[0] = 1u64;
         inputs.extend(extra_padding);
 
         for chunk in inputs.chunks(17) {

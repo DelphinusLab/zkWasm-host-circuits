@@ -72,12 +72,15 @@ impl PoseidonGateConfig {
 
             let sel = config.get_expr(meta, Self::permute_sel());
 
+            let two = Expression::Constant(F::one() + F::one());
             vec![
                 sel.clone() * (x0.clone() * x0.clone() - x0_2.clone()),
                 sel.clone() * (x0_2.clone() * x0_2.clone() * x0 + c - x0_5_c.clone()),
-                sel.clone() * (x0_next - (x0_5_c.clone() * c0 + x1.clone() * c1 + x2.clone() * c2)),
-                sel.clone() * (x1_next - (x0_5_c.clone() * e1 + x1)),
-                sel.clone() * (x2_next - (x0_5_c * e2 + x2)),
+                sel.clone()
+                    * (sel.clone() - two.clone())
+                    * (x0_next - (x0_5_c.clone() * c0 + x1.clone() * c1 + x2.clone() * c2)),
+                sel.clone() * (sel.clone() - two.clone()) * (x1_next - (x0_5_c.clone() * e1 + x1)),
+                sel.clone() * (sel.clone() - two.clone()) * (x2_next - (x0_5_c * e2 + x2)),
             ]
         });
 
@@ -112,13 +115,15 @@ impl PoseidonGateConfig {
         let x2_value = x.value.square();
         let x5_c_value = x2_value.square() * x.value + c_value;
 
+        let two = F::one() + F::one();
+        self.assign_cell(region, *offset, &Self::permute_sel(), two)?;
         let cell = self.assign_cell(region, *offset, &x0, x.value)?;
         region.constrain_equal(x.get_the_cell().cell(), cell.get_the_cell().cell())?;
         self.assign_cell(region, *offset, &x0_2, x2_value)?;
         self.assign_cell(region, *offset, &c, c_value)?;
         let ret = self.assign_cell(region, *offset, &x0_5_c, x5_c_value)?;
 
-        *offset += 2;
+        *offset += 1;
 
         Ok(ret)
     }

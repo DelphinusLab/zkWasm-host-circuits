@@ -37,7 +37,7 @@ cfg_if::cfg_if! {
     if #[cfg(feature="complex-leaf")] {
         const TOTAL_CONSTRUCTIONS: usize = 700;
     } else {
-        const TOTAL_CONSTRUCTIONS: usize = 900;
+        const TOTAL_CONSTRUCTIONS: usize = 1080;
     }
 }
 

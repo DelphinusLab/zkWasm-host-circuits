@@ -1209,10 +1209,10 @@ mod tests {
         fn without_witnesses(&self) -> Self {
             let inputs = vec![Felt::zero(), Felt::zero()];
             let result = Felt::from_raw([
-                                        0x94672c47f345700a,
-                                        0xe5168077fd5eeb90,
-                                        0xae14f132fcc041ec,
-                                        0x2ac427786f4818bf,
+                0x94672c47f345700a,
+                0xe5168077fd5eeb90,
+                0xae14f132fcc041ec,
+                0x2ac427786f4818bf,
             ]);
             Self { inputs, result }
         }

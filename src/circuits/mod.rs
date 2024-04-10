@@ -6,7 +6,6 @@ pub mod bn256;
 pub mod host;
 pub mod keccak256;
 pub mod merkle;
-pub mod modexp;
 pub mod poseidon;
 pub mod range;
 //pub(crate) mod keccak_arith_table;

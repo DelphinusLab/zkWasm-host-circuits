@@ -26,8 +26,8 @@ customized_circuits!(PoseidonGateConfig, 2, 5, 13, 0,
 );
 
 pub struct PoseidonState<F: FieldExt, const T: usize> {
-    state: [Limb<F>; T],
-    default: [Limb<F>; T],
+    pub(crate) state: [Limb<F>; T],
+    pub(crate) default: [Limb<F>; T],
     prefix: Vec<Limb<F>>,
 }
 
@@ -35,8 +35,8 @@ pub struct PoseidonChip<F: FieldExt, const T: usize, const RATE: usize> {
     pub config: CommonGateConfig,
     pub extend: PoseidonGateConfig,
     pub spec: Spec<F, T, RATE>,
-    poseidon_state: PoseidonState<F, T>,
-    round: u64,
+    pub(crate) poseidon_state: PoseidonState<F, T>,
+    pub(crate) round: u64,
     _marker: PhantomData<F>,
 }
 
@@ -204,6 +204,17 @@ impl PoseidonGateConfig {
 }
 
 impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
+    pub(crate) fn clone(&self) -> Self {
+        PoseidonChip {
+            config: self.config.clone(),
+            extend: self.extend.clone(),
+            spec: self.spec.clone(),
+            round: self.round.clone(),
+            poseidon_state: self.poseidon_state.clone(),
+            _marker: self._marker.clone(),
+        }
+    }
+
     pub fn construct(
         config: CommonGateConfig,
         extend: PoseidonGateConfig,
@@ -299,6 +310,13 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
 }
 
 impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
+    pub fn clone(&self) -> Self {
+        PoseidonState {
+            state: self.state.clone(),
+            default: self.default.clone(),
+            prefix: self.prefix.clone(),
+        }
+    }
     pub fn initialize(
         &mut self,
         config: &CommonGateConfig,

@@ -17,7 +17,7 @@ use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::{Advice, Column, Error, Expression, VirtualCells};
 
 use crate::utils::Limb;
-
+use rayon::prelude::*;
 impl LookupAssistConfig for () {
     /// register a column (col) to be range checked by limb size (sz)
     fn register<F: FieldExt>(
@@ -210,26 +210,102 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
         arg_cells: &Vec<Limb<Fr>>,
         region: &Region<Fr>,
     ) -> Result<(), Error> {
+        let mhy_synthesize_timer = start_timer!(|| "mhy_synthesize_timer");
         println!("total args is {}", arg_cells.len());
+        let threads: usize = 10;
+        //10 arg_cells into a group, divide by threads number
+        let chunk_size = (arg_cells.len() / 10 + threads - 1) / threads;
         *offset = {
             let mut local_offset = *offset;
             let timer = start_timer!(|| "assign");
             let config = self.config.clone();
             self.initialize(&config, region, &mut local_offset)?;
-            for arg_group in arg_cells.chunks_exact(10).into_iter() {
-                let args = arg_group.into_iter().map(|x| x.clone());
-                let args = args.collect::<Vec<_>>();
-                self.assign_permute(
-                    region,
-                    &mut local_offset,
-                    &args[1..9].to_vec().try_into().unwrap(),
-                    &args[0],
-                    &args[9],
-                )?;
+            let mut poseidon_chips: Vec<_> = vec![];
+            let mut offset_vec: Vec<usize> = vec![];
+            //arrange offsets, poseidon_chips( and poseidon states) for each thread
+            poseidon_chips.push(self.clone());
+            offset_vec.push(local_offset);
+            for index in 1..threads {
+                poseidon_chips.push(self.clone());
+                offset_vec.push(local_offset + index * 1260 * chunk_size);
+                let args = arg_cells[1 + chunk_size * index * threads
+                    ..1 + self.poseidon_state.state.len() + chunk_size * index * threads]
+                    .into_iter()
+                    .map(|x| x.clone())
+                    .collect::<Vec<_>>();
+                poseidon_chips[index].poseidon_state.state = args.try_into().unwrap();
             }
+            //chunk_size * 10 is total arg cells assigned to a thread
+            let arg_groups = arg_cells.chunks_exact(10 * chunk_size).collect::<Vec<_>>();
+            //zip args, offsets, and poseidon_chips then start par_iter
+            let mut combined_vec: Vec<_> = arg_groups
+                .into_iter()
+                .zip(offset_vec.into_iter())
+                .zip(poseidon_chips.into_iter())
+                .map(|((x, y), z)| (x, y, z))
+                .collect();
+            combined_vec
+                .par_iter_mut()
+                .for_each(|(arg_group, mut offset_parallel, chip)| {
+                    println!("int par_iter with offsel  {:?}", offset_parallel);
+                    let par_timer = start_timer!(|| "par_iter with offset");
+                    for arg_chunks in arg_group.chunks_exact(10).into_iter() {
+                        let args = arg_chunks.into_iter().map(|x| x.clone());
+                        let args = args.collect::<Vec<_>>();
+
+                        let mut new_state = vec![];
+                        for (value, default) in chip
+                            .poseidon_state
+                            .state
+                            .iter()
+                            .zip(chip.poseidon_state.default.iter())
+                        {
+                            new_state.push(chip.config.select(
+                                region,
+                                &mut (),
+                                &mut offset_parallel,
+                                &args[0],
+                                value,
+                                default,
+                                chip.round,
+                            ));
+                        }
+                        let new_state_vec: Vec<Limb<Fr>> = new_state
+                            .iter()
+                            .map(|res| res.as_ref().expect("Error processing Limb"))
+                            .cloned()
+                            .collect();
+                        let new_state_array: [Limb<Fr>; 9] = new_state_vec
+                            .try_into()
+                            .expect("Expected a Vec of length 9");
+                        chip.poseidon_state.state = new_state_array;
+                        let args_array: [Limb<Fr>; 8] = args[1..9]
+                            .to_vec()
+                            .try_into()
+                            .expect("Slice must be exactly 8 elements long");
+                        chip.poseidon_state.permute(
+                            &chip.config,
+                            &chip.extend,
+                            &chip.spec,
+                            region,
+                            &mut offset_parallel,
+                            &args_array,
+                        );
+                        let result = chip.poseidon_state.state[1].clone();
+
+                        region.constrain_equal(
+                            args[9].cell.as_ref().unwrap().cell(),
+                            result.cell.as_ref().unwrap().cell(),
+                        );
+                    }
+                    end_timer!(par_timer);
+                });
+
             end_timer!(timer);
-            local_offset
+            local_offset + 1260 * arg_cells.len() / 10
         };
+        end_timer!(mhy_synthesize_timer);
+
         Ok(())
     }
 }

@@ -13,7 +13,6 @@ use halo2ecc_s::circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
 use halo2ecc_s::assign::{AssignedCondition, AssignedFq, AssignedInteger, Cell as ContextCell};
@@ -341,10 +340,7 @@ impl Bls381PairChip<Fr> {
         let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
         let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
 
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let records = Into::<Context<Fr>>::into(ctx).records;
 
         layouter.assign_region(
             || "base",
@@ -463,10 +459,8 @@ impl Bls381SumChip<Fr> {
             sums.push(sum_ret);
         }
 
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let records = Into::<Context<Fr>>::into(ctx).records;
+
         layouter.assign_region(
             || "base",
             |mut region| {

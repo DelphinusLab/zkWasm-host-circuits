@@ -14,7 +14,6 @@ use halo2ecc_s::{
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use halo2_proofs::pairing::bn256::Fq as Bn256Fq;
 use halo2ecc_s::assign::{AssignedCondition, AssignedFq, Cell as ContextCell};
@@ -320,10 +319,7 @@ impl Bn256PairChip<Fr> {
         let b_g2 = get_g2_from_cells(&mut ctx, b);
         let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
         let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let records = Into::<Context<Fr>>::into(ctx).records;
 
         layouter.assign_region(
             || "base",
@@ -443,10 +439,7 @@ impl Bn256SumChip<Fr> {
             sums.push(sum_ret);
         }
 
-        let records = Arc::try_unwrap(Into::<Context<Fr>>::into(ctx).records)
-            .unwrap()
-            .into_inner()
-            .unwrap();
+        let records = Into::<Context<Fr>>::into(ctx).records;
         layouter.assign_region(
             || "base",
             |mut region| {

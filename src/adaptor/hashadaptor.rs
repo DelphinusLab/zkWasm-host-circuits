@@ -236,7 +236,7 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
                 poseidon_chips[index].poseidon_state.state = args.try_into().unwrap();
             }
             //chunk_size * 10 is total arg cells assigned to a thread
-            let arg_groups = arg_cells.chunks_exact(10 * chunk_size).collect::<Vec<_>>();
+            let arg_groups = arg_cells.chunks(10 * chunk_size).collect::<Vec<_>>();
             //zip args, offsets, and poseidon_chips then start par_iter
             let mut combined_vec: Vec<_> = arg_groups
                 .into_iter()

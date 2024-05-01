@@ -10,6 +10,7 @@ pub mod hashadaptor;
 pub mod keccakadaptor;
 pub mod merkleadaptor;
 pub mod msmadaptor;
+pub mod map2curveadaptor;
 
 pub fn get_max_round(k: usize, reference_max: usize) -> usize {
     if k >= 22 {

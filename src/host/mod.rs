@@ -69,6 +69,8 @@ pub enum ForeignInst {
     WitnessSetIndex,
     WitnessIndexedPush,
     WitnessIndexedPop,
+    Map2CurvePush,
+    Map2CurveResult,
 }
 
 pub enum ReduceRule<F: FieldExt> {

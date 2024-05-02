@@ -69,6 +69,8 @@ pub enum ForeignInst {
     WitnessSetIndex,
     WitnessIndexedPush,
     WitnessIndexedPop,
+    Hash2CurvePush,
+    Hash2CurveResult,
 }
 
 pub enum ReduceRule<F: FieldExt> {
@@ -152,7 +154,7 @@ impl<F: FieldExt> Reduce<F> {
 }
 
 impl<F: FieldExt> Reduce<F> {
-    /// take in a u64 value and update all the reduce rule accordingly
+    /// take in an u64 value and update all the reduce rule accordingly
     pub fn reduce(&mut self, v: u64) {
         let mut cursor = self.cursor;
         let total = self.total_len();

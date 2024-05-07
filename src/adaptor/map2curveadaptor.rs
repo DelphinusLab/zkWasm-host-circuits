@@ -144,13 +144,12 @@ impl HostOpSelector for Map2CurveChip<Fr> {
             bn_to_field::<Fq>(&y_im_bn),
         ]);
 
-        //let entries = default_table.
         let default_entries: Vec<((Fr, Fr), Fr)> = default_table
             .into_iter()
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        assert!(k >= 20);
+        assert!(k >= 22);
         let total_available = Self::max_rounds(k);
         assert!(total_used_instructions <= total_available);
 
@@ -182,7 +181,7 @@ impl HostOpSelector for Map2CurveChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        let timer = start_timer!(|| "assign");
+        let timer = start_timer!(|| "synthesize map2curve");
         self.range_chip.init_table(layouter)?;
         self.load_map2curve_circuit(arg_cells, layouter)?;
         end_timer!(timer);

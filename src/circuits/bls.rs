@@ -90,7 +90,7 @@ fn assigned_cells_to_fr(
     bn
 }
 
-fn assigned_cells_to_bn381(
+pub fn assigned_cells_to_bn381(
     a: &Vec<Limb<Fr>>, //G1 (4 * 2 + 1)
     start: usize,
 ) -> BigUint {
@@ -178,7 +178,7 @@ fn enable_fr_permute(
     Ok(())
 }
 
-fn enable_fq_permute(
+pub fn enable_fq_permute(
     region: &mut Region<'_, Fr>,
     cells: &Vec<Vec<Vec<Option<AssignedCell<Fr, Fr>>>>>,
     fq: &AssignedFq<Bls381Fq, Fr>,

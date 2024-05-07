@@ -8,6 +8,7 @@ use crate::circuits::{
     keccak256::KeccakChip,
     merkle::MerkleChip,
     poseidon::PoseidonChip,
+    map_to_curve::Map2CurveChip,
 };
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -46,6 +47,7 @@ pub enum OpType {
     KECCAKHASH,
     MERKLE,
     JUBJUBSUM,
+    MAP2CURVE,
 }
 
 #[derive(Clone)]
@@ -320,6 +322,26 @@ pub fn exec_create_host_proof(
             );
             prover.mock_proof(k as u32);
             println!("mock proof for keccak success");
+            prover.proofloadinfo.save(&cache_folder.as_path());
+            prover.exec_create_proof(
+                cache_folder.as_path(),
+                param_folder.as_path(),
+                PKEY_CACHE.lock().as_mut().unwrap(),
+                0,
+                K_PARAMS_CACHE.lock().as_mut().unwrap(),
+            );
+        }
+        OpType::MAP2CURVE => {
+            let map2curve_circuit = build_host_circuit::<Map2CurveChip<Fr>>(&v, k);
+            let prover: CircuitInfo<Bn256, HostOpCircuit<Fr, Map2CurveChip<Fr>>> = CircuitInfo::new(
+                map2curve_circuit,
+                format!("{}.{:?}", name, opname),
+                vec![],
+                k,
+                Poseidon,
+            );
+            prover.mock_proof(k as u32);
+            println!("mock proof for map2curve success");
             prover.proofloadinfo.save(&cache_folder.as_path());
             prover.exec_create_proof(
                 cache_folder.as_path(),

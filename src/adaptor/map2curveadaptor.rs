@@ -1,42 +1,69 @@
-use crate::adaptor::field_to_bn;
 use crate::adaptor::get_selected_entries;
-use crate::circuits::map_to_curve::{Map2CurveChip, Map2CurveChipConfig};
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
+use crate::circuits::map_to_curve::{Map2CurveChip, Map2CurveChipConfig};
 use crate::host::ExternalHostCallEntry;
-use crate::host::ForeignInst::{ Map2CurvePush, Map2CurveResult};
+use crate::host::ForeignInst::{Map2CurvePush, Map2CurveResult};
 use crate::utils::Limb;
 use ark_std::{end_timer, start_timer};
-use halo2_proofs::arithmetic::FieldExt;
+use halo2_proofs::arithmetic::{BaseExt, FieldExt};
 use halo2_proofs::circuit::{Layouter, Region};
-use halo2_proofs::pairing::bls12_381::{Fq, G1Affine};
+use halo2_proofs::pairing::bls12_381::Fq;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::{Advice, Column, Error};
-use halo2ecc_s::context::{Context,GeneralScalarEccContext};
-use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
-use halo2ecc_s::assign::{AssignedFq2};
-use halo2ecc_s::circuit::base_chip::BaseChip;
-use halo2ecc_s::circuit::range_chip::RangeChip;
-use halo2ecc_s::circuit::select_chip::SelectChip;
-use std::cell::RefCell;
-use std::rc::Rc;
+use halo2ecc_s::utils::bn_to_field;
+use num_bigint::BigUint;
+use std::str::FromStr;
 
+//bls381 need 8*u54
+const MERGE_SIZE: usize = 8;
 
-const MERGE_SIZE: usize = 4;
-//re+image+result(rex,imx,rey,imy)
+//input(re,im)+result_x(re,im)+result_y(re,im)
 const CHUNK_SIZE: usize = (2 + 2 + 2) * MERGE_SIZE;
 
-const TOTAL_CONSTRUCTIONS: usize = 400;
+//1 limb = 2*u54
+pub const MAP2CURVE_LIMBS_SIZE: usize = CHUNK_SIZE / 2;
 
+const TOTAL_CONSTRUCTIONS: usize = 1;
 
-fn map_2_curve_default_table<F: FieldExt>(inputs: &Vec<F>) -> Vec<ExternalHostCallEntry> {
+fn map_2_curve_default_table<F: BaseExt>(inputs: &Vec<F>) -> Vec<ExternalHostCallEntry> {
     let mut r = vec![];
-    r.push(crate::adaptor::fr_to_args(inputs[0],4, 64, Map2CurvePush));
-    r.push(crate::adaptor::fr_to_args(inputs[1],4, 64, Map2CurvePush));
-    r.push(crate::adaptor::fr_to_args(inputs[2],4, 64, Map2CurveResult));
-    r.push(crate::adaptor::fr_to_args(inputs[3],4, 64, Map2CurveResult));
-    r.push(crate::adaptor::fr_to_args(inputs[4],4, 64, Map2CurveResult));
-    r.push(crate::adaptor::fr_to_args(inputs[5],4, 64, Map2CurveResult));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[0],
+        MERGE_SIZE,
+        54,
+        Map2CurvePush,
+    ));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[1],
+        MERGE_SIZE,
+        54,
+        Map2CurvePush,
+    ));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[2],
+        MERGE_SIZE,
+        54,
+        Map2CurveResult,
+    ));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[3],
+        MERGE_SIZE,
+        54,
+        Map2CurveResult,
+    ));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[4],
+        MERGE_SIZE,
+        54,
+        Map2CurveResult,
+    ));
+    r.push(crate::adaptor::fr_to_args(
+        inputs[5],
+        MERGE_SIZE,
+        54,
+        Map2CurveResult,
+    ));
     r.into_iter().flatten().collect::<Vec<_>>()
 }
 
@@ -44,9 +71,9 @@ impl HostOpSelector for Map2CurveChip<Fr> {
     type Config = Map2CurveChipConfig;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
-        shared_advice: &Vec<Column<Advice>>,
+        _shared_advice: &Vec<Column<Advice>>,
     ) -> Self::Config {
-        Map2CurveChip::configure(meta, shared_advice)
+        Map2CurveChip::configure(meta)
     }
 
     fn construct(c: Self::Config) -> Self {
@@ -76,33 +103,46 @@ impl HostOpSelector for Map2CurveChip<Fr> {
         let opcodes = Self::opcodes();
         let selected_entries = get_selected_entries(shared_operands, shared_opcodes, &opcodes);
         let total_used_instructions = selected_entries.len() / (CHUNK_SIZE);
+        println!("total used instructions: {}", total_used_instructions);
 
         let mut r = vec![];
 
         for group in selected_entries.chunks_exact(CHUNK_SIZE) {
-            // let ((operand, opcode), index) = *group.get(0).clone().unwrap();
-            // assert!(opcode.clone() == Fr::from(Map2CurvePush as u64));
-
             for subgroup in group
                 .clone()
                 .into_iter()
                 .collect::<Vec<_>>()
                 .chunks_exact(MERGE_SIZE)
             {
-                let (limb, _) = config.assign_merged_operands(
-                    region,
-                    offset,
-                    subgroup.to_vec(),
-                    Fr::from_u128(1u128 << 64),
-                    true,
-                )?;
-                r.push(limb);
+                for i in 0..MERGE_SIZE / 2 {
+                    let (limb, _) = config.assign_merged_operands(
+                        region,
+                        offset,
+                        vec![subgroup[2 * i], subgroup[2 * i + 1]],
+                        Fr::from_u128(1u128 << 54),
+                        true,
+                    )?;
+                    r.push(limb);
+                }
             }
         }
 
-        //todo set correct defaults
-        let default_table = map_2_curve_default_table(
-            &vec![Fr::one(),Fr::one(),Fr::one(),Fr::one(),Fr::one(),Fr::one()]);
+        let u_re_bn = BigUint::from_str("593868448310005448561172252387029516360409945786457439875974315031640021389835649561235021338510064922970633805048").unwrap();
+        let u_im_bn = BigUint::from_str("867375309489067512797459860887365951877054038763818448057326190302701649888849997836339069389536967202878289851290").unwrap();
+
+        let x_re_bn = BigUint::from_str("3942339120143403995959884458065911863622623490130179671696530864527894030375709350085997343451924840375271949093332").unwrap();
+        let x_im_bn = BigUint::from_str("3523381697296058645143708860912139218718520142948191822158638626523448297128525915027995335789050238781038107799201").unwrap();
+        let y_re_bn = BigUint::from_str("1842813153358560687634500333570189006426514559071004676715031705637331861897467026112259097700599015948196491964104").unwrap();
+        let y_im_bn = BigUint::from_str("1919560373509329990190398196596248904228486898136222165059580822353869402983639316101175960854421770934878934628156").unwrap();
+
+        let default_table = map_2_curve_default_table(&vec![
+            bn_to_field::<Fq>(&u_re_bn),
+            bn_to_field::<Fq>(&u_im_bn),
+            bn_to_field::<Fq>(&x_re_bn),
+            bn_to_field::<Fq>(&x_im_bn),
+            bn_to_field::<Fq>(&y_re_bn),
+            bn_to_field::<Fq>(&y_im_bn),
+        ]);
 
         //let entries = default_table.
         let default_entries: Vec<((Fr, Fr), Fr)> = default_table
@@ -110,25 +150,27 @@ impl HostOpSelector for Map2CurveChip<Fr> {
             .map(|x| ((Fr::from(x.value), Fr::from(x.op as u64)), Fr::zero()))
             .collect::<Vec<((Fr, Fr), Fr)>>();
 
-        assert!(k >= 22);
+        assert!(k >= 20);
         let total_available = Self::max_rounds(k);
         assert!(total_used_instructions <= total_available);
 
-        for _ in 0..=total_available - total_used_instructions {
+        for _ in 0..total_available - total_used_instructions {
             for subgroup in default_entries
                 .clone()
                 .iter()
                 .collect::<Vec<_>>()
                 .chunks_exact(MERGE_SIZE)
             {
-                let (limb, _) = config.assign_merged_operands(
-                    region,
-                    offset,
-                    subgroup.to_vec(),
-                    Fr::from_u128(1u128 << 64),
-                    false,
-                )?;
-                r.push(limb);
+                for i in 0..MERGE_SIZE / 2 {
+                    let (limb, _) = config.assign_merged_operands(
+                        region,
+                        offset,
+                        vec![subgroup[2 * i], subgroup[2 * i + 1]],
+                        Fr::from_u128(1u128 << 54),
+                        false,
+                    )?;
+                    r.push(limb);
+                }
             }
         }
 
@@ -140,92 +182,9 @@ impl HostOpSelector for Map2CurveChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        println!("map2curve adaptor total args is {}", arg_cells.len());
         let timer = start_timer!(|| "assign");
-        let config = self.config.clone();
-
-        let base_chip = BaseChip::new(config.base_chip_config);
-        let select_chip = SelectChip::new(config.select_chip_config);
-        let range_chip = RangeChip::<Fr>::new(config.range_chip_config);
-
-        let mut gseccc =
-            GeneralScalarEccContext::<G1Affine, Fr>::new(Rc::new(RefCell::new(Context::new())));
-        let mut inputs = vec![];
-        let mut outputs = vec![];
-        // arg_cells format  2 + 2 + 2
-        let arg_groups = arg_cells.chunks_exact(6).collect::<Vec<_>>();
-        for arg_group in arg_groups.iter() {
-            // let args = arg_group.into_iter().map(|x| x.clone());
-            // let args = args.collect::<Vec<_>>();
-            let u: AssignedFq2<Fq, Fr> = (
-                gseccc.base_integer_ctx.assign_w(&field_to_bn(&arg_group[0].value)),
-                gseccc.base_integer_ctx.assign_w(&field_to_bn(&arg_group[1].value)),
-            );
-            inputs.push(u.clone());
-
-            let (x,y) = self.simplified_swu_in_context(&mut gseccc,&u);
-            outputs.push((x,y));
-        }
-
-        let context:Context<Fr> = gseccc.into();
-        layouter.assign_region(
-            || "base",
-            |mut region| {
-                let cells = context.records.lock().unwrap().assign_all_opt(
-                    &mut region,
-                    &base_chip,
-                    &range_chip,
-                    &select_chip,
-                )?;
-
-                match cells {
-                    Some(cells) => {
-                        for (i,input) in inputs.iter().enumerate(){
-                            //input.re
-                            let v = &input.0;
-                            region.constrain_equal(
-                                arg_groups[i][0].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-                            //input.img
-                            let v = &input.1;
-                            region.constrain_equal(
-                                arg_groups[i][1].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-                            //output.x.re
-                            let v = &outputs[i].0.0;
-                            region.constrain_equal(
-                                arg_groups[i][2].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region  as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-                            //output.x.img
-                            let v = &outputs[i].0.1;
-                            region.constrain_equal(
-                                arg_groups[i][3].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-                            //output.y.re
-                            let v = &outputs[i].1.0;
-                            region.constrain_equal(
-                                arg_groups[i][4].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-                            //output.y.img
-                            let v = &outputs[i].1.1;
-                            region.constrain_equal(
-                                arg_groups[i][5].cell.as_ref().unwrap().cell(),
-                                cells[v.native.cell.region as usize][v.native.cell.col][v.native.cell.row].as_ref().unwrap().cell().clone()
-                            )?;
-
-                        }
-                    }
-                    None => {}
-                }
-
-                Ok(())
-            },
-        )?;
+        self.range_chip.init_table(layouter)?;
+        self.load_map2curve_circuit(arg_cells, layouter)?;
         end_timer!(timer);
 
         Ok(())
@@ -243,25 +202,34 @@ impl HostOpSelector for Map2CurveChip<Fr> {
 
 #[cfg(test)]
 mod tests {
-    use super::msm_to_host_call_table;
-    use crate::host::jubjub::Point;
+    use crate::adaptor::map2curveadaptor::map_2_curve_default_table;
     use crate::host::ExternalHostCallEntryTable;
-    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::pairing::bls12_381::Fq;
+    use halo2ecc_s::utils::bn_to_field;
+    use num_bigint::BigUint;
     use std::fs::File;
+    use std::str::FromStr;
 
-    // #[test]
-    // fn generate_jubjub_msm_input() {
-    //     let default_table = msm_to_host_call_table(&vec![(Point::identity(), Fr::one())]);
-    //     let file = File::create("jubjub.json").expect("can not create file");
-    //     serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-    //         .expect("can not write to file");
-    // }
-    //
-    // #[test]
-    // fn generate_jubjub_msm_input_multi() {
-    //     let default_table = msm_to_host_call_table(&vec![(Point::identity(), Fr::one())]);
-    //     let file = File::create("jubjub_multi.json").expect("can not create file");
-    //     serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
-    //         .expect("can not write to file");
-    // }
+    #[test]
+    fn generate_map2curve_input() {
+        let u_re_bn = BigUint::from_str("593868448310005448561172252387029516360409945786457439875974315031640021389835649561235021338510064922970633805048").unwrap();
+        let u_im_bn = BigUint::from_str("867375309489067512797459860887365951877054038763818448057326190302701649888849997836339069389536967202878289851290").unwrap();
+
+        let x_re_bn = BigUint::from_str("3942339120143403995959884458065911863622623490130179671696530864527894030375709350085997343451924840375271949093332").unwrap();
+        let x_im_bn = BigUint::from_str("3523381697296058645143708860912139218718520142948191822158638626523448297128525915027995335789050238781038107799201").unwrap();
+        let y_re_bn = BigUint::from_str("1842813153358560687634500333570189006426514559071004676715031705637331861897467026112259097700599015948196491964104").unwrap();
+        let y_im_bn = BigUint::from_str("1919560373509329990190398196596248904228486898136222165059580822353869402983639316101175960854421770934878934628156").unwrap();
+
+        let u_re = bn_to_field::<Fq>(&u_re_bn);
+        let u_im = bn_to_field::<Fq>(&u_im_bn);
+        let x_re = bn_to_field::<Fq>(&x_re_bn);
+        let x_im = bn_to_field::<Fq>(&x_im_bn);
+        let y_re = bn_to_field::<Fq>(&y_re_bn);
+        let y_im = bn_to_field::<Fq>(&y_im_bn);
+
+        let default_table = map_2_curve_default_table(&vec![u_re, u_im, x_re, x_im, y_re, y_im]);
+        let file = File::create("map2curve.json").expect("can not create file");
+        serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
+            .expect("can not write to file");
+    }
 }

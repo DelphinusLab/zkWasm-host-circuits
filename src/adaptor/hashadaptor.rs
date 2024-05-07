@@ -15,6 +15,9 @@ use halo2_proofs::circuit::{Layouter, Region};
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::{Advice, Column, Error, Expression, VirtualCells};
+use rayon::iter::IntoParallelRefMutIterator;
+use rayon::iter::ParallelIterator;
+
 
 use crate::utils::Limb;
 
@@ -218,19 +221,81 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
             let timer = start_timer!(|| "assign");
             let config = self.config.clone();
             self.initialize(&config, region, &mut local_offset)?;
-            for arg_group in arg_cells.chunks_exact(10).into_iter() {
-                let args = arg_group.into_iter().map(|x| x.clone());
-                let args = args.collect::<Vec<_>>();
+            let mut cells_group = arg_cells.chunks_exact(10);
+            /* measure the first round */
+            let mut initial_state = self.get_default_state();
+            let mut spec_state = POSEIDON_HASHER.clone();
+            let first_group = cells_group.next().clone();
+            let measure_start = local_offset;
+            {
+                let args = first_group.map(|x| x.clone()).unwrap();
                 self.assign_permute(
                     region,
                     &mut local_offset,
+                    &mut initial_state,
                     &args[1..9].to_vec().try_into().unwrap(),
                     &args[0],
                     &args[9],
                 )?;
+
+                let c = args[1..9].to_vec().iter().map(|x| x.value).collect::<Vec<_>>();
+                spec_state.update_exact(&c.try_into().unwrap());
             }
+            let measure_end = local_offset;
+            let mut grouped_hash_cells = vec![];
+            let mut index = 0;
+            let mut state_acc = spec_state.clone();
+            let final_group = cells_group.fold(vec![], |acc, x| {
+                index += 1;
+                if x[0].value == Fr::one() {// prepare precalculated result state
+                    let delta = (index - 1) * (measure_end - measure_start);
+                    let poseidon_state = initial_state.new_with_shift(region, spec_state.get_state(), delta);
+                    grouped_hash_cells.push((index, poseidon_state, acc));
+                    spec_state = state_acc.clone();
+                    state_acc = POSEIDON_HASHER.clone();
+                    let c = x[1..9].to_vec().iter().map(|x| x.value).collect::<Vec<_>>();
+                    state_acc.update_exact(&c.try_into().unwrap());
+                    vec![x]
+                } else {
+                    let mut new = acc;
+                    new.push(x);
+                    let c = x[1..9].to_vec().iter().map(|x| x.value).collect::<Vec<_>>();
+                    state_acc.update_exact(&c.try_into().unwrap());
+                    new
+                }
+            });
+            index += 1;
+            // handing last round
+            let delta = (index - 1) * (measure_end - measure_start);
+            let poseidon_state = initial_state.new_with_shift(region, spec_state.get_state(), delta);
+            grouped_hash_cells.push((index, poseidon_state, final_group));
+
+            grouped_hash_cells
+                .par_iter_mut()
+                //.iter_mut()
+                .for_each(|(index, poseidon_state, arg_groups)| {
+                    let delta = (*index - 1) * (measure_end - measure_start);
+                    let mut round_offset = measure_end + delta;
+                    //poseidon_state.debug_offset();
+                    //initial_state.debug_offset();
+                    for arg_group in arg_groups.into_iter() {
+                        let args = arg_group.into_iter().map(|x| x.clone());
+                        let args = args.collect::<Vec<_>>();
+                        self.assign_permute(
+                            region,
+                            &mut round_offset,
+                            poseidon_state,
+                            //&mut initial_state,
+                            &args[1..9].to_vec().try_into().unwrap(),
+                            &args[0],
+                            &args[9],
+                            ).unwrap();
+                    };
+                });
             end_timer!(timer);
-            local_offset
+            let a = measure_end + (index - 1) * (measure_end - measure_start);
+            println!("a is {}", a);
+            a
         };
         Ok(())
     }

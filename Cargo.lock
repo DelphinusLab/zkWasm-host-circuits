@@ -2283,7 +2283,7 @@ dependencies = [
 [[package]]
 name = "poseidon"
 version = "0.2.0"
-source = "git+https://github.com/DelphinusLab/poseidon#58835e054512ad7833df6d20479e9e0e034a073b"
+source = "git+https://github.com/DelphinusLab/poseidon#162fc28c2c1fa361d0851a1f50c3e9c2c65c0042"
 dependencies = [
  "halo2_proofs",
  "subtle",
@@ -3724,6 +3724,7 @@ dependencies = [
  "poseidon",
  "rand",
  "rand_core",
+ "rayon",
  "ripemd",
  "serde",
  "serde_json",

@@ -208,9 +208,11 @@ impl<const D: usize> MerkleChip<Fr, D> {
             }
         };
 
+        let mut poseidon_state = self.merkle_hasher_chip.get_default_state();
         let initial_hash = self.data_hasher_chip.get_permute_result(
             region,
             offset,
+            &mut poseidon_state,
             &values,
             &self.state.one.clone(),
         )?;
@@ -229,9 +231,17 @@ impl<const D: usize> MerkleChip<Fr, D> {
                     .config
                     .select(region, &mut (), offset, &position, &assist, &acc, 0)
                     .unwrap();
+                // we can always get the default state since we are reseting hash in each round
+                let mut poseidon_state = self.merkle_hasher_chip.get_default_state();
                 let hash = self
                     .merkle_hasher_chip
-                    .get_permute_result(region, offset, &[left, right], &self.state.one.clone())
+                    .get_permute_result(
+                        region,
+                        offset,
+                        &mut poseidon_state,
+                        &[left, right],
+                        &self.state.one.clone(),
+                    )
                     .unwrap();
                 //println!("position check: {} {:?} {:?}", position.value, acc.clone().value, assist.clone().value);
                 hash

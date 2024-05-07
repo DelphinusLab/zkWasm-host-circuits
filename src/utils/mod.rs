@@ -1,6 +1,8 @@
 use halo2_proofs::arithmetic::BaseExt;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::AssignedCell;
+use halo2_proofs::circuit::Region;
+
 use num_bigint::BigUint;
 
 #[derive(Clone, Debug)]
@@ -15,6 +17,19 @@ impl<F: FieldExt> Limb<F> {
     }
     pub fn get_the_cell(&self) -> AssignedCell<F, F> {
         self.cell.as_ref().unwrap().clone()
+    }
+    pub fn new_with_shift(&self, region: &Region<F>, value: F, offset: usize) -> Self {
+        let mut l = self.clone();
+        l.cell = l.cell.map(|x| {
+            region.assign_advice(
+                || "",
+                x.cell().column.try_into().unwrap(),
+                x.cell().row_offset+offset,
+                || Ok(value)
+                ).unwrap()
+        });
+        l.value = value;
+        return l;
     }
 }
 

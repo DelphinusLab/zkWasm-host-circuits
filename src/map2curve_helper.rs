@@ -60,7 +60,7 @@ pub fn register_map2curve_foreign(env: &mut HostEnv) {
     env.external_env.register_function(
         "map2curve_result",
         ForeignInst::Map2CurveResult as usize,
-        ExternalHostCallSignature::Argument,
+        ExternalHostCallSignature::Return,
         foreign_map2curve_plugin.clone(),
         Rc::new(
             |_obs, context: &mut dyn ForeignContext, _args: wasmi::RuntimeArgs| {

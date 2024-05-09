@@ -73,8 +73,8 @@ pub fn register_map2curve_foreign(env: &mut HostEnv) {
                     context.used_round += 1;
                 }
                 let ret = vec![];
-                for _ in 0..8 {
-                    ret.push(Some(wasmi::RuntimeValue::u64(context.result_limbs[context.result_cursor] as u64)));
+                for i in 0..8 {
+                    ret.push(Some(wasmi::RuntimeValue::u64(context.result_limbs[context.result_cursor+i] as u64)));
                 }
 
                 context.result_cursor += 8;

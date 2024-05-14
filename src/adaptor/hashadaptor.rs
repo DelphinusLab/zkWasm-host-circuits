@@ -407,7 +407,7 @@ mod tests {
             assert!(c1.eq(c2));
         }
     }
-
+    #[test]
     fn generate_poseidon_random_trace_test2(){
         let mut rng = rand::thread_rng();
         let mut tables : Vec<ExternalHostCallEntryTable> = vec![];

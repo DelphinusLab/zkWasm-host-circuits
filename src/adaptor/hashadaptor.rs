@@ -310,14 +310,13 @@ mod tests {
     use rand::Rng;
     use circuits_batcher::proof::{ParamsCache, ProvingKeyCache};
     use halo2_proofs::pairing::bn256::Bn256;
-    use halo2_proofs::plonk::Error::Transcript;
-    use halo2_proofs::plonk::ProvingKey;
-    use halo2_proofs::transcript::{EncodedChallenge, TranscriptWrite};
+    use halo2_proofs::transcript::{EncodedChallenge};
     use crate::circuits::poseidon::PoseidonChip;
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
     use crate::proof::HostOpCircuit;
     use crate::proof::build_host_circuit;
     use halo2aggregator_s::circuits::utils::load_or_build_vkey;
+    use halo2aggregator_s::transcript::poseidon::PoseidonRead;
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
@@ -412,7 +411,10 @@ mod tests {
         let rand_file_name2 = format!("{:?}",random_number2);
         let vk1 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit1, None);
         let vk2 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit2, None);
-        assert_eq!(vk1, vk2);
+        let trans1 = &mut PoseidonRead::init(vec![]);
+        let hash1 = vk1.hash_into(trans1);
+        let trans2 = &mut PoseidonRead::init(vec![]);
+        let hash2 = vk1.hash_into(trans2);
+        assert!(hash1.eq(&hash2));
     }
-
 }

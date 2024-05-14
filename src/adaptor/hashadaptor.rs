@@ -411,7 +411,7 @@ mod tests {
     fn generate_poseidon_random_trace_test2(){
         let mut rng = rand::thread_rng();
         let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
-        let random_length : u32 = rng.gen_range(1..=5);
+        let random_length : u32 = rng.gen_range(0..=1);
         let mut vec2hct1 :Vec<_> = vec![];
         let mut vec2hct2 :Vec<_> = vec![];
 

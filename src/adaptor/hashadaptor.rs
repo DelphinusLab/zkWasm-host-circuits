@@ -412,16 +412,16 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
         let random_length : u32 = rng.gen_range(1..=5);
-        for index in random_length..random_length+2 {
+        for index1 in random_length..random_length+2 {
             let mut vec2hct :Vec<_> = vec![];
-            for _ in 0..index {
+            for _ in 0..index1 {
                 let mut random_input_one : [Fr;8] = [Fr::one();8];
-                for index in 0..7{
+                for index2 in 0..7{
                     let random_number_1: u64 = rng.gen();
                     let random_number_2: u64 = rng.gen();
                     let random_number_3: u64 = rng.gen();
                     let random_number_4: u64 = rng.gen();
-                    random_input_one[index+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
+                    random_input_one[index2+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
                 }
                 vec2hct.push(random_input_one);
             }

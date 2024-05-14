@@ -412,8 +412,10 @@ mod tests {
         let mut rng = rand::thread_rng();
         let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
         let random_length : u32 = rng.gen_range(1..=5);
+        let mut vec2hct1 :Vec<_> = vec![];
+        let mut vec2hct2 :Vec<_> = vec![];
+
         for index1 in random_length..random_length+2 {
-            let mut vec2hct :Vec<_> = vec![];
             for _ in 0..index1 {
                 let mut random_input_one : [Fr;8] = [Fr::one();8];
                 for index2 in 0..7{
@@ -423,10 +425,15 @@ mod tests {
                     let random_number_4: u64 = rng.gen();
                     random_input_one[index2+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
                 }
-                vec2hct.push(random_input_one);
-            }
-            tables.push(hash_to_host_call_table(vec2hct));
+                if index1 % 2  == 0{
+                    vec2hct1.push(random_input_one);
+                } else {
+                    vec2hct2.push(random_input_one);
+                }            }
         }
+
+        tables.push(hash_to_host_call_table(vec2hct1));
+        tables.push(hash_to_host_call_table(vec2hct2));
 
         let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("params").clone());
         let params = params_cache.generate_k_params(22);

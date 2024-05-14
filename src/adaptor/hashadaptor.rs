@@ -414,7 +414,7 @@ mod tests {
         let random_length : u32 = rng.gen_range(1..=5);
         for index in random_length..random_length+2 {
             let mut vec2hct :Vec<_> = vec![];
-            for _ in index {
+            for _ in 0..index {
                 let mut random_input_one : [Fr;8] = [Fr::one();8];
                 for index in 0..7{
                     let random_number_1: u64 = rng.gen();

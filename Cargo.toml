@@ -38,6 +38,7 @@ mongodb = { version = "2.5.0", default-features = false}
 ripemd = "0.1.3"
 lru = "0.11.0"
 rayon = "1.8.0"
+halo2aggregator-s = { git  = "https://github.com/DelphinusLab/halo2aggregator-s.git" }
 
 
 [features]

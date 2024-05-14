@@ -317,6 +317,8 @@ mod tests {
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
     use crate::proof::HostOpCircuit;
     use crate::proof::build_host_circuit;
+    use halo2aggregator_s::circuits::utils::load_or_build_vkey;
+
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
             op: PoseidonNew as usize,
@@ -408,9 +410,9 @@ mod tests {
         let rand_file_name1 = format!("{:?}",random_number1);
         let random_number2: u64 = rng.gen();
         let rand_file_name2 = format!("{:?}",random_number2);
-        let vkey1 :&ProvingKey<G1Affine> = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit1, &params, rand_file_name1);
-        let vkey2 :&ProvingKey<G1Affine> = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit2, &params, rand_file_name2);
-
+        let vk1 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit1, None);
+        let vk2 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit2, None);
+        assert_eq!(vk1, vk2);
     }
 
 }

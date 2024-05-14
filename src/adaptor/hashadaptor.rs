@@ -304,12 +304,15 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
 #[cfg(test)]
 mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
-    use halo2_proofs::pairing::bn256::Fr;
+    use halo2_proofs::pairing::bn256::{Fr, G1Affine};
     use std::fs::File;
     use std::path::PathBuf;
     use rand::Rng;
     use circuits_batcher::proof::{ParamsCache, ProvingKeyCache};
     use halo2_proofs::pairing::bn256::Bn256;
+    use halo2_proofs::plonk::Error::Transcript;
+    use halo2_proofs::plonk::ProvingKey;
+    use halo2_proofs::transcript::{EncodedChallenge, TranscriptWrite};
     use crate::circuits::poseidon::PoseidonChip;
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
     use crate::proof::HostOpCircuit;
@@ -393,14 +396,21 @@ mod tests {
             tables.push(hash_to_host_call_table(vec2hct));
         }
 
-        let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("./paramstrace").clone());
-        let mut pkey_cache : ProvingKeyCache<Bn256>  = ProvingKeyCache::new(5, PathBuf::from("./paramstrace").clone());
-        let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
+        let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("params").clone());
+        let mut pkey_cache : ProvingKeyCache<Bn256>  = ProvingKeyCache::new(5, PathBuf::from("params").clone());
         let params = params_cache.generate_k_params(22);
+
+        let circuit1 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
+        let circuit2 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[1],22, ());
+
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen();
-        let rand_file_name = format!("{:?}",random_number);
-        let _ = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit, &params, rand_file_name);
+        let random_number1: u64 = rng.gen();
+        let rand_file_name1 = format!("{:?}",random_number1);
+        let random_number2: u64 = rng.gen();
+        let rand_file_name2 = format!("{:?}",random_number2);
+        let vkey1 :&ProvingKey<G1Affine> = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit1, &params, rand_file_name1);
+        let vkey2 :&ProvingKey<G1Affine> = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit2, &params, rand_file_name2);
+
     }
 
 }

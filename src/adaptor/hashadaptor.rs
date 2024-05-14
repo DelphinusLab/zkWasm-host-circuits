@@ -306,9 +306,14 @@ mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
-
+    use std::path::PathBuf;
+    use rand::Rng;
+    use circuits_batcher::proof::{ParamsCache, ProvingKeyCache};
+    use halo2_proofs::pairing::bn256::Bn256;
+    use crate::circuits::poseidon::PoseidonChip;
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
-
+    use crate::proof::HostOpCircuit;
+    use crate::proof::build_host_circuit;
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
             op: PoseidonNew as usize,
@@ -367,4 +372,35 @@ mod tests {
         let file = File::create("poseidontest_multi.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &table).expect("can not write to file");
     }
+
+
+
+    #[test]
+    fn generate_random_trace_poseidon_test(){
+        let mut rng = rand::thread_rng();
+        let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
+        for index in 0..10 {
+            let mut random_input_one : [Fr;8] = [Fr::one();8];
+            for index in 0..7{
+                let random_number_1: u64 = rng.gen();
+                let random_number_2: u64 = rng.gen();
+                let random_number_3: u64 = rng.gen();
+                let random_number_4: u64 = rng.gen();
+                random_input_one[index+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
+            }
+            let mut vec2hct :Vec<_> = vec![];
+            vec2hct.push(random_input_one);
+            tables.push(hash_to_host_call_table(vec2hct));
+        }
+
+        let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("./paramstrace").clone());
+        let mut pkey_cache : ProvingKeyCache<Bn256>  = ProvingKeyCache::new(5, PathBuf::from("./paramstrace").clone());
+        let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
+        let params = params_cache.generate_k_params(22);
+        let mut rng = rand::thread_rng();
+        let random_number: u64 = rng.gen();
+        let rand_file_name = format!("{:?}",random_number);
+        let _ = pkey_cache.load_or_build_pkey::<HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&circuit, &params, rand_file_name);
+    }
+
 }

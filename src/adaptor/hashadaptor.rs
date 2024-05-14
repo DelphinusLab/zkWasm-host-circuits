@@ -310,13 +310,13 @@ mod tests {
     use rand::Rng;
     use circuits_batcher::proof::{ParamsCache, ProvingKeyCache};
     use halo2_proofs::pairing::bn256::Bn256;
-    use halo2_proofs::transcript::{EncodedChallenge};
+    use halo2_proofs::transcript::{EncodedChallenge, Transcript};
     use crate::circuits::poseidon::PoseidonChip;
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
     use crate::proof::HostOpCircuit;
     use crate::proof::build_host_circuit;
     use halo2aggregator_s::circuits::utils::load_or_build_vkey;
-    use halo2aggregator_s::transcript::poseidon::PoseidonRead;
+    use halo2aggregator_s::transcript::poseidon::{PoseidonRead, PoseidonWrite};
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
@@ -404,17 +404,25 @@ mod tests {
         let circuit1 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
         let circuit2 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[1],22, ());
 
-        let mut rng = rand::thread_rng();
-        let random_number1: u64 = rng.gen();
-        let rand_file_name1 = format!("{:?}",random_number1);
-        let random_number2: u64 = rng.gen();
-        let rand_file_name2 = format!("{:?}",random_number2);
+        // let mut rng = rand::thread_rng();
+        // let random_number1: u64 = rng.gen();
+        // let rand_file_name1 = format!("{:?}",random_number1);
+        // let random_number2: u64 = rng.gen();
+        // let rand_file_name2 = format!("{:?}",random_number2);
+
+
+
         let vk1 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit1, None);
         let vk2 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit2, None);
-        let trans1 = &mut PoseidonRead::init(vec![]);
-        let hash1 = vk1.hash_into(trans1);
-        let trans2 = &mut PoseidonRead::init(vec![]);
-        let hash2 = vk1.hash_into(trans2);
-        assert!(hash1.eq(&hash2));
+        // let trans1 = &mut PoseidonWrite::init(vec![]);
+        // let hash1 = vk1.hash_into(trans1).unwrap();
+        // let trans2 = &mut PoseidonWrite::init(vec![]);
+        // let hash2 = vk1.hash_into(trans2).unwrap();
+        for (c1, c2) in vk1.fixed_commitments.iter().zip(vk2.fixed_commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
+        for (c1, c2) in vk1.permutation.commitments.iter().zip(vk2.permutation.commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
     }
 }

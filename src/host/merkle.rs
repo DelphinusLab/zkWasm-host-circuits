@@ -1,6 +1,5 @@
 use crate::host::db::TreeDB;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
@@ -63,8 +62,6 @@ pub struct MerkleProof<H: Debug + Clone + PartialEq, const D: usize> {
     pub assist: [H; D],
     pub index: u64,
 }
-
-pub type MerkleProofCache<H, const D: usize> = HashMap<(H, u64), MerkleProof<H, D>>;
 
 pub fn get_offset(index: u64) -> u64 {
     let height = (index + 1).ilog2();

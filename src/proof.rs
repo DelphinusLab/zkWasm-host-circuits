@@ -9,7 +9,6 @@ use crate::circuits::{
     merkle::MerkleChip,
     poseidon::PoseidonChip,
 };
-use crate::host::merkle::MerkleProof;
 use halo2_proofs::circuit::floor_planner::FlatFloorPlanner;
 use halo2_proofs::pairing::bn256::Bn256;
 use halo2_proofs::{
@@ -23,8 +22,6 @@ use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 use circuits_batcher::args::HashType::Poseidon;
 use circuits_batcher::args::OpenSchema;
 use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
-use std::collections::HashMap;
-use std::io::{Read, Write};
 
 use crate::host::ExternalHostCallEntryTable;
 use serde::{Deserialize, Serialize};
@@ -144,47 +141,6 @@ pub fn read_host_call_table(input_file: PathBuf) -> ExternalHostCallEntryTable {
     v
 }
 
-pub fn read_merkle_proof(f: &mut File) -> Option<MerkleProof<[u8; 32], 32>> {
-    let mut bytes = [0u8; 32];
-    f.read_exact(&mut bytes).ok()?;
-    let source = bytes.clone();
-    f.read_exact(&mut bytes).ok()?;
-    let root = bytes.clone();
-    let mut assist = [[0; 32]; 32];
-    for i in 0..32 {
-        f.read_exact(&mut assist[i]).ok()?;
-    }
-    let mut index = [0u8; 8];
-    f.read_exact(&mut index).ok()?;
-    Some(MerkleProof {
-        source,
-        root,
-        assist,
-        index: u64::from_le_bytes(index),
-    })
-}
-
-pub fn write_merkle_proof(f: &mut dyn Write, proof: MerkleProof<[u8; 32], 32>) {
-    f.write_all(proof.source.as_slice()).unwrap();
-    f.write_all(proof.root.as_slice()).unwrap();
-    for i in 0..32 {
-        f.write_all(proof.assist[i].as_slice()).unwrap();
-    }
-    f.write_all(&proof.index.to_le_bytes()).unwrap();
-    println!("writing proof with key {} {:?}", proof.index, proof.root);
-}
-
-pub fn read_merkle_assist_proofs(
-    input_file: PathBuf,
-) -> HashMap<([u8; 32], u64), MerkleProof<[u8; 32], 32>> {
-    let mut map = HashMap::new();
-    let mut file = File::open(input_file).expect("File does not exist");
-    while let Some(proof) = read_merkle_proof(&mut file) {
-        map.insert((proof.root, proof.index), proof.clone());
-    }
-    map
-}
-
 pub fn build_host_circuit<S: HostOpSelector>(
     v: &ExternalHostCallEntryTable,
     k: usize,
@@ -207,7 +163,6 @@ pub fn exec_create_host_proof(
     name: &str,
     k: usize,
     v: &ExternalHostCallEntryTable,
-    assist_file: Option<PathBuf>,
     opname: OpType,
     cache_folder: &PathBuf,
     param_folder: &PathBuf,
@@ -261,8 +216,7 @@ pub fn exec_create_host_proof(
             gen_proof!(circuit);
         }
         OpType::MERKLE => {
-            let proof_map = assist_file.map(|file| read_merkle_assist_proofs(file));
-            let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, proof_map);
+            let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, None);
             gen_proof!(circuit);
         }
         OpType::JUBJUBSUM => {

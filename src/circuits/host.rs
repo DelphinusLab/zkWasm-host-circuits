@@ -216,7 +216,7 @@ impl HostOpConfig {
 
 pub trait HostOpSelector {
     type Config: Clone + std::fmt::Debug;
-    type Helper: Clone + std::fmt::Debug + Default;
+    type Helper: Clone + Default;
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advice: &Vec<Column<Advice>>,

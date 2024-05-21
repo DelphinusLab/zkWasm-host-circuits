@@ -1,12 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 //use ark_std::{end_timer, start_timer};
 use crate::adaptor::get_selected_entries;
 use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
-use crate::host::merkle::MerkleProofCache;
 use crate::host::merkle::{MerkleNode, MerkleTree};
-use crate::host::mongomerkle::MongoMerkle;
+use crate::host::mongomerkle::{DEFAULT_HASH_VEC, MongoMerkle};
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleGetRoot, MerkleSet, MerkleSetRoot};
@@ -21,6 +22,7 @@ use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
+use crate::host::db::TreeDB;
 
 /* The calling convention will be
  * MerkleAddress
@@ -66,7 +68,7 @@ fn kvpair_to_host_call_table(
 
 impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
     type Config = (CommonGateConfig, PoseidonGateConfig);
-    type Helper = Option<MerkleProofCache<[u8; 32], DEPTH>>; // known merkle proofs if provided
+    type Helper = Option<Rc<RefCell<dyn TreeDB>>>; // known tree db if provided
     fn configure(
         meta: &mut ConstraintSystem<Fr>,
         shared_advices: &Vec<Column<Advice>>,
@@ -287,8 +289,13 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             // 2: new_root
             // 3: value[]
             // 5: op_code
-            let mut mt: MongoMerkle<DEPTH> = MongoMerkle::<DEPTH>::default();
+            let mut mt: MongoMerkle<DEPTH> = if let Some(tree_db) = helper {
+                MongoMerkle::construct([0u8; 32],DEFAULT_HASH_VEC[DEPTH], Some(tree_db.clone()) )
+            } else {
+                MongoMerkle::<DEPTH>::default()
+            };
             let default_proof = mt.default_proof();
+
             for args in arg_cells.chunks_exact(6) {
                 let [address, root, value0, value1, new_root, opcode] = args else { unreachable!() };
                 //println!("local_offset {} === op = {:?}", local_offset, opcode.value);
@@ -302,20 +309,6 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
                     && field_to_bytes(&new_root.value) == default_proof.root
                 {
                     default_proof.clone()
-                } else if let Some(proofs) = helper {
-                    proofs
-                        .get(&(
-                            field_to_bytes(&new_root.value),
-                            index, //address.value.get_lower_128() as u64,
-                        ))
-                        .expect(
-                            format!(
-                                "can not get proof from proof cache {:?} {:?} [set = {}]",
-                                new_root.value, index, is_set
-                            )
-                            .as_str(),
-                        )
-                        .clone()
                 } else {
                     if is_set {
                         //println!("op is set, process set:");
@@ -364,12 +357,10 @@ mod tests {
     use crate::host::mongomerkle::DEFAULT_HASH_VEC;
     use crate::host::ExternalHostCallEntryTable;
     use crate::host::ForeignInst::{MerkleGet, MerkleSet};
-    use crate::proof::write_merkle_proof;
     use crate::proof::MERKLE_DEPTH;
     use crate::utils::bytes_to_field;
     use crate::utils::bytes_to_u64;
     use crate::utils::field_to_bytes;
-    use ff::PrimeField;
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
 
@@ -385,21 +376,11 @@ mod tests {
             None,
         );
 
-        let mut assist_file =
-            File::create("kvpair_test1_assist.data").expect("can not create file");
-
-        let (mut leaf, proof1) = mt.get_leaf_with_proof(address).unwrap();
-        println!("default hash is {:?}", Fr::from_repr(DEFAULT_HASH_VEC[0]));
-        println!("default proof is {:?}", Fr::from_repr(proof1.root));
-        println!("default source is {:?}", Fr::from_repr(proof1.source));
-        for assist in proof1.assist {
-            println!("assist is {:?}", Fr::from_repr(assist));
-        }
-        println!("default leaf is {:?}", leaf);
+        let (mut leaf, _) = mt.get_leaf_with_proof(address).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
+        println!("bytes_data is {:?}", bytesdata);
         leaf.set(&bytesdata);
-
-        let proof2 = mt.set_leaf_with_proof(&leaf).unwrap();
+        mt.set_leaf_with_proof(&leaf).unwrap();
 
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
@@ -422,9 +403,6 @@ mod tests {
         let file = File::create("kvpair_test1.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
             .expect("can not write to file");
-
-        write_merkle_proof(&mut assist_file, proof1);
-        write_merkle_proof(&mut assist_file, proof2);
     }
 
     #[test]
@@ -439,13 +417,12 @@ mod tests {
             DEFAULT_HASH_VEC[MERKLE_DEPTH].clone(),
             None,
         );
-        let (_, proof0) = mt.get_leaf_with_proof(address + 1).unwrap();
-        let (mut leaf, proof1) = mt.get_leaf_with_proof(address).unwrap();
+        let (mut leaf, _) = mt.get_leaf_with_proof(address).unwrap();
         let bytesdata = field_to_bytes(&data).to_vec();
-
+        println!("bytes_data is {:?}", bytesdata);
         leaf.set(&bytesdata);
+        mt.set_leaf_with_proof(&leaf).unwrap();
 
-        let proof2 = mt.set_leaf_with_proof(&leaf).unwrap();
         let root64_new = bytes_to_field(&mt.get_root_hash());
 
         let default_table = kvpair_to_host_call_table(&vec![
@@ -474,11 +451,5 @@ mod tests {
         let file = File::create("kvpair_test2.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &ExternalHostCallEntryTable(default_table))
             .expect("can not write to file");
-
-        let mut assist_file =
-            File::create("kvpair_test2_assist.data").expect("can not create file");
-        write_merkle_proof(&mut assist_file, proof0);
-        write_merkle_proof(&mut assist_file, proof1);
-        write_merkle_proof(&mut assist_file, proof2);
     }
 }

@@ -306,8 +306,15 @@ mod tests {
     use crate::host::{ExternalHostCallEntry, ExternalHostCallEntryTable};
     use halo2_proofs::pairing::bn256::Fr;
     use std::fs::File;
-
+    use std::path::PathBuf;
+    use rand::Rng;
+    use circuits_batcher::proof::ParamsCache;
+    use halo2_proofs::pairing::bn256::Bn256;
+    use crate::circuits::poseidon::PoseidonChip;
     use crate::host::ForeignInst::{PoseidonFinalize, PoseidonNew, PoseidonPush};
+    use crate::proof::HostOpCircuit;
+    use crate::proof::build_host_circuit;
+    use halo2aggregator_s::circuits::utils::load_or_build_vkey;
 
     fn hash_cont(restart: bool) -> Vec<ExternalHostCallEntry> {
         vec![ExternalHostCallEntry {
@@ -366,5 +373,82 @@ mod tests {
         ]);
         let file = File::create("poseidontest_multi.json").expect("can not create file");
         serde_json::to_writer_pretty(file, &table).expect("can not write to file");
+    }
+    #[test]
+    fn generate_poseidon_random_trace_test1(){
+        let mut rng = rand::thread_rng();
+        let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
+        for _ in 0..2 {
+            let mut random_input_one : [Fr;8] = [Fr::one();8];
+            for index in 0..7{
+                let random_number_1: u64 = rng.gen();
+                let random_number_2: u64 = rng.gen();
+                let random_number_3: u64 = rng.gen();
+                let random_number_4: u64 = rng.gen();
+                random_input_one[index+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
+            }
+            let mut vec2hct :Vec<_> = vec![];
+            vec2hct.push(random_input_one);
+            tables.push(hash_to_host_call_table(vec2hct));
+        }
+
+        let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("params").clone());
+        let params = params_cache.generate_k_params(22);
+
+        let circuit1 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
+        let circuit2 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[1],22, ());
+
+        let vk1 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit1, None);
+        let vk2 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit2, None);
+        for (c1, c2) in vk1.fixed_commitments.iter().zip(vk2.fixed_commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
+        for (c1, c2) in vk1.permutation.commitments.iter().zip(vk2.permutation.commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
+    }
+    #[test]
+    fn generate_poseidon_random_trace_test2(){
+        let mut rng = rand::thread_rng();
+        let mut tables : Vec<ExternalHostCallEntryTable> = vec![];
+        // random length bigger than 2 leads to assert failure
+        let random_length : u32 = rng.gen_range(0..=1);
+        let mut vec2hct1 :Vec<_> = vec![];
+        let mut vec2hct2 :Vec<_> = vec![];
+
+        for index1 in random_length..random_length+2 {
+            for _ in 0..index1 {
+                let mut random_input_one : [Fr;8] = [Fr::one();8];
+                for index2 in 0..7{
+                    let random_number_1: u64 = rng.gen();
+                    let random_number_2: u64 = rng.gen();
+                    let random_number_3: u64 = rng.gen();
+                    let random_number_4: u64 = rng.gen();
+                    random_input_one[index2+1] = Fr::from_raw([random_number_1,random_number_2,random_number_3,random_number_4]);
+                }
+                if index1 % 2  == 0{
+                    vec2hct1.push(random_input_one);
+                } else {
+                    vec2hct2.push(random_input_one);
+                }            }
+        }
+
+        tables.push(hash_to_host_call_table(vec2hct1));
+        tables.push(hash_to_host_call_table(vec2hct2));
+
+        let mut params_cache = ParamsCache::<Bn256>::new(5, PathBuf::from("params").clone());
+        let params = params_cache.generate_k_params(22);
+
+        let circuit1 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[0],22, ());
+        let circuit2 = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&tables[1],22, ());
+
+        let vk1 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit1, None);
+        let vk2 = load_or_build_vkey::<Bn256, HostOpCircuit<Fr, PoseidonChip<Fr,9,8>>>(&params, &circuit2, None);
+        for (c1, c2) in vk1.fixed_commitments.iter().zip(vk2.fixed_commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
+        for (c1, c2) in vk1.permutation.commitments.iter().zip(vk2.permutation.commitments.iter()) {
+            assert!(c1.eq(c2));
+        }
     }
 }

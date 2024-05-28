@@ -16,31 +16,6 @@ use serde::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-fn deserialize_u64_as_binary<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Bson::deserialize(deserializer) {
-        Ok(Bson::Binary(bytes)) => Ok({
-            let c: [u8; 8] = bytes.bytes.try_into().unwrap();
-            u64::from_le_bytes(c)
-        }),
-        Ok(..) => Err(Error::invalid_value(Unexpected::Enum, &"Bson::Binary")),
-        Err(e) => Err(e),
-    }
-}
-
-fn serialize_u64_as_binary<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let binary = Bson::Binary(mongodb::bson::Binary {
-        subtype: BinarySubtype::Generic,
-        bytes: value.to_le_bytes().to_vec(),
-    });
-    binary.serialize(serializer)
-}
-
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
     D: Deserializer<'de>,
@@ -88,17 +63,16 @@ impl PartialEq for MerkleRecord {
 impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     pub fn get_record(
         &self,
-        index: u64,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let record = self.db.borrow().get_merkle_record(index, hash);
+        let record = self.db.borrow().get_merkle_record(hash);
         record
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let exists: Result<Option<MerkleRecord>, mongodb::error::Error> =
-            self.get_record(record.index, &record.hash);
+            self.get_record(&record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
         exists.map_or_else(
             |e: mongodb::error::Error| Err(e),
@@ -162,15 +136,17 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     ) -> Result<(MerkleRecord, bool), MerkleError> {
         let mut exist = false;
         let node = self
-            .get_record(index, hash)
+            .get_record(hash)
             .expect("Unexpected DB Error")
             .map_or_else(
                 || -> Result<MerkleRecord, MerkleError> {
                     Ok(self.check_generate_default_node(index, hash)?)
                 },
-                |x| -> Result<MerkleRecord, MerkleError> {
+                |mut x| -> Result<MerkleRecord, MerkleError> {
                     exist = true;
-                    assert!(x.index == index);
+                    // The index of MerkleRecord was not stored in db,
+                    // so it needs to be assigned here.
+                    x.index = index;
                     Ok(x)
                 },
             )?;
@@ -180,8 +156,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleRecord {
-    #[serde(serialize_with = "self::serialize_u64_as_binary")]
-    #[serde(deserialize_with = "self::deserialize_u64_as_binary")]
+    // The index will not to be stored in db.
+    #[serde(skip_serializing, default)]
     pub index: u64,
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]

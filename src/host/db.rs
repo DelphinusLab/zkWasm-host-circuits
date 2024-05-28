@@ -26,7 +26,6 @@ lazy_static::lazy_static! {
 pub trait TreeDB {
     fn get_merkle_record(
         &self,
-        index: u64,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error>;
 
@@ -71,12 +70,10 @@ impl MongoDB {
 impl TreeDB for MongoDB {
     fn get_merkle_record(
         &self,
-        index: u64,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
         let collection = self.merkel_collection()?;
         let mut filter = doc! {};
-        filter.insert("index", u64_to_bson(index));
         filter.insert("hash", u256_to_bson(hash));
         collection.find_one(filter, None)
     }
@@ -84,7 +81,6 @@ impl TreeDB for MongoDB {
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
         let options = UpdateOptions::builder().upsert(true).build();
         let mut filter = doc! {};
-        filter.insert("index", u64_to_bson(record.index));
         filter.insert("hash", u256_to_bson(&record.hash));
         let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
         let update = doc! {"$set": record_doc};

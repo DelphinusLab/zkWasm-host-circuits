@@ -11,8 +11,8 @@ const DEFAULT_CACHE_SIZE: usize = usize::pow(2, 24);
 const ENV_CACHE_SIZE: &str = "ZKWASM_MERKLE_CACHE_SIZE";
 
 lazy_static::lazy_static! {
-    pub static ref MERKLE_CACHE: Mutex<LruCache<(u64, [u8;  32]), Option<MerkleRecord>>> =
-        Mutex::new(LruCache::<(u64, [u8;  32]), Option<MerkleRecord>>::new(
+    pub static ref MERKLE_CACHE: Mutex<LruCache<[u8;  32], Option<MerkleRecord>>> =
+        Mutex::new(LruCache::<[u8;  32], Option<MerkleRecord>>::new(
             NonZeroUsize::new(get_cache_size()).unwrap(),
         ));
 

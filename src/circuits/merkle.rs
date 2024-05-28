@@ -15,15 +15,8 @@ use crate::circuits::Limb;
 use crate::host::merkle::MerkleProof;
 use crate::host::poseidon::MERKLE_HASHER_SPEC;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature="complex-leaf")] {
-        use crate::host::poseidon::POSEIDON_HASHER_SPEC as MERKLE_LEAF_HASHER_SPEC;
-        type MerkleDataHasherChip<F> = PoseidonChip<F, 9, 8>;
-    } else {
-        use crate::host::poseidon::MERKLE_LEAF_HASHER_SPEC;
-        type MerkleDataHasherChip<F> = PoseidonChip<F, 3, 2>;
-    }
-}
+use crate::host::poseidon::MERKLE_LEAF_HASHER_SPEC;
+type MerkleDataHasherChip<F> = PoseidonChip<F, 3, 2>;
 
 use crate::host::ForeignInst::MerkleSet;
 use halo2_proofs::pairing::bn256::Fr;

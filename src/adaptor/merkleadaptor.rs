@@ -33,13 +33,7 @@ const MERGE_DATA_SIZE: usize = 2;
 // 0: set/get 1-4: root 5-8:address 9-12:value 13-16:root
 const CHUNK_SIZE: usize = 1 + 3 * MERGE_SIZE; // should equal to 13
 
-cfg_if::cfg_if! {
-    if #[cfg(feature="complex-leaf")] {
-        const TOTAL_CONSTRUCTIONS: usize = 700;
-    } else {
-        const TOTAL_CONSTRUCTIONS: usize = 1080;
-    }
-}
+const TOTAL_CONSTRUCTIONS: usize = 1080;
 
 fn kvpair_new(address: u64) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {

@@ -2,13 +2,7 @@ use crate::host::db;
 use crate::host::db::{MongoDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
-cfg_if::cfg_if! {
-    if #[cfg(feature="complex-leaf")] {
-        use crate::host::poseidon::POSEIDON_HASHER as MERKLE_LEAF_HASHER;
-    } else {
-        use crate::host::poseidon::MERKLE_LEAF_HASHER;
-    }
-}
+use crate::host::poseidon::MERKLE_LEAF_HASHER;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;

@@ -39,8 +39,8 @@ where
 }
 
 fn deserialize_option_u256_as_binary<'de, D>(deserializer: D) -> Result<Option<[u8; 32]>, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(Some(bytes.bytes.try_into().unwrap())),
@@ -50,9 +50,12 @@ fn deserialize_option_u256_as_binary<'de, D>(deserializer: D) -> Result<Option<[
     }
 }
 
-fn serialize_option_bytes_as_binary<S>(bytes: &Option<[u8; 32]>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+fn serialize_option_bytes_as_binary<S>(
+    bytes: &Option<[u8; 32]>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
 {
     match bytes {
         Some(bytes) => {
@@ -64,7 +67,6 @@ fn serialize_option_bytes_as_binary<S>(bytes: &Option<[u8; 32]>, serializer: S) 
         }
         None => serializer.serialize_none(),
     }
-
 }
 
 #[derive(Clone)]
@@ -159,28 +161,34 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         }
     }
 
-    fn get_or_generate_node(
+    fn generate_or_get_node(
         &self,
         index: u64,
         hash: &[u8; 32],
-    ) -> Result<(MerkleRecord, bool), MerkleError> {
-        let mut exist = false;
-        let node = self
-            .get_record(hash)
-            .expect("Unexpected DB Error")
-            .map_or_else(
-                || -> Result<MerkleRecord, MerkleError> {
-                    Ok(self.check_generate_default_node(index, hash)?)
-                },
-                |mut x| -> Result<MerkleRecord, MerkleError> {
-                    exist = true;
-                    // The index of MerkleRecord was not stored in db,
-                    // so it needs to be assigned here.
-                    x.index = index;
-                    Ok(x)
-                },
-            )?;
-        Ok((node, exist))
+    ) -> Result<MerkleRecord, MerkleError> {
+        let height = (index + 1).ilog2();
+        let default_hash = self.get_default_hash(height as usize)?;
+        if &default_hash == hash {
+            self.generate_default_node(index)
+        } else {
+            match self.get_record(hash) {
+                Ok(Some(mut node)) => {
+                    // The index of MerkleRecord was not stored in db, so it needs to be assigned here.
+                    node.index = index;
+                    Ok(node)
+                }
+                Ok(None) => Err(MerkleError::new(
+                    *hash,
+                    index,
+                    MerkleErrorCode::RecordNotFound,
+                )),
+                Err(_) => Err(MerkleError::new(
+                    *hash,
+                    index,
+                    MerkleErrorCode::UnexpectedDBError,
+                )),
+            }
+        }
     }
 }
 
@@ -192,13 +200,25 @@ pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     pub hash: [u8; 32],
-    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "self::serialize_option_bytes_as_binary",
+        default
+    )]
     #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
     pub left: Option<[u8; 32]>,
-    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "self::serialize_option_bytes_as_binary",
+        default
+    )]
     #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
     pub right: Option<[u8; 32]>,
-    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "self::serialize_option_bytes_as_binary",
+        default
+    )]
     #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
     pub data: Option<[u8; 32]>,
 }
@@ -391,8 +411,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_node_with_hash(&self, index: u64, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
-        let (node, _) = self.get_or_generate_node(index, hash)?;
-        Ok(node)
+        self.generate_or_get_node(index, hash)
     }
 
     fn set_leaf(&mut self, leaf: &MerkleRecord) -> Result<(), MerkleError> {
@@ -411,7 +430,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         // We push the search from the top
         let hash = self.get_root_hash();
         let mut acc = 0;
-        let (mut acc_node, mut parent_exist) = self.get_or_generate_node(acc, &hash)?;
+        let mut acc_node = self.generate_or_get_node(acc, &hash)?;
         let assist: Vec<[u8; 32]> = paths
             .into_iter()
             .map(|child| {
@@ -423,11 +442,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
                     (acc_node.right().unwrap(), acc_node.left().unwrap())
                 };
                 acc = child;
-                if parent_exist {
-                    (acc_node, parent_exist) = self.get_or_generate_node(acc, &hash)?
-                } else {
-                    acc_node = self.check_generate_default_node(acc, &hash)?
-                }
+                acc_node = self.generate_or_get_node(acc, &hash)?;
                 Ok(sibling_hash)
             })
             .collect::<Result<Vec<[u8; 32]>, _>>()?;

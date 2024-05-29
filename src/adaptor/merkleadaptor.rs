@@ -6,8 +6,9 @@ use crate::circuits::host::{HostOpConfig, HostOpSelector};
 use crate::circuits::merkle::MerkleChip;
 use crate::circuits::poseidon::PoseidonGateConfig;
 use crate::circuits::CommonGateConfig;
+use crate::host::db::TreeDB;
 use crate::host::merkle::{MerkleNode, MerkleTree};
-use crate::host::mongomerkle::{DEFAULT_HASH_VEC, MongoMerkle};
+use crate::host::mongomerkle::{MongoMerkle, DEFAULT_HASH_VEC};
 use crate::host::ExternalHostCallEntry;
 use crate::host::ForeignInst;
 use crate::host::ForeignInst::{MerkleAddress, MerkleGet, MerkleGetRoot, MerkleSet, MerkleSetRoot};
@@ -22,7 +23,6 @@ use halo2_proofs::plonk::Advice;
 use halo2_proofs::plonk::Column;
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::plonk::Error;
-use crate::host::db::TreeDB;
 
 /* The calling convention will be
  * MerkleAddress
@@ -284,7 +284,7 @@ impl<const DEPTH: usize> HostOpSelector for MerkleChip<Fr, DEPTH> {
             // 3: value[]
             // 5: op_code
             let mut mt: MongoMerkle<DEPTH> = if let Some(tree_db) = helper {
-                MongoMerkle::construct([0u8; 32],DEFAULT_HASH_VEC[DEPTH], Some(tree_db.clone()) )
+                MongoMerkle::construct([0u8; 32], DEFAULT_HASH_VEC[DEPTH], Some(tree_db.clone()))
             } else {
                 MongoMerkle::<DEPTH>::default()
             };

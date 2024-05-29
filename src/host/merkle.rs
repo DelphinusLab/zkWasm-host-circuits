@@ -16,6 +16,8 @@ pub enum MerkleErrorCode {
     InvalidHash,
     InvalidDepth,
     InvalidIndex,
+    RecordNotFound,
+    UnexpectedDBError,
 }
 
 #[derive(Debug)]

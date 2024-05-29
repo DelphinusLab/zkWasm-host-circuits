@@ -17,7 +17,7 @@ use halo2_proofs::plonk::{Advice, Column, Error};
 const MERGE_SIZE: usize = 4;
 const CHUNK_SIZE: usize = 1 + (2 + 1 + 2) * MERGE_SIZE;
 
-const TOTAL_CONSTRUCTIONS: usize = 400;
+const TOTAL_CONSTRUCTIONS: usize = 600;
 
 fn msm_new(restart: bool) -> Vec<ExternalHostCallEntry> {
     vec![ExternalHostCallEntry {

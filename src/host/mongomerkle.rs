@@ -38,6 +38,35 @@ where
     binary.serialize(serializer)
 }
 
+fn deserialize_option_u256_as_binary<'de, D>(deserializer: D) -> Result<Option<[u8; 32]>, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    match Bson::deserialize(deserializer) {
+        Ok(Bson::Binary(bytes)) => Ok(Some(bytes.bytes.try_into().unwrap())),
+        Ok(Bson::Null) => Ok(None),
+        Ok(..) => Err(Error::invalid_value(Unexpected::Enum, &"Bson::Binary")),
+        Err(e) => Err(e),
+    }
+}
+
+fn serialize_option_bytes_as_binary<S>(bytes: &Option<[u8; 32]>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+{
+    match bytes {
+        Some(bytes) => {
+            let binary = Bson::Binary(mongodb::bson::Binary {
+                subtype: BinarySubtype::Generic,
+                bytes: bytes.to_vec(),
+            });
+            binary.serialize(serializer)
+        }
+        None => serializer.serialize_none(),
+    }
+
+}
+
 #[derive(Clone)]
 pub struct MongoMerkle<const DEPTH: usize> {
     root_hash: [u8; 32],
@@ -110,7 +139,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         Ok(MerkleRecord {
             index,
             hash: default,
-            data: [0; 32],
+            data: None,
             left: child_hash,
             right: child_hash,
         })
@@ -168,9 +197,9 @@ pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     pub right: [u8; 32],
-    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
-    #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    pub data: [u8; 32],
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
+    pub data: Option<[u8; 32]>,
 }
 
 impl MerkleNode<[u8; 32]> for MerkleRecord {
@@ -182,7 +211,7 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
     }
     fn set(&mut self, data: &Vec<u8>) {
         let mut hasher = MERKLE_LEAF_HASHER.clone();
-        self.data = data.clone().try_into().unwrap();
+        self.data = Some(data.clone().try_into().unwrap());
         let batchdata = data
             .chunks(16)
             .into_iter()
@@ -219,18 +248,19 @@ impl MerkleRecord {
         MerkleRecord {
             index,
             hash: [0; 32],
-            data: [0; 32],
+            data: None,
             left: [0; 32],
             right: [0; 32],
         }
     }
 
     pub fn data_as_u64(&self) -> [u64; 4] {
+        let data = self.data.unwrap();
         [
-            u64::from_le_bytes(self.data[0..8].try_into().unwrap()),
-            u64::from_le_bytes(self.data[8..16].try_into().unwrap()),
-            u64::from_le_bytes(self.data[16..24].try_into().unwrap()),
-            u64::from_le_bytes(self.data[24..32].try_into().unwrap()),
+            u64::from_le_bytes(data[0..8].try_into().unwrap()),
+            u64::from_le_bytes(data[8..16].try_into().unwrap()),
+            u64::from_le_bytes(data[16..24].try_into().unwrap()),
+            u64::from_le_bytes(data[24..32].try_into().unwrap()),
         ]
     }
 }
@@ -326,7 +356,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         self.boundary_check(index)?;
         let record = MerkleRecord {
             index,
-            data: [0; 32],
+            data: None,
             left: *left,
             right: *right,
             hash: *hash,
@@ -345,7 +375,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         let mut records: Vec<MerkleRecord> = parents
             .map(|(index, hash, left, right)| MerkleRecord {
                 index,
-                data: [0; 32],
+                data: None,
                 left,
                 right,
                 hash,
@@ -507,7 +537,7 @@ mod tests {
 
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 
         // 3
         let a = mt.get_root_hash();
@@ -515,7 +545,7 @@ mod tests {
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 
@@ -550,7 +580,7 @@ mod tests {
 
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 
         // 3
         let a = mt.get_root_hash();
@@ -558,7 +588,7 @@ mod tests {
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 
@@ -603,7 +633,7 @@ mod tests {
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
 
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 
         // 3
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
@@ -612,7 +642,7 @@ mod tests {
 
         let (leaf, _) = mt.get_leaf_with_proof(INDEX2).unwrap();
         assert_eq!(leaf.index, INDEX2);
-        assert_eq!(leaf.data, LEAF2_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF2_DATA);
 
         // 4
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
@@ -621,22 +651,22 @@ mod tests {
 
         let (leaf, _) = mt.get_leaf_with_proof(INDEX3).unwrap();
         assert_eq!(leaf.index, INDEX3);
-        assert_eq!(leaf.data, LEAF3_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF3_DATA);
 
         // 5
         let root = mt.get_root_hash();
         let mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data, LEAF1_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert!(mt.verify_proof(&proof).unwrap());
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX2).unwrap();
         assert_eq!(leaf.index, INDEX2);
-        assert_eq!(leaf.data, LEAF2_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF2_DATA);
         assert!(mt.verify_proof(&proof).unwrap());
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX3).unwrap();
         assert_eq!(leaf.index, INDEX3);
-        assert_eq!(leaf.data, LEAF3_DATA);
+        assert_eq!(leaf.data.unwrap(), LEAF3_DATA);
         assert!(mt.verify_proof(&proof).unwrap());
     }
 

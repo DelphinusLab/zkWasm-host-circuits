@@ -131,9 +131,10 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         let height = (index + 1).ilog2();
         let default = self.get_default_hash(height as usize)?;
         let child_hash = if height == Self::height() as u32 {
-            [0; 32]
+            None
         } else {
-            self.get_default_hash((height + 1) as usize)?
+            let hash = self.get_default_hash((height + 1) as usize)?;
+            Some(hash)
         };
 
         Ok(MerkleRecord {
@@ -191,12 +192,12 @@ pub struct MerkleRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     pub hash: [u8; 32],
-    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
-    #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    pub left: [u8; 32],
-    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
-    #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
-    pub right: [u8; 32],
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
+    pub left: Option<[u8; 32]>,
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
+    #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
+    pub right: Option<[u8; 32]>,
     #[serde(skip_serializing_if = "Option::is_none", serialize_with = "self::serialize_option_bytes_as_binary", default)]
     #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
     pub data: Option<[u8; 32]>,
@@ -236,10 +237,10 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         //println!("update with new hash {:?}", self.hash);
     }
     fn right(&self) -> Option<[u8; 32]> {
-        Some(self.right)
+        self.right
     }
     fn left(&self) -> Option<[u8; 32]> {
-        Some(self.left)
+        self.left
     }
 }
 
@@ -249,8 +250,8 @@ impl MerkleRecord {
             index,
             hash: [0; 32],
             data: None,
-            left: [0; 32],
-            right: [0; 32],
+            left: None,
+            right: None,
         }
     }
 
@@ -357,8 +358,8 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         let record = MerkleRecord {
             index,
             data: None,
-            left: *left,
-            right: *right,
+            left: Some(*left),
+            right: Some(*right),
             hash: *hash,
         };
         //println!("set_node_with_hash {} {:?}", index, hash);
@@ -376,8 +377,8 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             .map(|(index, hash, left, right)| MerkleRecord {
                 index,
                 data: None,
-                left,
-                right,
+                left: Some(left),
+                right: Some(right),
                 hash,
             })
             .to_vec();

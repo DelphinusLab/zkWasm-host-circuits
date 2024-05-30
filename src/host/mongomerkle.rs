@@ -394,14 +394,22 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     ) -> Result<(), MerkleError> {
         self.leaf_check(leaf.index)?;
         let mut records: Vec<MerkleRecord> = parents
-            .map(|(index, hash, left, right)| MerkleRecord {
-                index,
-                data: None,
-                left: Some(left),
-                right: Some(right),
-                hash,
+            .iter()
+            .filter_map(|(index, hash, left, right)| {
+                let height = (index + 1).ilog2();
+                match self.get_default_hash(height as usize) {
+                    // There is no need to set default nodes in db.
+                    Ok(default_hash) if hash != &default_hash => Some(MerkleRecord {
+                        index: *index,
+                        data: None,
+                        left: Some(*left),
+                        right: Some(*right),
+                        hash: *hash,
+                    }),
+                    _ => None,
+                }
             })
-            .to_vec();
+            .collect();
 
         records.push(leaf.clone());
         self.update_records(&records)

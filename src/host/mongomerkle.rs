@@ -296,7 +296,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         leaf
     }
     /// depth start from 0 up to Self::height(). Example 20 height MongoMerkle, root depth=0, leaf depth=20
-    fn get_default_hash(&self, depth: usize) -> Result<[u8; 32], MerkleError> {
+    pub fn get_default_hash(&self, depth: usize) -> Result<[u8; 32], MerkleError> {
         if depth <= Self::height() {
             Ok(self.default_hash[Self::height() - depth])
         } else {

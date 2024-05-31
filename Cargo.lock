@@ -558,7 +558,7 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git#060c8d7885c7459f91440c9d1b1f23b22bc3d473"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git#f0fa663edfbca638687b614b3b86610132d1d217"
 dependencies = [
  "anyhow",
  "ark-std",
@@ -3724,7 +3724,7 @@ dependencies = [
 [[package]]
 name = "zkwasm-prover"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/zkWasm-prover.git#5f352e1852cc27af47378c4a355d36d000edecb1"
+source = "git+https://github.com/DelphinusLab/zkWasm-prover.git#a9dfc9bfe16ccb71b2fbfa44d540a3cf58363827"
 dependencies = [
  "ark-std",
  "cc",

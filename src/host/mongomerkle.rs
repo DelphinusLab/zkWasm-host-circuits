@@ -1,8 +1,6 @@
-use crate::host::db;
-use crate::host::db::{MongoDB, TreeDB};
-use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
-use crate::host::poseidon::MERKLE_HASHER;
-use crate::host::poseidon::MERKLE_LEAF_HASHER;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
@@ -13,8 +11,12 @@ use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
+
+use crate::host::db;
+use crate::host::db::{MongoDB, TreeDB};
+use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
+use crate::host::poseidon::MERKLE_HASHER;
+use crate::host::poseidon::MERKLE_LEAF_HASHER;
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
 where
@@ -276,7 +278,7 @@ impl MerkleRecord {
     }
 
     pub fn data_as_u64(&self) -> [u64; 4] {
-        let data = self.data.unwrap();
+        let data = self.data.unwrap_or([0; 32]);
         [
             u64::from_le_bytes(data[0..8].try_into().unwrap()),
             u64::from_le_bytes(data[8..16].try_into().unwrap()),
@@ -480,13 +482,15 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
 #[cfg(test)]
 mod tests {
-    use super::db::get_collection;
-    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
+    use halo2_proofs::pairing::bn256::Fr;
+    use mongodb::bson::doc;
+
     use crate::host::db::{get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::{bytes_to_u64, field_to_bytes};
-    use halo2_proofs::pairing::bn256::Fr;
-    use mongodb::bson::doc;
+
+    use super::db::get_collection;
+    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
 
     #[test]
     /* Test for check parent node

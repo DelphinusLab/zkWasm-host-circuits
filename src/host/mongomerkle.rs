@@ -4,8 +4,8 @@ use std::rc::Rc;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
+use mongodb::bson::{Bson, spec::BinarySubtype};
 use mongodb::bson::doc;
-use mongodb::bson::{spec::BinarySubtype, Bson};
 use mongodb::options::DropCollectionOptions;
 use serde::{
     de::{Error, Unexpected},
@@ -19,8 +19,8 @@ use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::MERKLE_LEAF_HASHER;
 
 fn deserialize_u256_as_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(bytes.bytes.try_into().unwrap()),
@@ -30,8 +30,8 @@ where
 }
 
 fn serialize_bytes_as_binary<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
+    where
+        S: Serializer,
 {
     let binary = Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
@@ -41,8 +41,8 @@ where
 }
 
 fn deserialize_option_u256_as_binary<'de, D>(deserializer: D) -> Result<Option<[u8; 32]>, D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(Some(bytes.bytes.try_into().unwrap())),
@@ -56,8 +56,8 @@ fn serialize_option_bytes_as_binary<S>(
     bytes: &Option<[u8; 32]>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
+    where
+        S: Serializer,
 {
     match bytes {
         Some(bytes) => {
@@ -197,7 +197,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleRecord {
     // The index will not to be stored in db.
-    #[serde(skip_serializing, default)]
+    #[serde(skip_serializing, skip_deserializing, default)]
     pub index: u64,
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
@@ -485,12 +485,12 @@ mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use mongodb::bson::doc;
 
-    use crate::host::db::{get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
+    use crate::host::db::{get_collection_name, MONGODB_DATA_NAME_PREFIX, MONGODB_DATABASE};
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::{bytes_to_u64, field_to_bytes};
 
+    use super::{DEFAULT_HASH_VEC, MerkleRecord, MongoMerkle};
     use super::db::get_collection;
-    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
 
     #[test]
     /* Test for check parent node

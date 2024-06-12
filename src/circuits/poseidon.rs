@@ -25,17 +25,21 @@ customized_circuits!(PoseidonGateConfig, 2, 5, 13, 0,
     | x0_n | x1_n  | x2_n | nil    | d_n      |  nil | nil | nil | nil | nil | nil | nil  | nil  | nil  | nil         | nil         |    nil     |      nil
 );
 
-pub struct PoseidonState<F: FieldExt, const T: usize> {
-    state: [Limb<F>; T],
+pub struct PoseidonStateSetup<F: FieldExt, const T: usize> {
     default: [Limb<F>; T],
     prefix: Vec<Limb<F>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PoseidonState<F: FieldExt, const T: usize> {
+    state: [Limb<F>; T],
 }
 
 pub struct PoseidonChip<F: FieldExt, const T: usize, const RATE: usize> {
     pub config: CommonGateConfig,
     pub extend: PoseidonGateConfig,
     pub spec: Spec<F, T, RATE>,
-    poseidon_state: PoseidonState<F, T>,
+    poseidon_state_setup: PoseidonStateSetup<F, T>,
     round: u64,
     _marker: PhantomData<F>,
 }
@@ -214,10 +218,9 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         extend: PoseidonGateConfig,
         spec: Spec<F, T, RATE>,
     ) -> Self {
-        let state = [0u32; T].map(|_| Limb::new(None, F::zero()));
-        let state = PoseidonState {
-            default: state.clone(),
-            state,
+        let default = [0u32; T].map(|_| Limb::new(None, F::zero()));
+        let poseidon_state_setup = PoseidonStateSetup {
+            default,
             prefix: vec![],
         };
 
@@ -226,7 +229,7 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
             config,
             extend,
             spec,
-            poseidon_state: state,
+            poseidon_state_setup,
             _marker: PhantomData,
         }
     }
@@ -237,7 +240,13 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
         region: &Region<F>,
         offset: &mut usize,
     ) -> Result<(), Error> {
-        self.poseidon_state.initialize(config, region, offset)
+        self.poseidon_state_setup.initialize(config, region, offset)
+    }
+
+    pub fn get_default_state(&self) -> PoseidonState<F, T> {
+        PoseidonState {
+            state: self.poseidon_state_setup.default.clone(),
+        }
     }
 
     pub fn configure(
@@ -250,18 +259,18 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
     }
 
     pub(crate) fn get_permute_result(
-        &mut self,
+        &self,
         region: &Region<F>,
         offset: &mut usize,
+        permute_state: &mut PoseidonState<F, T>,
         values: &[Limb<F>; RATE],
         reset: &Limb<F>,
     ) -> Result<Limb<F>, Error> {
         let mut new_state = vec![];
-        for (value, default) in self
-            .poseidon_state
+        for (value, default) in permute_state
             .state
             .iter()
-            .zip(self.poseidon_state.default.iter())
+            .zip(self.poseidon_state_setup.default.iter())
         {
             new_state.push(self.config.select(
                 region,
@@ -273,8 +282,8 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
                 self.round,
             )?);
         }
-        self.poseidon_state.state = new_state.try_into().unwrap();
-        self.poseidon_state.permute(
+        permute_state.state = new_state.try_into().unwrap();
+        permute_state.permute(
             &self.config,
             &self.extend,
             &self.spec,
@@ -282,18 +291,19 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
             offset,
             values,
         )?;
-        Ok(self.poseidon_state.state[1].clone())
+        Ok(permute_state.state[1].clone())
     }
 
     pub fn assign_permute(
-        &mut self,
+        &self,
         region: &Region<F>,
         offset: &mut usize,
+        permute_state: &mut PoseidonState<F, T>,
         values: &[Limb<F>; RATE],
         reset: &Limb<F>,
         result: &Limb<F>,
     ) -> Result<(), Error> {
-        let r = self.get_permute_result(region, offset, values, reset)?;
+        let r = self.get_permute_result(region, offset, permute_state, values, reset)?;
         assert!(r.value == result.value);
         region.constrain_equal(
             result.cell.as_ref().unwrap().cell(),
@@ -304,25 +314,20 @@ impl<F: FieldExt, const T: usize, const RATE: usize> PoseidonChip<F, T, RATE> {
 }
 
 impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
-    pub fn initialize(
-        &mut self,
-        config: &CommonGateConfig,
-        region: &Region<F>,
-        offset: &mut usize,
-    ) -> Result<(), Error> {
-        let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
-        let mut state = [0u32; T].map(|_| zero.clone());
-        state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128 << 64))?;
-        self.default = state.clone();
-        self.state = state;
-        self.prefix = vec![
-            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_CHALLENGE))?,
-            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_POINT))?,
-            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_SCALAR))?,
-        ];
-        Ok(())
+    pub fn new_with_shift(&self, region: &Region<F>, values: [F; T], offset: usize) -> Self {
+        PoseidonState {
+            state: self
+                .state
+                .iter().zip(values)
+                .map(|(x, v)| x.new_with_shift(region, v, offset))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        }
     }
-
+    pub fn debug_offset(&self) {
+        println!("state info: {:?}", self.state);
+    }
     fn x_power5_with_constant(
         config: &CommonGateConfig,
         region: &Region<F>,
@@ -592,6 +597,26 @@ impl<F: FieldExt, const T: usize> PoseidonState<F, T> {
     }
 }
 
+impl<F: FieldExt, const T: usize> PoseidonStateSetup<F, T> {
+    pub fn initialize(
+        &mut self,
+        config: &CommonGateConfig,
+        region: &Region<F>,
+        offset: &mut usize,
+    ) -> Result<(), Error> {
+        let zero = config.assign_constant(region, &mut (), offset, &F::zero())?;
+        let mut state = [0u32; T].map(|_| zero.clone());
+        state[0] = config.assign_constant(region, &mut (), offset, &F::from_u128(1u128 << 64))?;
+        self.default = state.clone();
+        self.prefix = vec![
+            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_CHALLENGE))?,
+            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_POINT))?,
+            config.assign_constant(region, &mut (), offset, &F::from(PREFIX_SCALAR))?,
+        ];
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::circuits::poseidon::PoseidonGateConfig;
@@ -772,14 +797,16 @@ mod tests {
                         helperchip.assign_inputs(&region, &mut offset, &self.inputs.clone())?;
                     let reset = helperchip.assign_reset(&region, &mut offset, true)?;
                     offset = 0;
-                    poseidonchip.poseidon_state.initialize(
+                    poseidonchip.poseidon_state_setup.initialize(
                         &config.commonconfig,
                         &region,
                         &mut offset,
                     )?;
+                    let mut poseidon_state = poseidonchip.get_default_state();
                     poseidonchip.assign_permute(
                         &region,
                         &mut offset,
+                        &mut poseidon_state,
                         &inputs.try_into().unwrap(),
                         &reset,
                         &result,

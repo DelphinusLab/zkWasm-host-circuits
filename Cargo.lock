@@ -3713,6 +3713,7 @@ dependencies = [
  "poseidon",
  "rand",
  "rand_core",
+ "rayon",
  "ripemd",
  "serde",
  "serde_json",

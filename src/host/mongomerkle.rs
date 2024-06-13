@@ -6,13 +6,11 @@ use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
 use mongodb::bson::doc;
 use mongodb::bson::{spec::BinarySubtype, Bson};
-use mongodb::options::DropCollectionOptions;
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::host::db;
 use crate::host::db::{MongoDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
@@ -76,12 +74,6 @@ pub struct MongoMerkle<const DEPTH: usize> {
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
     db: Rc<RefCell<dyn TreeDB>>,
-}
-
-pub fn drop_collection<T>(database: String, name: String) -> Result<(), mongodb::error::Error> {
-    let collection = db::get_collection::<MerkleRecord>(database, name)?;
-    let options = DropCollectionOptions::builder().build();
-    collection.drop(options)
 }
 
 impl PartialEq for MerkleRecord {
@@ -350,7 +342,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         MongoMerkle {
             root_hash: root,
             default_hash: DEFAULT_HASH_VEC.clone(),
-            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr)))),
+            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr, None)))),
         }
     }
 
@@ -475,7 +467,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         MongoMerkle {
             root_hash: DEFAULT_HASH_VEC[DEPTH],
             default_hash: (*DEFAULT_HASH_VEC).clone(),
-            db: Rc::new(RefCell::new(MongoDB::new(addr))),
+            db: Rc::new(RefCell::new(MongoDB::new(addr, None))),
         }
     }
 }
@@ -485,11 +477,10 @@ mod tests {
     use halo2_proofs::pairing::bn256::Fr;
     use mongodb::bson::doc;
 
-    use crate::host::db::{get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
+    use crate::host::db::{get_collection, get_collection_name, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX};
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::{bytes_to_u64, field_to_bytes};
 
-    use super::db::get_collection;
     use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
 
     #[test]
@@ -513,8 +504,12 @@ mod tests {
         let mut mt =
             MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let collection = get_collection::<MerkleRecord>(
+            mt.db.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         let (mut leaf, proof) = mt.get_leaf_with_proof(index).unwrap();
@@ -554,8 +549,12 @@ mod tests {
         let mut mt =
             MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let collection = get_collection::<MerkleRecord>(
+            mt.db.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         // 2
@@ -597,8 +596,12 @@ mod tests {
         let mut mt =
             MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let collection = get_collection::<MerkleRecord>(
+            mt.db.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         // 2
@@ -650,8 +653,12 @@ mod tests {
         // 1
         let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, DEFAULT_HASH_VEC[DEPTH], None);
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), test_addr);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let collection = get_collection::<MerkleRecord>(
+            mt.db.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
         let _ = collection.delete_many(doc! {}, None);
         // 2
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();

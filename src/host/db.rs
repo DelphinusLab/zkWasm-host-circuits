@@ -1,5 +1,6 @@
 use mongodb::{
     bson::doc,
+    options::DropCollectionOptions,
     sync::{Client, Collection},
 };
 use mongodb::bson::{Bson, spec::BinarySubtype, to_bson};
@@ -10,18 +11,10 @@ use mongodb::results::InsertManyResult;
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
 
-const MONGODB_URI: &str = "mongodb://localhost:27017";
 pub const MONGODB_DATABASE: &str = "zkwasm-mongo-merkle";
 pub const MONGODB_MERKLE_NAME_PREFIX: &str = "MERKLEDATA";
 pub const MONGODB_DATA_NAME_PREFIX: &str = "DATAHASH";
 const DUPLICATE_KEY_ERROR_CODE: i32 = 11000;
-
-lazy_static::lazy_static! {
-    pub static ref CLIENT: Client= {
-        let mongo_uri = std::env::var("ZKWASM_MONGO").unwrap_or(String::from(MONGODB_URI));
-        Client::with_uri_str(&mongo_uri).expect("Unexpected DB Error")
-    };
-}
 
 pub trait TreeDB {
     fn get_merkle_record(
@@ -29,6 +22,7 @@ pub trait TreeDB {
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, anyhow::Error>;
 
+    fn get_database_client(&self) -> Result<&Client, mongodb::error::Error>;
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error>;
 
     fn set_merkle_records(
@@ -47,27 +41,53 @@ pub trait TreeDB {
 #[derive(Clone)]
 pub struct MongoDB {
     cname_id: [u8; 32],
+    client: Client,
 }
 
 impl MongoDB {
-    pub fn new(cname_id: [u8; 32]) -> Self {
-        Self { cname_id }
+    pub fn new(cname_id: [u8; 32], uri: Option<&'static str>) -> Self {
+        let uri = uri.map_or("mongodb://localhost:27017", |x| x);
+        let client = Client::with_uri_str(uri).expect("Unexpected DB Error");
+        Self { cname_id, client }
     }
 }
 
 impl MongoDB {
+    pub fn get_collection<T>(
+        &self,
+        database: String,
+        name: String,
+    ) -> Result<Collection<T>, mongodb::error::Error> {
+        let database = self.client.database(database.as_str());
+        let collection = database.collection::<T>(name.as_str());
+        Ok(collection)
+    }
+
+    pub fn drop_collection<T>(
+        &self,
+        database: String,
+        name: String,
+    ) -> Result<(), mongodb::error::Error> {
+        let collection = self.get_collection::<MerkleRecord>(database, name)?;
+        let options = DropCollectionOptions::builder().build();
+        collection.drop(options)
+    }
+
     pub fn merkel_collection(&self) -> Result<Collection<MerkleRecord>, mongodb::error::Error> {
         let cname = get_collection_name(MONGODB_MERKLE_NAME_PREFIX.to_string(), self.cname_id);
-        get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
+        self.get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
     }
 
     pub fn data_collection(&self) -> Result<Collection<DataHashRecord>, mongodb::error::Error> {
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), self.cname_id);
-        get_collection::<DataHashRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
+        self.get_collection::<DataHashRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
     }
 }
 
 impl TreeDB for MongoDB {
+    fn get_database_client(&self) -> Result<&Client, mongodb::error::Error> {
+        Ok(&self.client)
+    }
     fn get_merkle_record(
         &self,
         hash: &[u8; 32],
@@ -146,15 +166,6 @@ pub fn filter_duplicate_key_error(
     }
 }
 
-pub fn get_collection<T>(
-    database: String,
-    name: String,
-) -> Result<Collection<T>, mongodb::error::Error> {
-    let database = CLIENT.database(database.as_str());
-    let collection = database.collection::<T>(name.as_str());
-    Ok(collection)
-}
-
 pub fn u256_to_bson(x: &[u8; 32]) -> Bson {
     Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
@@ -167,6 +178,16 @@ pub fn u64_to_bson(x: u64) -> Bson {
         subtype: BinarySubtype::Generic,
         bytes: x.to_le_bytes().to_vec(),
     })
+}
+
+pub fn get_collection<T>(
+    client: &Client,
+    database: String,
+    name: String,
+) -> Result<Collection<T>, mongodb::error::Error> {
+    let database = client.database(database.as_str());
+    let collection = database.collection::<T>(name.as_str());
+    Ok(collection)
 }
 
 pub fn get_collection_name(name_prefix: String, id: [u8; 32]) -> String {

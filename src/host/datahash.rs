@@ -71,7 +71,7 @@ impl PartialEq for DataHashRecord {
 impl MongoDataHash {
     pub fn construct(addr: [u8; 32], db: Option<Rc<RefCell<dyn TreeDB>>>) -> Self {
         MongoDataHash {
-            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr)))),
+            db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr, None)))),
         }
     }
 

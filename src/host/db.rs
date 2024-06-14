@@ -46,8 +46,8 @@ pub struct MongoDB {
 }
 
 impl MongoDB {
-    pub fn new(cname_id: [u8; 32], uri: Option<&'static str>) -> Self {
-        let uri = uri.map_or("mongodb://localhost:27017", |x| x);
+    pub fn new(cname_id: [u8; 32], uri: Option<String>) -> Self {
+        let uri = uri.map_or("mongodb://localhost:27017".to_string(), |x| x.clone());
         let client = Client::with_uri_str(uri).expect("Unexpected DB Error");
         Self { cname_id, client }
     }

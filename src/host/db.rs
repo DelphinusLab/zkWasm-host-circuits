@@ -10,6 +10,7 @@ use mongodb::bson::{spec::BinarySubtype, to_bson, Bson};
 use mongodb::error::{Error, ErrorKind};
 use mongodb::options::{InsertManyOptions, UpdateOptions};
 use mongodb::results::InsertManyResult;
+use mongodb::IndexModel;
 
 pub const MONGODB_DATABASE: &str = "zkwasm-mongo-merkle";
 pub const MONGODB_MERKLE_NAME_PREFIX: &str = "MERKLEDATA";
@@ -76,12 +77,20 @@ impl MongoDB {
 
     pub fn merkel_collection(&self) -> Result<Collection<MerkleRecord>, mongodb::error::Error> {
         let cname = get_collection_name(MONGODB_MERKLE_NAME_PREFIX.to_string(), self.cname_id);
-        self.get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
+        let collection =
+            self.get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname.to_string());
+        let index = IndexModel::builder().keys(doc! { "hash": -1 }).build();
+        let _ = collection.as_ref().unwrap().create_index(index, None);
+        collection
     }
 
     pub fn data_collection(&self) -> Result<Collection<DataHashRecord>, mongodb::error::Error> {
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), self.cname_id);
-        self.get_collection::<DataHashRecord>(MONGODB_DATABASE.to_string(), cname.to_string())
+        let collection =
+            self.get_collection::<DataHashRecord>(MONGODB_DATABASE.to_string(), cname.to_string());
+        let index = IndexModel::builder().keys(doc! { "hash": -1 }).build();
+        let _ = collection.as_ref().unwrap().create_index(index, None);
+        collection
     }
 }
 

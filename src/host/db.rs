@@ -1,6 +1,6 @@
 use mongodb::{
     bson::doc,
-    sync::{Client, Collection},
+    sync::{Client, ClientSession, Collection},
 };
 
 use crate::host::datahash::DataHashRecord;
@@ -16,10 +16,12 @@ pub const MONGODB_MERKLE_NAME_PREFIX: &str = "MERKLEDATA";
 pub const MONGODB_DATA_NAME_PREFIX: &str = "DATAHASH";
 const DUPLICATE_KEY_ERROR_CODE: i32 = 11000;
 
+static mut SESSION: Option<ClientSession> = None;
+
 lazy_static::lazy_static! {
     pub static ref CLIENT: Client= {
         let mongo_uri = std::env::var("ZKWASM_MONGO").unwrap_or(String::from(MONGODB_URI));
-        Client::with_uri_str(&mongo_uri).expect("Unexpected DB Error")
+     Client::with_uri_str(&mongo_uri).expect("Unexpected DB Error")
     };
 }
 
@@ -42,6 +44,20 @@ pub trait TreeDB {
     ) -> Result<Option<DataHashRecord>, mongodb::error::Error>;
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error>;
+
+    fn start_transaction(&self) {
+        let mut session = CLIENT.start_session(None).unwrap();
+        session.start_transaction(None).unwrap();
+        unsafe { SESSION = Some(session) };
+    }
+
+    fn commit(&self) {
+        unsafe {
+            SESSION.as_mut().unwrap().commit_transaction().unwrap();
+
+            SESSION = None;
+        };
+    }
 }
 
 #[derive(Clone)]
@@ -85,7 +101,9 @@ impl TreeDB for MongoDB {
         let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
         let update = doc! {"$set": record_doc};
         let collection = self.merkel_collection()?;
-        collection.update_one(filter, update, options)?;
+        collection.update_one_with_session(filter, update, options, unsafe {
+            SESSION.as_mut().unwrap()
+        })?;
         Ok(())
     }
 
@@ -95,7 +113,8 @@ impl TreeDB for MongoDB {
     ) -> Result<(), mongodb::error::Error> {
         let options = InsertManyOptions::builder().ordered(false).build();
         let collection = self.merkel_collection()?;
-        let ret = collection.insert_many(records, options);
+        let ret = collection
+            .insert_many_with_session(records, options, unsafe { SESSION.as_mut().unwrap() });
         if let Some(e) = filter_duplicate_key_error(ret) {
             return Err(e);
         }
@@ -119,7 +138,9 @@ impl TreeDB for MongoDB {
         let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
         let update = doc! {"$set": record_doc};
         let collection = self.data_collection()?;
-        collection.update_one(filter, update, options)?;
+        collection.update_one_with_session(filter, update, options, unsafe {
+            SESSION.as_mut().unwrap()
+        })?;
         Ok(())
     }
 }

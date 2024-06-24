@@ -102,7 +102,6 @@ impl HostOpSelector for AltJubChip<Fr> {
             r.push(limb);
 
             for subgroup in group
-                .clone()
                 .into_iter()
                 .skip(1)
                 .collect::<Vec<_>>()

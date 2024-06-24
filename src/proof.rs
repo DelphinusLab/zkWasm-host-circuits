@@ -28,11 +28,6 @@ use serde::{Deserialize, Serialize};
 
 pub const MERKLE_DEPTH: usize = 32;
 
-trait HostCircuit<F: FieldExt>: Clone {
-    fn load_shared_operands(&self, layouter: impl Layouter<F>, a: Vec<F>) -> Result<Self, Error>;
-    fn filter(&self, layouter: impl Layouter<F>) -> Result<Self, Error>;
-}
-
 #[derive(clap::Parser)]
 struct ArgOpName {
     #[clap(arg_enum)]

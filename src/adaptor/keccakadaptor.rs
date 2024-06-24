@@ -93,7 +93,7 @@ impl HostOpSelector for KeccakChip<Fr> {
             )?;
             r.push(limb);
 
-            for subgroup in group.clone().into_iter().skip(1) {
+            for subgroup in group.into_iter().skip(1) {
                 let ((operand, opcode), index) = subgroup.clone();
                 let (limb, _op) = config.assign_one_line(
                     region,

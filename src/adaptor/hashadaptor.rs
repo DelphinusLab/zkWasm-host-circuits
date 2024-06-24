@@ -118,7 +118,6 @@ impl HostOpSelector for PoseidonChip<Fr, 9, 8> {
             r.push(limb);
 
             for subgroup in group
-                .clone()
                 .into_iter()
                 .skip(1)
                 .collect::<Vec<_>>()

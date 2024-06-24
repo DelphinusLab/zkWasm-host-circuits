@@ -107,7 +107,7 @@ impl DataHashRecord {
             .chunks(16)
             .into_iter()
             .map(|x| {
-                let mut v = x.clone().to_vec();
+                let mut v = x.to_vec();
                 v.extend_from_slice(&[0u8; 16]);
                 let f = v.try_into().unwrap();
                 Fr::from_repr(f).unwrap()

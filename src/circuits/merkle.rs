@@ -146,7 +146,7 @@ impl<const D: usize> MerkleChip<Fr, D> {
             .collect::<Vec<_>>()
             .iter()
             .map(|&values| {
-                let mut v = values.clone().to_vec();
+                let mut v = values.to_vec();
                 v.resize_with(5, || None);
                 self.config
                     .assign_witness(region, &mut (), offset, v.try_into().unwrap(), 0)

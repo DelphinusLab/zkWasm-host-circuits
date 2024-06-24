@@ -1,5 +1,4 @@
 #![feature(slice_flatten)]
-#![feature(default_free_fn)]
 
 pub mod adaptor;
 pub mod circuits;

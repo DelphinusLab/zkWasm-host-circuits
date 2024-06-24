@@ -41,7 +41,7 @@ impl<F: FieldExt> KeccakChip<F> {
             round: 0,
             config,
             keccak_state: state,
-            ///mapping rule: S[w(5y+x)+z] = state[x][y][z])]
+            // mapping rule: S[w(5y+x)+z] = state[x][y][z])]
             _marker: PhantomData,
         }
     }

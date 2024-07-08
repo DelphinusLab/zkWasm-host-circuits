@@ -27,21 +27,21 @@ pub trait TreeDB {
     fn get_merkle_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<MerkleRecord>, mongodb::error::Error>;
+    ) -> Result<Option<MerkleRecord>, anyhow::Error>;
 
-    fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error>;
+    fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error>;
 
     fn set_merkle_records(
         &mut self,
         records: &Vec<MerkleRecord>,
-    ) -> Result<(), mongodb::error::Error>;
+    ) -> Result<(), anyhow::Error>;
 
     fn get_data_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<DataHashRecord>, mongodb::error::Error>;
+    ) -> Result<Option<DataHashRecord>, anyhow::Error>;
 
-    fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error>;
+    fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), anyhow::Error>;
 }
 
 #[derive(Clone)]
@@ -71,14 +71,15 @@ impl TreeDB for MongoDB {
     fn get_merkle_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
+    ) -> Result<Option<MerkleRecord>, anyhow::Error> {
         let collection = self.merkel_collection()?;
         let mut filter = doc! {};
         filter.insert("hash", u256_to_bson(hash));
-        collection.find_one(filter, None)
+        let record = collection.find_one(filter, None)?;
+        Ok(record)
     }
 
-    fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
+    fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error> {
         let options = UpdateOptions::builder().upsert(true).build();
         let mut filter = doc! {};
         filter.insert("hash", u256_to_bson(&record.hash));
@@ -92,12 +93,12 @@ impl TreeDB for MongoDB {
     fn set_merkle_records(
         &mut self,
         records: &Vec<MerkleRecord>,
-    ) -> Result<(), mongodb::error::Error> {
+    ) -> Result<(), anyhow::Error> {
         let options = InsertManyOptions::builder().ordered(false).build();
         let collection = self.merkel_collection()?;
         let ret = collection.insert_many(records, options);
         if let Some(e) = filter_duplicate_key_error(ret) {
-            return Err(e);
+            return Err(e.into());
         }
         Ok(())
     }
@@ -105,14 +106,14 @@ impl TreeDB for MongoDB {
     fn get_data_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<DataHashRecord>, mongodb::error::Error> {
+    ) -> Result<Option<DataHashRecord>, anyhow::Error> {
         let collection = self.data_collection()?;
         let mut filter = doc! {};
         filter.insert("hash", u256_to_bson(hash));
-        collection.find_one(filter, None)
+        collection.find_one(filter, None).map_err(|e| e.into())
     }
 
-    fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
+    fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), anyhow::Error> {
         let options = UpdateOptions::builder().upsert(true).build();
         let mut filter = doc! {};
         filter.insert("hash", u256_to_bson(&record.hash));

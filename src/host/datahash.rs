@@ -78,13 +78,13 @@ impl MongoDataHash {
     pub fn get_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<DataHashRecord>, mongodb::error::Error> {
+    ) -> Result<Option<DataHashRecord>, anyhow::Error> {
         let record = self.db.borrow().get_data_record(hash);
         record
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
-    pub fn update_record(&mut self, record: DataHashRecord) -> Result<(), mongodb::error::Error> {
+    pub fn update_record(&mut self, record: DataHashRecord) -> Result<(), anyhow::Error> {
         self.db.borrow_mut().set_data_record(record.clone())?;
         Ok(())
     }

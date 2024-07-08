@@ -97,18 +97,17 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     pub fn get_record(
         &self,
         hash: &[u8; 32],
-    ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let record = self.db.borrow().get_merkle_record(hash);
-        record
+    ) -> Result<Option<MerkleRecord>, anyhow::Error> {
+        self.db.borrow().get_merkle_record(hash)
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
-    pub fn update_record(&mut self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
-        let exists: Result<Option<MerkleRecord>, mongodb::error::Error> =
+    pub fn update_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error> {
+        let exists =
             self.get_record(&record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
         exists.map_or_else(
-            |e: mongodb::error::Error| Err(e),
+            |e| Err(e),
             |r: Option<MerkleRecord>| {
                 r.map_or_else(
                     || {
@@ -126,7 +125,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     pub fn update_records(
         &mut self,
         records: &Vec<MerkleRecord>,
-    ) -> Result<(), mongodb::error::Error> {
+    ) -> Result<(), anyhow::Error> {
         self.db.borrow_mut().set_merkle_records(records)?;
         Ok(())
     }

@@ -2,13 +2,13 @@ use mongodb::{
     bson::doc,
     sync::{Client, Collection},
 };
-
-use crate::host::datahash::DataHashRecord;
-use crate::host::mongomerkle::MerkleRecord;
-use mongodb::bson::{spec::BinarySubtype, to_bson, Bson};
+use mongodb::bson::{Bson, spec::BinarySubtype, to_bson};
 use mongodb::error::{Error, ErrorKind};
 use mongodb::options::{InsertManyOptions, UpdateOptions};
 use mongodb::results::InsertManyResult;
+
+use crate::host::datahash::DataHashRecord;
+use crate::host::mongomerkle::MerkleRecord;
 
 const MONGODB_URI: &str = "mongodb://localhost:27017";
 pub const MONGODB_DATABASE: &str = "zkwasm-mongo-merkle";
@@ -74,7 +74,7 @@ impl TreeDB for MongoDB {
     ) -> Result<Option<MerkleRecord>, anyhow::Error> {
         let collection = self.merkel_collection()?;
         let mut filter = doc! {};
-        filter.insert("hash", u256_to_bson(hash));
+        filter.insert("_id", u256_to_bson(hash));
         let record = collection.find_one(filter, None)?;
         Ok(record)
     }
@@ -82,7 +82,7 @@ impl TreeDB for MongoDB {
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error> {
         let options = UpdateOptions::builder().upsert(true).build();
         let mut filter = doc! {};
-        filter.insert("hash", u256_to_bson(&record.hash));
+        filter.insert("_id", u256_to_bson(&record.hash));
         let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
         let update = doc! {"$set": record_doc};
         let collection = self.merkel_collection()?;

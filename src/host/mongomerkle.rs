@@ -200,6 +200,7 @@ pub struct MerkleRecord {
     pub index: u64,
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
+    #[serde(rename = "_id")]
     pub hash: [u8; 32],
     #[serde(
         skip_serializing_if = "Option::is_none",

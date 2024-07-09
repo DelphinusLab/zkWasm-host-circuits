@@ -109,14 +109,14 @@ impl TreeDB for MongoDB {
     ) -> Result<Option<DataHashRecord>, anyhow::Error> {
         let collection = self.data_collection()?;
         let mut filter = doc! {};
-        filter.insert("hash", u256_to_bson(hash));
+        filter.insert("_id", u256_to_bson(hash));
         collection.find_one(filter, None).map_err(|e| e.into())
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), anyhow::Error> {
         let options = UpdateOptions::builder().upsert(true).build();
         let mut filter = doc! {};
-        filter.insert("hash", u256_to_bson(&record.hash));
+        filter.insert("_id", u256_to_bson(&record.hash));
         let record_doc = to_bson(&record).unwrap().as_document().unwrap().to_owned();
         let update = doc! {"$set": record_doc};
         let collection = self.data_collection()?;

@@ -1,20 +1,22 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
-//use lazy_static;
-use crate::host::db::{MongoDB, TreeDB};
-use crate::host::poseidon::POSEIDON_HASHER;
+use mongodb::bson::{Bson, spec::BinarySubtype};
 use mongodb::bson::doc;
-use mongodb::bson::{spec::BinarySubtype, Bson};
 use serde::{
     de::{Error, Unexpected},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
+
+//use lazy_static;
+use crate::host::db::{MongoDB, TreeDB};
+use crate::host::poseidon::POSEIDON_HASHER;
 
 fn deserialize_u256_from_binary<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(bytes.bytes.try_into().unwrap()),
@@ -24,8 +26,8 @@ where
 }
 
 fn deserialize_bytes_from_binary<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-where
-    D: Deserializer<'de>,
+    where
+        D: Deserializer<'de>,
 {
     match Bson::deserialize(deserializer) {
         Ok(Bson::Binary(bytes)) => Ok(bytes.bytes.to_vec()),
@@ -35,8 +37,8 @@ where
 }
 
 fn serialize_bytes_as_binary<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
+    where
+        S: Serializer,
 {
     let binary = Bson::Binary(mongodb::bson::Binary {
         subtype: BinarySubtype::Generic,
@@ -94,6 +96,7 @@ impl MongoDataHash {
 pub struct DataHashRecord {
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_from_binary")]
+    #[serde(rename = "_id")]
     pub hash: [u8; 32],
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_bytes_from_binary")]

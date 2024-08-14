@@ -8,6 +8,7 @@ pub mod keccak256;
 pub mod merkle;
 pub mod mongomerkle;
 pub mod poseidon;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use halo2_proofs::arithmetic::FieldExt;
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ pub struct ExternalHostCallEntry {
     pub is_ret: bool,
 }
 
-#[derive(clap::ArgEnum, Clone, Copy, Debug)]
+#[derive(clap::ArgEnum, Clone, Copy, Debug, FromPrimitive, ToPrimitive)]
 pub enum ForeignInst {
     Log = 0,
     BlsPairG1,

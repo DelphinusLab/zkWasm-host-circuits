@@ -38,6 +38,8 @@ mongodb = { version = "2.5.0", default-features = false}
 ripemd = "0.1.3"
 lru = "0.11.0"
 anyhow = "1.0.86"
+num-traits = "0.2.15"
+num-derive = "0.3"
 
 [features]
 default = ["mongo-tokio-sync"]

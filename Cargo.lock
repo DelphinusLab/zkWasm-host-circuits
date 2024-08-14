@@ -3699,6 +3699,8 @@ dependencies = [
  "lru",
  "mongodb",
  "num-bigint",
+ "num-derive",
+ "num-traits",
  "poseidon",
  "rand",
  "rand_core",

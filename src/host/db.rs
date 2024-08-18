@@ -1,12 +1,12 @@
+use mongodb::bson::{spec::BinarySubtype, to_bson, Bson};
+use mongodb::error::{Error, ErrorKind};
+use mongodb::options::{InsertManyOptions, UpdateOptions};
+use mongodb::results::InsertManyResult;
 use mongodb::{
     bson::doc,
     options::DropCollectionOptions,
     sync::{Client, Collection},
 };
-use mongodb::bson::{Bson, spec::BinarySubtype, to_bson};
-use mongodb::error::{Error, ErrorKind};
-use mongodb::options::{InsertManyOptions, UpdateOptions};
-use mongodb::results::InsertManyResult;
 
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
@@ -17,23 +17,13 @@ pub const MONGODB_DATA_NAME_PREFIX: &str = "DATAHASH";
 const DUPLICATE_KEY_ERROR_CODE: i32 = 11000;
 
 pub trait TreeDB {
-    fn get_merkle_record(
-        &self,
-        hash: &[u8; 32],
-    ) -> Result<Option<MerkleRecord>, anyhow::Error>;
+    fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>, anyhow::Error>;
 
-    fn get_database_client(&self) -> Result<&Client, mongodb::error::Error>;
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error>;
 
-    fn set_merkle_records(
-        &mut self,
-        records: &Vec<MerkleRecord>,
-    ) -> Result<(), anyhow::Error>;
+    fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<(), anyhow::Error>;
 
-    fn get_data_record(
-        &self,
-        hash: &[u8; 32],
-    ) -> Result<Option<DataHashRecord>, anyhow::Error>;
+    fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>, anyhow::Error>;
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<(), anyhow::Error>;
 }
@@ -63,6 +53,10 @@ impl MongoDB {
         Ok(collection)
     }
 
+    pub fn get_database_client(&self) -> Result<&Client, mongodb::error::Error> {
+        Ok(&self.client)
+    }
+
     pub fn drop_collection<T>(
         &self,
         database: String,
@@ -85,13 +79,7 @@ impl MongoDB {
 }
 
 impl TreeDB for MongoDB {
-    fn get_database_client(&self) -> Result<&Client, mongodb::error::Error> {
-        Ok(&self.client)
-    }
-    fn get_merkle_record(
-        &self,
-        hash: &[u8; 32],
-    ) -> Result<Option<MerkleRecord>, anyhow::Error> {
+    fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>, anyhow::Error> {
         let collection = self.merkel_collection()?;
         let mut filter = doc! {};
         filter.insert("_id", u256_to_bson(hash));
@@ -110,10 +98,7 @@ impl TreeDB for MongoDB {
         Ok(())
     }
 
-    fn set_merkle_records(
-        &mut self,
-        records: &Vec<MerkleRecord>,
-    ) -> Result<(), anyhow::Error> {
+    fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<(), anyhow::Error> {
         let options = InsertManyOptions::builder().ordered(false).build();
         let collection = self.merkel_collection()?;
         let ret = collection.insert_many(records, options);
@@ -123,10 +108,7 @@ impl TreeDB for MongoDB {
         Ok(())
     }
 
-    fn get_data_record(
-        &self,
-        hash: &[u8; 32],
-    ) -> Result<Option<DataHashRecord>, anyhow::Error> {
+    fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>, anyhow::Error> {
         let collection = self.data_collection()?;
         let mut filter = doc! {};
         filter.insert("_id", u256_to_bson(hash));

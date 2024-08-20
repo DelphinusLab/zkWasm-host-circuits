@@ -712,4 +712,59 @@ mod tests {
             _test_mongo_merkle_multi_leaves_update(5);
         }
     }
+
+    #[test]
+    /* Test duplicate update same leaf with same data for 32 height m tree
+     * 1. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 2. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 4. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 5. Load m tree from DB, check root and leave value.
+     */
+    fn test_mongo_merkle_duplicate_leaf_update() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+        // 1
+        let mut mt =
+            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
+        let collection =
+            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let _ = collection.delete_many(doc! {}, None);
+
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 2
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 4
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 5
+        let a = mt.get_root_hash();
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        assert_eq!(mt.get_root_hash(), a);
+        let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+    }
 }

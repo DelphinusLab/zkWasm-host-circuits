@@ -20,11 +20,11 @@ strum_macros = "0.24.1"
 ff = "0.12"
 cfg-if = "1.0.0"
 halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", default-features = true }
-halo2ecc-s = { git = "https://github.com/DelphinusLab/halo2ecc-s.git", tag = "bisect-lookup-0.5.6"}
+halo2ecc-s = { git = "https://github.com/DelphinusLab/halo2ecc-s.git", tag = "on-prove-pairing-0.6.2"}
 itertools = "0.10.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/DelphinusLab/poseidon" }
-circuits-batcher = { git = "https://github.com/DelphinusLab/continuation-batcher.git" }
+circuits-batcher = { git = "https://github.com/DelphinusLab/continuation-batcher.git", tag="on-prove-pairing-2.2" }
 rand = "0.8"
 rand_core = "0.6"
 ark-std = { version = "0.4.0" }
@@ -38,6 +38,8 @@ mongodb = { version = "2.5.0", default-features = false}
 ripemd = "0.1.3"
 lru = "0.11.0"
 anyhow = "1.0.86"
+num-traits = "0.2.15"
+num-derive = "0.3"
 
 [features]
 default = ["mongo-tokio-sync"]

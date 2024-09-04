@@ -1,3 +1,5 @@
+use ark_std::end_timer;
+
 use crate::host::db::TreeDB;
 use std::cell::RefCell;
 use std::error::Error;
@@ -88,7 +90,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         leaf: &Self::Node,
         parents: [(u64, H, H, H); D],
     ) -> Result<(), MerkleError>;
-    fn get_node_with_hash(&self, index: u64, hash: &H) -> Result<Self::Node, MerkleError>;
+    fn get_node_with_hash(&mut self, index: u64, hash: &H) -> Result<Self::Node, MerkleError>;
 
     fn get_root_hash(&self) -> H;
     fn update_root_hash(&mut self, hash: &H);
@@ -168,7 +170,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     }
 
     fn get_leaf_with_proof(
-        &self,
+        &mut self,
         index: u64,
     ) -> Result<(Self::Node, MerkleProof<H, D>), MerkleError> {
         self.leaf_check(index)?;
@@ -205,6 +207,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     }
 
     fn set_leaf_with_proof(&mut self, leaf: &Self::Node) -> Result<MerkleProof<H, D>, MerkleError> {
+        let timer = ark_std::start_timer!(|| format!("set_leaf_with_proof {}", leaf.index()));
         let index = leaf.index();
         let mut hash = leaf.hash();
         let (_, mut proof) = self.get_leaf_with_proof(index)?;
@@ -229,6 +232,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         self.set_leaf_and_parents(leaf, parents.try_into().unwrap())?;
         self.update_root_hash(&hash);
         proof.root = hash;
+        end_timer!(timer);
         Ok(proof)
     }
 
@@ -344,7 +348,7 @@ mod tests {
             self.root_hash = hash.clone();
         }
 
-        fn get_node_with_hash(&self, index: u64, _hash: &u64) -> Result<Self::Node, MerkleError> {
+        fn get_node_with_hash(&mut self, index: u64, _hash: &u64) -> Result<Self::Node, MerkleError> {
             self.boundary_check(index)?;
 
             let height = (index + 1).ilog2();

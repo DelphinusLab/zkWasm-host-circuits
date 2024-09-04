@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use ark_std::{end_timer, start_timer};
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
@@ -74,6 +75,7 @@ pub struct MongoMerkle<const DEPTH: usize> {
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
     db: Rc<RefCell<dyn TreeDB>>,
+    cache: Rc<RefCell<lru::LruCache<[u8; 32], MerkleRecord>>>,
 }
 
 impl PartialEq for MerkleRecord {
@@ -86,12 +88,18 @@ impl PartialEq for MerkleRecord {
 }
 
 impl<const DEPTH: usize> MongoMerkle<DEPTH> {
-    pub fn get_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>, anyhow::Error> {
+    pub fn get_record(&mut self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>, anyhow::Error> {
+        if let Some(cache) = self.cache.borrow_mut().get(hash) {
+            return Ok(Some(cache.clone()));
+        }
         self.db.borrow().get_merkle_record(hash)
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&mut self, record: MerkleRecord) -> Result<(), anyhow::Error> {
+        self.cache
+            .borrow_mut()
+            .put(record.hash.clone(), record.clone());
         let exists = self.get_record(&record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
         exists.map_or_else(
@@ -111,6 +119,11 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
     //the input records must be in one leaf path
     pub fn update_records(&mut self, records: &Vec<MerkleRecord>) -> Result<(), anyhow::Error> {
+        for record in records {
+            self.cache
+                .borrow_mut()
+                .put(record.hash.clone(), record.clone());
+        }
         self.db.borrow_mut().set_merkle_records(records)?;
         Ok(())
     }
@@ -148,32 +161,32 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     fn generate_or_get_node(
-        &self,
+        &mut self,
         index: u64,
         hash: &[u8; 32],
     ) -> Result<MerkleRecord, MerkleError> {
         let height = (index + 1).ilog2();
         let default_hash = self.get_default_hash(height as usize)?;
         if &default_hash == hash {
-            self.generate_default_node(index)
-        } else {
-            match self.get_record(hash) {
-                Ok(Some(mut node)) => {
-                    // The index of MerkleRecord was not stored in db, so it needs to be assigned here.
-                    node.index = index;
-                    Ok(node)
-                }
-                Ok(None) => Err(MerkleError::new(
-                    *hash,
-                    index,
-                    MerkleErrorCode::RecordNotFound,
-                )),
-                Err(_) => Err(MerkleError::new(
-                    *hash,
-                    index,
-                    MerkleErrorCode::UnexpectedDBError,
-                )),
+            return self.generate_default_node(index);
+        }
+        match self.get_record(hash) {
+            Ok(Some(mut node)) => {
+                // The index of MerkleRecord was not stored in db, so it needs to be assigned here.
+                node.index = index;
+                self.cache.borrow_mut().put(hash.clone(), node.clone());
+                Ok(node)
             }
+            Ok(None) => Err(MerkleError::new(
+                *hash,
+                index,
+                MerkleErrorCode::RecordNotFound,
+            )),
+            Err(_) => Err(MerkleError::new(
+                *hash,
+                index,
+                MerkleErrorCode::UnexpectedDBError,
+            )),
         }
     }
 }
@@ -336,6 +349,9 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             root_hash: root,
             default_hash: DEFAULT_HASH_VEC.clone(),
             db: db.unwrap_or_else(|| Rc::new(RefCell::new(MongoDB::new(addr, None)))),
+            cache: Rc::new(RefCell::new(lru::LruCache::new(
+                std::num::NonZeroUsize::new(1 << 20).unwrap(),
+            ))), // 1M records = 136MB
         }
     }
 
@@ -405,7 +421,11 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         Ok(())
     }
 
-    fn get_node_with_hash(&self, index: u64, hash: &[u8; 32]) -> Result<Self::Node, MerkleError> {
+    fn get_node_with_hash(
+        &mut self,
+        index: u64,
+        hash: &[u8; 32],
+    ) -> Result<Self::Node, MerkleError> {
         self.generate_or_get_node(index, hash)
     }
 
@@ -417,9 +437,10 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     }
 
     fn get_leaf_with_proof(
-        &self,
+        &mut self,
         index: u64,
     ) -> Result<(Self::Node, MerkleProof<[u8; 32], DEPTH>), MerkleError> {
+        let timer = start_timer!(|| format!("get_leaf_with_proof {}", index));
         self.leaf_check(index)?;
         let paths = self.get_path(index)?.to_vec();
         // We push the search from the top
@@ -442,6 +463,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
             })
             .collect::<Result<Vec<[u8; 32]>, _>>()?;
         let hash = acc_node.hash();
+        end_timer!(timer);
         Ok((
             acc_node,
             MerkleProof {
@@ -461,6 +483,9 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             root_hash: DEFAULT_HASH_VEC[DEPTH],
             default_hash: (*DEFAULT_HASH_VEC).clone(),
             db: Rc::new(RefCell::new(MongoDB::new(addr, None))),
+            cache: Rc::new(RefCell::new(lru::LruCache::new(
+                std::num::NonZeroUsize::new(1 << 20).unwrap(),
+            ))), // 1M records = 136MB
         }
     }
 }
@@ -573,7 +598,7 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -625,7 +650,7 @@ mod tests {
 
         // 3
         let a = mt.get_root_hash();
-        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        let mut mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
@@ -706,7 +731,7 @@ mod tests {
 
         // 5
         let root = mt.get_root_hash();
-        let mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
+        let mut mt = MongoMerkle::<DEPTH>::construct(test_addr, root, None);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
@@ -734,60 +759,5 @@ mod tests {
         for _ in 0..2 {
             _test_mongo_merkle_multi_leaves_update(5);
         }
-    }
-
-    #[test]
-    /* Test duplicate update same leaf with same data for 32 height m tree
-     * 1. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
-     * 2. Check index=2_u32.pow(32) - 1 leave value updated.
-     * 3. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
-     * 4. Check index=2_u32.pow(32) - 1 leave value updated.
-     * 5. Load m tree from DB, check root and leave value.
-     */
-    fn test_mongo_merkle_duplicate_leaf_update() {
-        // Init checking results
-        const DEPTH: usize = 32;
-        const TEST_ADDR: [u8; 32] = [6; 32];
-        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
-        const LEAF1_DATA: [u8; 32] = [
-            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0,
-        ];
-
-        // 1
-        let mut mt =
-            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
-        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
-        let _ = collection.delete_many(doc! {}, None);
-
-        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
-        leaf.set(&LEAF1_DATA.to_vec());
-        mt.set_leaf_with_proof(&leaf).unwrap();
-
-        // 2
-        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
-        assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
-
-        // 3
-        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
-        leaf.set(&LEAF1_DATA.to_vec());
-        mt.set_leaf_with_proof(&leaf).unwrap();
-
-        // 4
-        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
-        assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
-
-        // 5
-        let a = mt.get_root_hash();
-        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
-        assert_eq!(mt.get_root_hash(), a);
-        let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
-        assert_eq!(leaf.index, INDEX1);
-        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
-        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
 }

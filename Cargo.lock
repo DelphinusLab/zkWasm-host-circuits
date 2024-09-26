@@ -612,7 +612,7 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git?tag=on-prove-pairing-2.6#c058e85cd401981f6ddf94d7378281b0ba7a2327"
+source = "git+https://github.com/DelphinusLab/continuation-batcher.git?tag=on-prove-pairing-2.7#9f9c288baf027d5306f8f320c98022548fc6ea81"
 dependencies = [
  "anyhow",
  "ark-std",

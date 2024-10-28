@@ -50,6 +50,11 @@ impl HostOpConfig {
             let ops = self.get_expr(meta, HostOpConfig::ops());
             let inv = self.get_expr(meta, HostOpConfig::inv());
             let mut cache_ops = constant_from!(1 as u64);
+
+            //  for all opcode in the opcodes group we calculate that
+            //  full_ops_mult = \pi (sopc - opcode[i])
+            //  since the degree needs to be less than 5, we introduce an intermediate
+            //  value ops = \pi (i=0,1,2,3) (sopc - opcode[i])
             for i in 0..opcodes.len() {
                 if i < 4 {
                     cache_ops = cache_ops * (sopc.clone() - constant!(opcodes[i].clone()));
@@ -61,13 +66,17 @@ impl HostOpConfig {
             } else {
                 ops.clone()
             };
+
             let picked = shared_index.clone() - shared_index_n.clone();
 
-            // degree 3
+            // degree 3 and at least one of full_ops_mult or picked is zero
             let expr = full_ops_mult.clone() * picked.clone() * sel.clone();
+
+            // either full_ops_mult or picked is zero
             let either_zero =
                 (full_ops_mult.clone() * inv + picked - constant_from!(1)) * sel.clone();
 
+            // make sure ops trackes the intermediate multipilication
             let ops_captures_four = sel.clone() * (ops - cache_ops);
             vec![expr, either_zero, ops_captures_four]
         });

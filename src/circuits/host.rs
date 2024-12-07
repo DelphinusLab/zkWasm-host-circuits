@@ -154,6 +154,7 @@ impl HostOpConfig {
         indicator: Fr,
         enable: bool,
     ) -> Result<(Limb<Fr>, Limb<Fr>), Error> {
+        /* values = [v0, v1, v2] in little endian */
         let mut rev = values.clone();
         let len = values.len();
         rev.reverse();

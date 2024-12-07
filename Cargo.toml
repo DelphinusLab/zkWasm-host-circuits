@@ -47,6 +47,5 @@ perf = ["circuits-batcher/perf"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]
 cuda = ["halo2_proofs/cuda"]
-complex-leaf = []
 profile = ["ark-std/print-trace", "halo2_proofs/profile", "circuits-batcher/profile"]
 

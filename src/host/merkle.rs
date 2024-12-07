@@ -47,7 +47,7 @@ pub trait MerkleNode<H: Debug + Clone + PartialEq>: Clone {
     fn set_hash(&mut self, hash: H);
     fn index(&self) -> u64;
     fn set(&mut self, data: &Vec<u8>);
-    fn descendant(&self, index: usize) -> Option<H>;
+    fn descendant(&self, offset: usize) -> Option<H>;
     fn set_descendant(&mut self, index: usize, hash: H);
 }
 
@@ -71,9 +71,53 @@ pub fn get_offset(index: u64) -> u64 {
     index - full
 }
 
+/// get the index from leaf to the root
+/// root index is not included in the result as root index is always 0
+/// Example: Given D=3 and a merkle tree as follows:
+/// 0
+/// 1 2
+/// 3 4 5 6
+/// 7 8 9 10 11 12 13 14
+/// get_path(7) = [3, 1]
+/// get_path(14) = [6, 2]
+fn get_path(index: u64) -> Vec<u64> {
+    let mut height = (index + 1).ilog2();
+    let round = height;
+    let full = (1u64 << height) - 1;
+    let mut p = index - full;
+    let mut path = vec![];
+    for _ in 0..round {
+        let full = (1u64 << height) - 1;
+        // Calculate the index of current node
+        let i = full + p;
+        path.insert(0, i);
+        height = height - 1;
+        // Caculate the offset of parent
+        p = p / 2;
+    }
+    assert!(p == 0);
+    path
+}
+
+fn get_path_binary(index: u64) -> Vec<u64> {
+    let height = (index + 1).ilog2();
+    let round = height;
+    let left_most = (1u64 << height) - 1;
+    let mut c = index - left_most;
+    let mut binary_path = vec![];
+    for _ in 0..round {
+        binary_path.push(c & 1);
+        c = c >> 1;
+    }
+    binary_path.reverse();
+    binary_path
+}
+
+
+
 pub fn binary_path_to_index(path: &[u64]) -> u64 {
     let offset = path.iter().fold(0, |acc, e| (acc << 1) + e);
-    offset + (1u64 << path.len() - 1)
+    offset + (1u64 << path.len()) - 1
 }
 
 /// get a list of node index based on the binary path from root to leaf
@@ -166,47 +210,17 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         }
     }
 
-    /// get the index from leaf to the root
-    /// root index is not included in the result as root index is always 0
-    /// Example: Given D=3 and a merkle tree as follows:
-    /// 0
-    /// 1 2
-    /// 3 4 5 6
-    /// 7 8 9 10 11 12 13 14
-    /// get_path(7) = [3, 1]
-    /// get_path(14) = [6, 2]
-    fn get_path(&self, index: u64) -> Result<[u64; D], MerkleError> {
+    fn get_path(&self, index: u64) -> Result <[u64; D], MerkleError> {
         self.leaf_check(index)?;
-        let mut height = (index + 1).ilog2();
-        let round = height;
-        let full = (1u64 << height) - 1;
-        let mut p = index - full;
-        let mut path = vec![];
-        for _ in 0..round {
-            let full = (1u64 << height) - 1;
-            // Calculate the index of current node
-            let i = full + p;
-            path.insert(0, i);
-            height = height - 1;
-            // Caculate the offset of parent
-            p = p / 2;
-        }
-        assert!(p == 0);
-        Ok(path.try_into().unwrap())
+        let r = get_path(index);
+        assert!(r.len() == D);
+        Ok(r.try_into().unwrap())
     }
+
 
     fn get_path_binary(&self, index: u64) -> Result <[u64; D], MerkleError> {
         self.leaf_check(index)?;
-        let height = (index + 1).ilog2();
-        let round = height;
-        let left_most = (1u64 << height) - 1;
-        let mut c = index - left_most;
-        let mut binary_path = vec![];
-        for _ in 0..round {
-            binary_path.push(c & 1);
-            c = c >> 1;
-        }
-        binary_path.reverse();
+        let binary_path = get_path_binary(index);
         assert!(binary_path.len() == D);
         Ok(binary_path.try_into().unwrap())
     }
@@ -220,6 +234,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     ) -> Result<(Vec<Self::Node>, MerkleProof<H, D>), MerkleError> {
         self.leaf_check(index)?;
         let paths = self.get_path_binary(index)?.to_vec();
+        println!("paths is {:?}", paths);
         assert!((paths.len() % Self::chunk_depth()) == 0);
         let mut path_chunks = paths.chunks_exact(Self::chunk_depth()).collect::<Vec<&[u64]>>();
 
@@ -234,13 +249,14 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
             |(mut assist, mut nodes), chunk| {
                 let acc_node = nodes.last().unwrap().clone();
                 let node_idxs = binary_path_to_path(chunk.to_vec().as_slice());
+                println!("node_idxs is {:?}", node_idxs);
                 let primary_hashs = node_idxs
                     .iter()
-                    .map(|x| acc_node.descendant(*x as usize).unwrap())
+                    .map(|x| acc_node.descendant(*x as usize - 1).unwrap())
                     .collect::<Vec<_>>();
                 let mut sibling_hashs = node_idxs
                     .iter()
-                    .map(|x| acc_node.descendant(get_sibling_index(*x) as usize).unwrap())
+                    .map(|x| acc_node.descendant(get_sibling_index(*x) as usize - 1).unwrap())
                     .collect::<Vec<_>>();
 
                 let last_hash = primary_hashs.last().unwrap();
@@ -330,7 +346,9 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
 #[cfg(test)]
 mod tests {
-    use crate::host::merkle::{MerkleError, MerkleNode, MerkleTree};
+    use crate::host::merkle::{get_path, get_path_binary, MerkleError, MerkleNode, MerkleTree};
+
+    use super::binary_path_to_path;
     struct MerkleAsArray {
         data: [u64; 127], // 2^7-1 and depth = 6
         root_hash: u64,
@@ -367,7 +385,7 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct MerkleU64Node {
         pub value: u64,
         pub index: u64,
@@ -467,9 +485,24 @@ mod tests {
     }
 
     #[test]
+    fn test_binary_path_to_path() {
+        for index in 1..128 {
+            let path_binary = get_path_binary(index);
+            let path_b2p = binary_path_to_path(&path_binary);
+            let path = get_path(index);
+            assert_eq!(path_b2p, path);
+        }
+    }
+
+
+    #[test]
     fn test_merkle_path() {
         let mut mt = MerkleAsArray::construct();
-        let (mut leaf, _) = mt.get_leaf_with_proof(2_u64.pow(6) - 1).unwrap();
+        let (traces, proof) = mt.trace_leaf_with_proof(2_u64.pow(6) - 1, None).unwrap();
+        println!("traces is {:?}", traces);
+        let (mut leaf, proof) = mt.get_leaf_with_proof(2_u64.pow(6) - 1).unwrap();
+        println!("leaf is {:?}", leaf);
+        println!("proof is {:?}", proof);
         leaf.value = 1;
         let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
 

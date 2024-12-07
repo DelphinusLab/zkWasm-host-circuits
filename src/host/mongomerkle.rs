@@ -27,6 +27,17 @@ where
     }
 }
 
+fn deserialize_bytes_from_binary<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Bson::deserialize(deserializer) {
+        Ok(Bson::Binary(bytes)) => Ok(bytes.bytes.to_vec()),
+        Ok(..) => Err(Error::invalid_value(Unexpected::Enum, &"Bson::Binary")),
+        Err(e) => Err(e),
+    }
+}
+
 fn serialize_bytes_as_binary<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -66,37 +77,6 @@ where
             binary.serialize(serializer)
         }
         None => serializer.serialize_none(),
-    }
-}
-
-fn serialize_option_bytes_chunk_as_binary<S>(
-    bytes: &Option<[u8; 32 * CHUNK_VOLUME]>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match bytes {
-        Some(bytes) => {
-            let binary = Bson::Binary(mongodb::bson::Binary {
-                subtype: BinarySubtype::Generic,
-                bytes: bytes.to_vec(),
-            });
-            binary.serialize(serializer)
-        }
-        None => serializer.serialize_none(),
-    }
-}
-
-fn deserialize_option_chunk_as_binary<'de, D>(deserializer: D) -> Result<Option<[u8; 32 * CHUNK_VOLUME]>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Bson::deserialize(deserializer) {
-        Ok(Bson::Binary(bytes)) => Ok(Some(bytes.bytes.try_into().unwrap())),
-        Ok(Bson::Null) => Ok(None),
-        Ok(..) => Err(Error::invalid_value(Unexpected::Enum, &"Bson::Binary")),
-        Err(e) => Err(e),
     }
 }
 
@@ -146,26 +126,24 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         Ok(())
     }
 
+    pub fn get_node_default_hash(&self, height: usize) -> [[u8; 32]; CHUNK_DEPTH] {
+        let mut default_hash = vec![];
+        for i in 0..CHUNK_DEPTH {
+            let hash = self.get_default_hash(height + i + 1).unwrap();
+            default_hash.push(hash);
+        }
+        default_hash.try_into().unwrap()
+    }
+
     pub fn generate_default_node(&self, index: u64) -> Result<MerkleRecord, MerkleError> {
         let height = (index + 1).ilog2();
-        let default = self.get_default_hash(height as usize)?;
-        let descendants = if height == Self::height() as u32 {
-            None
-        } else {
-            let mut desc = vec![];
-            for i in 0..Self::chunk_depth() {
-                let height_off = (i + 1).ilog2();
-                let hash = self.get_default_hash((height + height_off + 1) as usize)?;
-                desc.append(&mut hash.to_vec());
-            }
-            Some (desc.try_into().unwrap())
-        };
-
+        let default_hash = Some(self.get_node_default_hash(height as usize));
         Ok(MerkleRecord {
             index,
-            hash: default,
+            default_hash,
+            hash: self.get_default_hash(height as usize)?,
             data: None,
-            descendants
+            descendants: vec![]
         })
     }
 
@@ -187,15 +165,22 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         index: u64,
         hash: &[u8; 32],
     ) -> Result<MerkleRecord, MerkleError> {
-        let height = (index + 1).ilog2();
-        let default_hash = self.get_default_hash(height as usize)?;
+        let height = (index + 1).ilog2() as usize;
+        assert!(height <= Self::height());
+
+        let default_hash = self.get_default_hash(height)?;
         if &default_hash == hash {
+            println!("generate default node");
             self.generate_default_node(index)
         } else {
             match self.get_record(hash) {
                 Ok(Some(mut node)) => {
                     // The index of MerkleRecord was not stored in db, so it needs to be assigned here.
                     node.index = index;
+                    if height != Self::height() {
+                        node.default_hash = Some(self.get_node_default_hash(height as usize))
+                    };
+                    let height = (index + 1).ilog2();
                     Ok(node)
                 }
                 Ok(None) => Err(MerkleError::new(
@@ -213,25 +198,23 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 }
 
-const CHUNK_DEPTH:usize = 4;
-const CHUNK_VOLUME: usize = 2^CHUNK_DEPTH - 1 - 1;
+const CHUNK_DEPTH: usize = 4;
+const CHUNK_VOLUME: usize = 31;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleRecord {
     // The index will not to be stored in db.
     #[serde(skip_serializing, skip_deserializing, default)]
     pub index: u64,
+    #[serde(skip_serializing, skip_deserializing, default)]
+    pub default_hash: Option<[[u8; 32]; CHUNK_DEPTH]>,
     #[serde(serialize_with = "self::serialize_bytes_as_binary")]
     #[serde(deserialize_with = "self::deserialize_u256_as_binary")]
     #[serde(rename = "_id")]
     pub hash: [u8; 32],
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "self::serialize_option_bytes_chunk_as_binary",
-        default
-    )]
-    #[serde(deserialize_with = "self::deserialize_option_chunk_as_binary")]
-    pub descendants: Option<[u8; 32 * CHUNK_VOLUME]>, // 2^4 - 1 - 1 (root)
+    #[serde(serialize_with = "self::serialize_bytes_as_binary")]
+    #[serde(deserialize_with = "self::deserialize_bytes_from_binary")]
+    pub descendants: Vec<u8>, // 2^4 - 1 - 1 (root)
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "self::serialize_option_bytes_as_binary",
@@ -255,10 +238,20 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
     }
 
     fn set_descendant(&mut self, index: usize, hash: [u8; 32]) {
-        let descendants = self.descendants.as_mut().unwrap();
-        for i in 0..32 {
-            let offset = index * 32 + i;
-            descendants[offset] = hash[i];
+        for c in 0..CHUNK_VOLUME {
+            if c * 33 < self.descendants.len() {
+                if self.descendants[c*33] == index as u8 {
+                    for i in 0..32 {
+                        let offset = c * 33 + i + 1;
+                        self.descendants[offset] = hash[i];
+                    }
+                    return;
+                }
+            }
+        }
+        self.descendants.push(index as u8);
+        for h in hash.to_vec().iter() {
+            self.descendants.push(*h);
         }
     }
 
@@ -286,19 +279,29 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         //println!("update with values {:?}", values);
         //println!("update with new hash {:?}", self.hash);
     }
-    fn descendant(&self, index: usize ) -> Option<[u8; 32]> {
-        let offset = index - 1;
-        self.descendants.map(|x| {
-            let c = x[offset * 32 .. (offset+1) * 32].to_vec();
-            c.try_into().unwrap()
-        })
+    fn descendant(&self, offset: usize ) -> Option<[u8; 32]> {
+        println!("offset is {}", offset);
+        for c in 0..CHUNK_VOLUME {
+            if c * 33 < self.descendants.len() {
+                if self.descendants[c*33] == offset as u8 {
+                    let offset = c * 33 + 1;
+                    let r = self.descendants[offset .. offset + 32];
+                    return r.try_into().unwrap()
+                }
+            }
+        }
+        let index = offset + 1;
+        let height = (index + 1).ilog2();
+        return self.default_hash.unwrap()[height - 1];
     }
 }
 
 impl MerkleRecord {
     fn new(index: u64) -> Self {
+        let height = (index + 1).ilog2();
         MerkleRecord {
             index,
+            default_hash: None,
             hash: [0; 32],
             data: None,
             descendants: None,
@@ -548,9 +551,9 @@ mod tests {
      * 2. Check index=2_u32.pow(13) - 1 leave value updated.
      * 3. Load m tree from DB, check root and leave value.
      */
-    fn test_mongo_merkle_single_leaf_update_13_depth() {
+    fn test_mongo_merkle_single_leaf_update_16_depth() {
         // Init checking results
-        const DEPTH: usize = 13;
+        const DEPTH: usize = 16;
         const TEST_ADDR: [u8; 32] = [4; 32];
         const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
         const LEAF1_DATA: [u8; 32] = [
@@ -715,14 +718,24 @@ mod tests {
             0, 0, 0,
         ];
 
-        // 1
-        let mut mt =
-            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH],
+            Some(mongodb.clone()),
+        );
+
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
-        let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+        let collection = get_collection::<MerkleRecord>(
+            mongodb.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
+
+        // 1
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         leaf.set(&LEAF1_DATA.to_vec());
         mt.set_leaf_with_proof(&leaf).unwrap();

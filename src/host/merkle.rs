@@ -259,6 +259,8 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
                     .map(|x| acc_node.descendant(get_sibling_index(*x) as usize - 1).unwrap())
                     .collect::<Vec<_>>();
 
+                println!("primary hash {:?}", primary_hashs);
+
                 let last_hash = primary_hashs.last().unwrap();
                 let height = nodes.len() * Self::chunk_depth();
                 let acc_node = self.get_node_with_hash(height as u64, last_hash).unwrap();

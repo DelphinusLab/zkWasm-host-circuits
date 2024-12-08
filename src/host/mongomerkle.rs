@@ -180,7 +180,6 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                     if height != Self::height() {
                         node.default_hash = Some(self.get_node_default_hash(height as usize))
                     };
-                    let height = (index + 1).ilog2();
                     Ok(node)
                 }
                 Ok(None) => Err(MerkleError::new(
@@ -285,26 +284,27 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
             if c * 33 < self.descendants.len() {
                 if self.descendants[c*33] == offset as u8 {
                     let offset = c * 33 + 1;
-                    let r = self.descendants[offset .. offset + 32];
-                    return r.try_into().unwrap()
+                    let r = self.descendants[offset .. offset + 32].to_vec();
+                    return Some(r.try_into().unwrap())
                 }
             }
         }
         let index = offset + 1;
-        let height = (index + 1).ilog2();
-        return self.default_hash.unwrap()[height - 1];
+        let height = (index + 1).ilog2() as usize;
+        return self.default_hash.map(
+            |d| d[height - 1]
+        );
     }
 }
 
 impl MerkleRecord {
     fn new(index: u64) -> Self {
-        let height = (index + 1).ilog2();
         MerkleRecord {
             index,
             default_hash: None,
             hash: [0; 32],
             data: None,
-            descendants: None,
+            descendants: vec![],
         }
     }
 

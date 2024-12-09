@@ -754,12 +754,23 @@ mod tests {
             0, 0, 0,
         ];
 
+
+        let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+
         // 1
-        let mut mt =
-            MongoMerkle::<DEPTH>::construct(TEST_ADDR, DEFAULT_HASH_VEC[DEPTH].clone(), None);
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(mongodb.clone()),
+        );
+
         let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
         let collection =
-            get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname).unwrap();
+            get_collection::<MerkleRecord>(
+                mongodb.borrow().get_database_client().unwrap(),
+                MONGODB_DATABASE.to_string(),
+                cname
+            ).unwrap();
         let _ = collection.delete_many(doc! {}, None);
 
         let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();

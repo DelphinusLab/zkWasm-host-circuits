@@ -234,6 +234,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
     ) -> Result<(Vec<Self::Node>, MerkleProof<H, D>), MerkleError> {
         self.leaf_check(index)?;
         let paths = self.get_path_binary(index)?.to_vec();
+        let index_paths = self.get_path(index)?.to_vec();
         println!("paths is {:?}", paths);
         assert!((paths.len() % Self::chunk_depth()) == 0);
         let mut path_chunks = paths.chunks_exact(Self::chunk_depth()).collect::<Vec<&[u64]>>();
@@ -263,7 +264,9 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
 
                 let last_hash = primary_hashs.last().unwrap();
                 let height = nodes.len() * Self::chunk_depth();
-                let acc_node = self.get_node_with_hash(height as u64, last_hash).unwrap();
+                let index = index_paths[height - 1];
+                println!("index is {}", index);
+                let acc_node = self.get_node_with_hash(index as u64, last_hash).unwrap();
                 nodes.push(acc_node);
                 assist.append(&mut sibling_hashs);
                 (assist, nodes)

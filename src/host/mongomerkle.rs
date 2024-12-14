@@ -136,12 +136,18 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     pub fn generate_default_node(&self, index: u64) -> Result<MerkleRecord, MerkleError> {
-        let height = (index + 1).ilog2();
-        let default_hash = Some(self.get_node_default_hash(height as usize));
+        println!("generate default node {}", index);
+        let height = (index + 1).ilog2() as usize;
+        let default_hash = if height < Self::height() {
+            Some(self.get_node_default_hash(height as usize))
+        } else {
+            assert!(height == Self::height());
+            None
+        };
         Ok(MerkleRecord {
             index,
             default_hash,
-            hash: self.get_default_hash(height as usize)?,
+            hash: self.get_default_hash(height)?,
             data: None,
             descendants: vec![]
         })
@@ -279,7 +285,6 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         //println!("update with new hash {:?}", self.hash);
     }
     fn descendant(&self, offset: usize ) -> Option<[u8; 32]> {
-        println!("offset is {}", offset);
         for c in 0..CHUNK_VOLUME {
             if c * 33 < self.descendants.len() {
                 if self.descendants[c*33] == offset as u8 {
@@ -291,6 +296,7 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         }
         let index = offset + 1;
         let height = (index + 1).ilog2() as usize;
+        println!("offset is {} {}", offset, height);
         return self.default_hash.map(
             |d| d[height - 1]
         );

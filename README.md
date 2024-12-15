@@ -1,6 +1,6 @@
 # zkWasm-host-circuits
 
-The host circuits contains two components. The operands selection circuit which select the target opcodes and the host function constraint circuit which enforces the semantics of a specific host function.
+The host circuits contain two components. The operands selection circuit which selects the target opcodes and the host function constraint circuit which enforces the semantics of a specific host function.
 
 ## Operands selection circuit.
 Suppose we have a host calling trace that calls two functions
@@ -9,7 +9,7 @@ a(x,y) = x + y + 1
 b(x,y,z) = x * y * z
 ```
 
-It follows that the shared host op table will looks like the following:
+It follows that the shared host op table will look like the following:
 
 | op_code | arg | idx |
 | --------|-----|-----|

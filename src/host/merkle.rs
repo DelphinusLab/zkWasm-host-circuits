@@ -165,9 +165,11 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         node_idxs.reverse();
         let mut new_hash = hash;
         for index in node_idxs {
-            node.set_descendant(index as usize, new_hash.clone());
-            let primary = node.descendant(index as usize);
-            let assist = node.descendant(get_sibling_index(index) as usize);
+            let offset = (index - 1) as usize;
+            let siboffset = (get_sibling_index(index) - 1) as usize;
+            node.set_descendant(offset as usize, new_hash.clone());
+            let primary = node.descendant(offset);
+            let assist = node.descendant(siboffset);
             new_hash = Self::hash_with_index(&primary.unwrap(), &assist.unwrap(), index);
         };
         node.set_hash(new_hash);
@@ -235,7 +237,6 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         self.leaf_check(index)?;
         let paths = self.get_path_binary(index)?.to_vec();
         let index_paths = self.get_path(index)?.to_vec();
-        println!("paths is {:?}", paths);
         assert!((paths.len() % Self::chunk_depth()) == 0);
         let mut path_chunks = paths.chunks_exact(Self::chunk_depth()).collect::<Vec<&[u64]>>();
 
@@ -250,7 +251,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
             |(mut assist, mut nodes), chunk| {
                 let acc_node = nodes.last().unwrap().clone();
                 let node_idxs = binary_path_to_path(chunk.to_vec().as_slice());
-                println!("node_idxs is {:?}", node_idxs);
+                //println!("node_idxs is {:?}", node_idxs);
                 let primary_hashs = node_idxs
                     .iter()
                     .map(|x| acc_node.descendant(*x as usize - 1).unwrap())
@@ -260,12 +261,11 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
                     .map(|x| acc_node.descendant(get_sibling_index(*x) as usize - 1).unwrap())
                     .collect::<Vec<_>>();
 
-                println!("primary hash {:?}", primary_hashs);
-
+                //println!("primary hash {:?}", primary_hashs);
                 let last_hash = primary_hashs.last().unwrap();
                 let height = nodes.len() * Self::chunk_depth();
                 let index = index_paths[height - 1];
-                println!("index is {}", index);
+                //println!("index is {}", index);
                 let acc_node = self.get_node_with_hash(index as u64, last_hash).unwrap();
                 nodes.push(acc_node);
                 assist.append(&mut sibling_hashs);
@@ -273,6 +273,7 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
             });
 
         let hash = nodes.last().unwrap().hash();
+
 
         if let Some(mut update_hash) = update {
             path_chunks.reverse();
@@ -285,7 +286,6 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         }
 
         assert!(assist.len() == D);
-
         Ok((
             nodes,
             MerkleProof {

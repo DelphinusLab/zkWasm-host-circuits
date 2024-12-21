@@ -122,6 +122,9 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
     //the input records must be in one leaf path
     pub fn update_records(&mut self, records: &Vec<MerkleRecord>) -> Result<(), anyhow::Error> {
+        for r in records.iter() {
+            println!("update record: {:?}", r.hash());
+        }
         self.db.borrow_mut().set_merkle_records(records)?;
         Ok(())
     }
@@ -173,10 +176,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     ) -> Result<MerkleRecord, MerkleError> {
         let height = (index + 1).ilog2() as usize;
         assert!(height <= Self::height());
-
         let default_hash = self.get_default_hash(height)?;
         if &default_hash == hash {
-            println!("generate default node");
             self.generate_default_node(index)
         } else {
             match self.get_record(hash) {
@@ -296,7 +297,7 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         }
         let index = offset + 1;
         let height = (index + 1).ilog2() as usize;
-        println!("offset is {} {}", offset, height);
+        println!("offset is {} {} {}", offset, height, self.descendants.len());
         return self.default_hash.map(
             |d| d[height - 1]
         );

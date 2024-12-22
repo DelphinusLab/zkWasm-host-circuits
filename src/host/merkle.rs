@@ -499,6 +499,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_path() {
+        assert_eq!(get_path(0), vec![] as Vec<u64>);
+        assert_eq!(get_path(1), vec![1]);
+        assert_eq!(get_path(2), vec![2]);
+        assert_eq!(get_path(3), vec![1,3]);
+        assert_eq!(get_path(4), vec![1,4]);
+        assert_eq!(get_path(5), vec![2,5]);
+        assert_eq!(get_path(6), vec![2,6]);
+        assert_eq!(get_path(7), vec![1,3,7]);
+    }
+
+
 
     #[test]
     fn test_merkle_path() {

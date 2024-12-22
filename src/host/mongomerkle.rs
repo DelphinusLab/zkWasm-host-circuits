@@ -512,7 +512,7 @@ mod tests {
         // Init checking results
         const DEPTH: usize = 32;
         const TEST_ADDR: [u8; 32] = [2; 32];
-        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32);// - 1;
         const LEAF1_DATA: [u8; 32] = [
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
@@ -555,16 +555,16 @@ mod tests {
     }
 
     #[test]
-    /* Like the above test but use 13 depth
-     * 1. Update index=2_u32.pow(13) - 1 (first leaf) leave value. Check root.
-     * 2. Check index=2_u32.pow(13) - 1 leave value updated.
+    /* Like the above test but use 16 depth
+     * 1. Update index=2_u32.pow(16) - 1 (first leaf) leave value. Check root.
+     * 2. Check index=2_u32.pow(16) - 1 leave value updated.
      * 3. Load m tree from DB, check root and leave value.
      */
     fn test_mongo_merkle_single_leaf_update_16_depth() {
         // Init checking results
         const DEPTH: usize = 16;
         const TEST_ADDR: [u8; 32] = [4; 32];
-        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32); // - 1;
         const LEAF1_DATA: [u8; 32] = [
             0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0,
@@ -605,6 +605,73 @@ mod tests {
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
+
+
+    fn test_mongo_merkle_multi_leaves_update_16_depth(offset: u64) {
+        // Init checking results
+        const DEPTH: usize = 16;
+        const TEST_ADDR: [u8; 32] = [4; 32];
+        let magic_number = offset * offset;
+
+        let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+
+        // 1
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(mongodb.clone()),
+        );
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
+        let collection = get_collection::<MerkleRecord>(
+            mongodb.borrow().get_database_client().unwrap(),
+            MONGODB_DATABASE.to_string(),
+            cname,
+        )
+        .unwrap();
+        let _ = collection.delete_many(doc! {}, None);
+
+        for i in offset..offset + 128 {
+            let full_index: u64 = 2_u64.pow(DEPTH as u32) - 1 + (i % 2_u64.pow(DEPTH as u32));
+            let data_index = (full_index % 32) as usize;
+            let mut data = [0; 32];
+            data[data_index] = (full_index % 256) as u8 + 1;
+            let (mut leaf, _) = mt.get_leaf_with_proof(full_index).unwrap();
+
+            leaf.set(&data.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+
+            let (leaf, _) = mt.get_leaf_with_proof(full_index).unwrap();
+            assert_eq!(leaf.index, full_index);
+            assert_eq!(leaf.data.unwrap(), data);
+        }
+
+        // recheck
+        for i in offset..offset + 128 {
+            let full_index: u64 = 2_u64.pow(DEPTH as u32) - 1_u64 + (i % 2_u64.pow(DEPTH as u32));
+            let data_index = (full_index % 32) as usize;
+            let mut data = [0; 32];
+            data[data_index] = (full_index % 256) as u8 + 1;
+            let (leaf, proof) = mt.get_leaf_with_proof(full_index).unwrap();
+            assert_eq!(leaf.index, full_index);
+            assert_eq!(leaf.data.unwrap(), data);
+            let verified = mt.verify_proof(&proof).unwrap();
+            assert_eq!(true, verified);
+        }
+    }
+
+    #[test]
+    /* Like the above test but use 16 depth
+     * 1. Update index=2_u32.pow(16) - 1 (first leaf) leave value. Check root.
+     * 2. Check index=2_u32.pow(16) - 1 leave value updated.
+     * 3. Load m tree from DB, check root and leave value.
+     */
+    fn test_mongo_merkle_multi_leaves_16_depth() {
+        for i in 0..32 {
+            test_mongo_merkle_multi_leaves_update_16_depth(i+1);
+        }
+    }
+
+
 
     /* Tests for 32 height m tree with updating multple leaves
      * 1. Clear m tree collection. Create default empty m tree. Check root (default one, A).

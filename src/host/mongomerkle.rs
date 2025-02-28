@@ -141,7 +141,6 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 
     pub fn generate_default_node(&self, index: u64) -> Result<MerkleRecord, MerkleError> {
-        println!("generate default node {}", index);
         let height = (index + 1).ilog2() as usize;
         let default_hash = if height < Self::height() {
             Some(self.get_node_default_hash(height as usize))

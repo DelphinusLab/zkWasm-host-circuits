@@ -7,6 +7,8 @@ use mongodb::{
     options::DropCollectionOptions,
     sync::{Client, Collection},
 };
+use mongodb::options::IndexOptions;
+use mongodb::IndexModel;
 
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
@@ -65,6 +67,19 @@ impl MongoDB {
         let collection = self.get_collection::<MerkleRecord>(database, name)?;
         let options = DropCollectionOptions::builder().build();
         collection.drop(options)
+    }
+
+    pub fn create_index(&self) -> Result<(), mongodb::error::Error> {
+        let cname = get_collection_name(MONGODB_MERKLE_NAME_PREFIX.to_string(), self.cname_id);
+        let collection = self.get_collection::<MerkleRecord>(MONGODB_DATABASE.to_string(), cname.to_string())?;
+        let index_model = IndexModel::builder()
+            .keys(doc! { "_id": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build();
+        // Create the index
+        collection
+            .create_index(index_model, None)?;
+        Ok(())
     }
 
     pub fn merkel_collection(&self) -> Result<Collection<MerkleRecord>, mongodb::error::Error> {

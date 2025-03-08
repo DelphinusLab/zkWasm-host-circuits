@@ -105,21 +105,21 @@ impl DataHashRecord {
     pub fn to_slice(&self) -> Vec<u8> {
         let mut result = Vec::new();
 
-        // 序列化hash ([u8; 32])
+        // hash ([u8; 32])
         result.extend_from_slice(&self.hash);
 
-        // 序列化data (Vec<u8>)
-        // 首先序列化长度，使用u32表示（4字节）
+        // data (Vec<u8>)
+        // firstly len
         let data_len = self.data.len() as u32;
         result.extend_from_slice(&data_len.to_le_bytes());
 
-        // 然后序列化数据内容
+        // then content
         result.extend_from_slice(&self.data);
 
         result
     }
 
-    /// 从Vec<u8>转换回DataHashRecord
+    /// deserialze from Vec<u8> to DataHashRecord
     pub fn from_slice(slice: &[u8]) -> Result<Self, anyhow::Error> {
         if slice.len() < 32 {
             return Err(anyhow::anyhow!("Slice too short for hash"));
@@ -127,13 +127,13 @@ impl DataHashRecord {
 
         let mut pos = 0;
 
-        // 反序列化hash
+        // hash
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&slice[pos..pos+32]);
         pos += 32;
 
-        // 反序列化data
-        // 首先读取长度
+        // data
+        // first, length
         if slice.len() < pos + 4 {
             return Err(anyhow::anyhow!("Slice too short for data length"));
         }
@@ -142,7 +142,7 @@ impl DataHashRecord {
         let data_len = u32::from_le_bytes(len_bytes) as usize;
         pos += 4;
 
-        // 然后读取数据内容
+        // then content
         if slice.len() < pos + data_len {
             return Err(anyhow::anyhow!("Slice too short for data content"));
         }

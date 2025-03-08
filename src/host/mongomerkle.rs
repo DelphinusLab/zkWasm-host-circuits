@@ -178,6 +178,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     }
 }
 
+pub type RocksMerkle<const DEPTH: usize> = MongoMerkle<DEPTH>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleRecord {
     // The index will not to be stored in db.
@@ -209,6 +211,142 @@ pub struct MerkleRecord {
     #[serde(deserialize_with = "self::deserialize_option_u256_as_binary")]
     pub data: Option<[u8; 32]>,
 }
+
+impl MerkleRecord {
+    /// 将MerkleRecord转换为Vec<u8>
+    pub fn to_slice(&self) -> Vec<u8> {
+        let mut result = Vec::new();
+
+        // 序列化index (u64 - 8字节)
+        result.extend_from_slice(&self.index.to_le_bytes());
+
+        // 序列化hash ([u8; 32])
+        result.extend_from_slice(&self.hash);
+
+        // 序列化left (Option<[u8; 32]>)
+        if let Some(left) = self.left {
+            result.push(1); // 表示Some
+            result.extend_from_slice(&left);
+        } else {
+            result.push(0); // 表示None
+        }
+
+        // 序列化right (Option<[u8; 32]>)
+        if let Some(right) = self.right {
+            result.push(1);
+            result.extend_from_slice(&right);
+        } else {
+            result.push(0);
+        }
+
+        // 序列化data (Option<[u8; 32]>)
+        if let Some(data) = self.data {
+            result.push(1);
+            result.extend_from_slice(&data);
+        } else {
+            result.push(0);
+        }
+
+        result
+    }
+
+    /// 从Vec<u8>转换回MerkleRecord
+    pub fn from_slice(slice: &[u8]) -> Result<Self, anyhow::Error> {
+        if slice.len() < 8 {
+            return Err(anyhow::anyhow!("Slice too short for index"));
+        }
+
+        let mut pos = 0;
+
+        // 反序列化index
+        let mut index_bytes = [0u8; 8];
+        index_bytes.copy_from_slice(&slice[pos..pos+8]);
+        let index = u64::from_le_bytes(index_bytes);
+        pos += 8;
+
+        // 反序列化hash
+        if slice.len() < pos + 32 {
+            return Err(anyhow::anyhow!("Slice too short for hash"));
+        }
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&slice[pos..pos+32]);
+        pos += 32;
+
+        // 反序列化left
+        if slice.len() < pos + 1 {
+            return Err(anyhow::anyhow!("Slice too short for left flag"));
+        }
+        let left = match slice[pos] {
+            0 => {
+                pos += 1;
+                None
+            },
+            1 => {
+                pos += 1;
+                if slice.len() < pos + 32 {
+                    return Err(anyhow::anyhow!("Slice too short for left value"));
+                }
+                let mut left_val = [0u8; 32];
+                left_val.copy_from_slice(&slice[pos..pos+32]);
+                pos += 32;
+                Some(left_val)
+            },
+            _ => return Err(anyhow::anyhow!("Invalid left flag")),
+        };
+
+        // 反序列化right
+        if slice.len() < pos + 1 {
+            return Err(anyhow::anyhow!("Slice too short for right flag"));
+        }
+        let right = match slice[pos] {
+            0 => {
+                pos += 1;
+                None
+            },
+            1 => {
+                pos += 1;
+                if slice.len() < pos + 32 {
+                    return Err(anyhow::anyhow!("Slice too short for right value"));
+                }
+                let mut right_val = [0u8; 32];
+                right_val.copy_from_slice(&slice[pos..pos+32]);
+                pos += 32;
+                Some(right_val)
+            },
+            _ => return Err(anyhow::anyhow!("Invalid right flag")),
+        };
+
+        // 反序列化data
+        if slice.len() < pos + 1 {
+            return Err(anyhow::anyhow!("Slice too short for data flag"));
+        }
+        let data = match slice[pos] {
+            0 => {
+                // pos += 1;
+                None
+            },
+            1 => {
+                pos += 1;
+                if slice.len() < pos + 32 {
+                    return Err(anyhow::anyhow!("Slice too short for data value"));
+                }
+                let mut data_val = [0u8; 32];
+                data_val.copy_from_slice(&slice[pos..pos+32]);
+                Some(data_val)
+            },
+            _ => return Err(anyhow::anyhow!("Invalid data flag")),
+        };
+
+        Ok(MerkleRecord {
+            index,
+            hash,
+            left,
+            right,
+            data,
+        })
+    }
+}
+
 
 impl MerkleNode<[u8; 32]> for MerkleRecord {
     fn index(&self) -> u64 {
@@ -467,16 +605,15 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC};
-    use crate::host::db::{
-        get_collection, get_collection_name, MongoDB, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX,
-    };
+    use super::{MerkleRecord, MongoMerkle, DEFAULT_HASH_VEC, RocksMerkle};
+    use crate::host::db::{get_collection, get_collection_name, MongoDB, MONGODB_DATABASE, MONGODB_DATA_NAME_PREFIX, RocksDB};
     use crate::host::merkle::{MerkleNode, MerkleTree};
     use crate::utils::{bytes_to_u64, field_to_bytes};
     use halo2_proofs::pairing::bn256::Fr;
     use mongodb::bson::doc;
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::time::Instant;
 
     #[test]
     /* Test for check parent node
@@ -778,7 +915,73 @@ mod tests {
         mt.set_leaf_with_proof(&leaf).unwrap();
 
         // 2
+        let start = Instant::now();
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        let duration = start.elapsed();
+        println!("获取叶子节点及证明耗时: {} 微秒", duration.as_micros());
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 4
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 5
+        let a = mt.get_root_hash();
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        assert_eq!(mt.get_root_hash(), a);
+        let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+    }
+
+    #[test]
+    /* Test duplicate update same leaf with same data for 32 height m tree
+     * 1. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 2. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 4. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 5. Load m tree from DB, check root and leave value.
+     */
+    fn test_mongo_merkle_duplicate_leaf_update_with_rocksdb() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_db/").unwrap()));
+
+        // 1
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let _ = rocks_db.borrow_mut().clear();
+
+
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 2
+        let start = Instant::now();
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        let duration = start.elapsed();
+        println!("获取叶子节点及证明耗时: {} 微秒", duration.as_micros());
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 

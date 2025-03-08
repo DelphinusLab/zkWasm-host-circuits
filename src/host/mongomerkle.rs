@@ -213,17 +213,17 @@ pub struct MerkleRecord {
 }
 
 impl MerkleRecord {
-    /// 将MerkleRecord转换为Vec<u8>
+    /// serialize MerkleRecord to Vec<u8>
     pub fn to_slice(&self) -> Vec<u8> {
         let mut result = Vec::new();
 
-        // 序列化index (u64 - 8字节)
+        // index (u64 - 8byte)
         result.extend_from_slice(&self.index.to_le_bytes());
 
-        // 序列化hash ([u8; 32])
+        // hash ([u8; 32])
         result.extend_from_slice(&self.hash);
 
-        // 序列化left (Option<[u8; 32]>)
+        // left (Option<[u8; 32]>)
         if let Some(left) = self.left {
             result.push(1); // 表示Some
             result.extend_from_slice(&left);
@@ -231,7 +231,7 @@ impl MerkleRecord {
             result.push(0); // 表示None
         }
 
-        // 序列化right (Option<[u8; 32]>)
+        // right (Option<[u8; 32]>)
         if let Some(right) = self.right {
             result.push(1);
             result.extend_from_slice(&right);
@@ -239,7 +239,7 @@ impl MerkleRecord {
             result.push(0);
         }
 
-        // 序列化data (Option<[u8; 32]>)
+        // data (Option<[u8; 32]>)
         if let Some(data) = self.data {
             result.push(1);
             result.extend_from_slice(&data);
@@ -250,7 +250,7 @@ impl MerkleRecord {
         result
     }
 
-    /// 从Vec<u8>转换回MerkleRecord
+    /// deserialize Vec<u8> to MerkleRecord
     pub fn from_slice(slice: &[u8]) -> Result<Self, anyhow::Error> {
         if slice.len() < 8 {
             return Err(anyhow::anyhow!("Slice too short for index"));
@@ -258,13 +258,13 @@ impl MerkleRecord {
 
         let mut pos = 0;
 
-        // 反序列化index
+        // index
         let mut index_bytes = [0u8; 8];
         index_bytes.copy_from_slice(&slice[pos..pos+8]);
         let index = u64::from_le_bytes(index_bytes);
         pos += 8;
 
-        // 反序列化hash
+        // hash
         if slice.len() < pos + 32 {
             return Err(anyhow::anyhow!("Slice too short for hash"));
         }
@@ -272,7 +272,7 @@ impl MerkleRecord {
         hash.copy_from_slice(&slice[pos..pos+32]);
         pos += 32;
 
-        // 反序列化left
+        // left
         if slice.len() < pos + 1 {
             return Err(anyhow::anyhow!("Slice too short for left flag"));
         }
@@ -294,7 +294,7 @@ impl MerkleRecord {
             _ => return Err(anyhow::anyhow!("Invalid left flag")),
         };
 
-        // 反序列化right
+        // right
         if slice.len() < pos + 1 {
             return Err(anyhow::anyhow!("Slice too short for right flag"));
         }
@@ -316,7 +316,7 @@ impl MerkleRecord {
             _ => return Err(anyhow::anyhow!("Invalid right flag")),
         };
 
-        // 反序列化data
+        // data
         if slice.len() < pos + 1 {
             return Err(anyhow::anyhow!("Slice too short for data flag"));
         }
@@ -918,7 +918,7 @@ mod tests {
         let start = Instant::now();
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         let duration = start.elapsed();
-        println!("获取叶子节点及证明耗时: {} 微秒", duration.as_micros());
+        println!("get_leaf_with_proof elapse: {} us", duration.as_micros());
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 
@@ -981,7 +981,7 @@ mod tests {
         let start = Instant::now();
         let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
         let duration = start.elapsed();
-        println!("获取叶子节点及证明耗时: {} 微秒", duration.as_micros());
+        println!("get_leaf_with_proof elapse: {} us", duration.as_micros());
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
 

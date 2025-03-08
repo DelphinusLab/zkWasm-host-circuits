@@ -40,6 +40,8 @@ lru = "0.11.0"
 anyhow = "1.0.86"
 num-traits = "0.2.15"
 num-derive = "0.3"
+bincode = "1.3"
+rocksdb = "0.21.0"
 
 [features]
 default = ["mongo-tokio-sync"]

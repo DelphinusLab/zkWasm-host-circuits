@@ -10,6 +10,10 @@ use mongodb::{
 
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
+use anyhow::Result;
+use rocksdb::{DB, Options, WriteBatch};
+use std::path::Path;
+use std::sync::Arc;
 
 pub const MONGODB_DATABASE: &str = "zkwasm-mongo-merkle";
 pub const MONGODB_MERKLE_NAME_PREFIX: &str = "MERKLEDATA";
@@ -174,4 +178,134 @@ pub fn get_collection<T>(
 
 pub fn get_collection_name(name_prefix: String, id: [u8; 32]) -> String {
     format!("{}_{}", name_prefix, hex::encode(id))
+}
+
+
+pub struct RocksDB {
+    db: Arc<DB>,
+    merkle_cf_name: String,
+    data_cf_name: String,
+}
+
+impl Clone for RocksDB {
+    fn clone(&self) -> Self {
+        RocksDB {
+            db: Arc::clone(&self.db),
+            merkle_cf_name: self.merkle_cf_name.clone(),
+            data_cf_name: self.data_cf_name.clone(),
+        }
+    }
+}
+impl RocksDB {
+    // 创建新的 RocksDB 实例
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let merkle_cf_name = "merkle_records";
+        let data_cf_name = "data_records";
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        let cfs = vec![merkle_cf_name, data_cf_name];
+        let db = DB::open_cf(&opts, path, cfs)?;
+
+        Ok(Self {
+            db: Arc::new(db),
+            merkle_cf_name: merkle_cf_name.to_string(),
+            data_cf_name: data_cf_name.to_string(),
+        })
+    }
+
+    // 清空数据库
+    pub fn clear(&self) -> Result<()> {
+        // 清空 merkle 记录
+        let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        let iter = self.db.iterator_cf(merkle_cf, rocksdb::IteratorMode::Start);
+        let mut batch = WriteBatch::default();
+
+        for item in iter {
+            let (key, _) = item?;
+            batch.delete_cf(merkle_cf, &key);
+        }
+
+        // 清空 data 记录
+        let data_cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+
+        let iter = self.db.iterator_cf(data_cf, rocksdb::IteratorMode::Start);
+
+        for item in iter {
+            let (key, _) = item?;
+            batch.delete_cf(data_cf, &key);
+        }
+
+        self.db.write(batch)?;
+        Ok(())
+    }
+}
+
+impl TreeDB for RocksDB {
+    fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        match self.db.get_cf(cf, hash)? {
+            Some(data) => {
+                // println!("hash {:?}, serialized: {:?}", hash, data.len());
+                let record = MerkleRecord::from_slice(&data)?;
+                Ok(Some(record))
+            },
+            None => Ok(None),
+        }
+    }
+
+    fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        let serialized = record.to_slice();
+        self.db.put_cf(cf, &record.hash, serialized)?;
+        Ok(())
+    }
+
+    fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<()> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        let mut batch = WriteBatch::default();
+
+        for record in records {
+            let serialized = record.to_slice();
+            // println!("deserialized: {:?}", r.Err());
+            // println!("hash {:?}, set serialized: {:?}", record.hash, serialized.len());
+            batch.put_cf(cf, &record.hash, serialized);
+        }
+
+        self.db.write(batch)?;
+        Ok(())
+    }
+
+    fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>> {
+        let cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+
+        match self.db.get_cf(cf, hash)? {
+            Some(data) => {
+                let record = DataHashRecord::from_slice(&data)?;
+                Ok(Some(record))
+            },
+            None => Ok(None),
+        }
+    }
+
+    fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
+        let cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+
+        let serialized = record.to_slice();
+        self.db.put_cf(cf, &record.hash, serialized)?;
+        Ok(())
+    }
 }

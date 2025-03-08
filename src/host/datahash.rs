@@ -101,6 +101,61 @@ pub struct DataHashRecord {
 }
 
 impl DataHashRecord {
+    /// 将DataHashRecord转换为Vec<u8>
+    pub fn to_slice(&self) -> Vec<u8> {
+        let mut result = Vec::new();
+
+        // 序列化hash ([u8; 32])
+        result.extend_from_slice(&self.hash);
+
+        // 序列化data (Vec<u8>)
+        // 首先序列化长度，使用u32表示（4字节）
+        let data_len = self.data.len() as u32;
+        result.extend_from_slice(&data_len.to_le_bytes());
+
+        // 然后序列化数据内容
+        result.extend_from_slice(&self.data);
+
+        result
+    }
+
+    /// 从Vec<u8>转换回DataHashRecord
+    pub fn from_slice(slice: &[u8]) -> Result<Self, anyhow::Error> {
+        if slice.len() < 32 {
+            return Err(anyhow::anyhow!("Slice too short for hash"));
+        }
+
+        let mut pos = 0;
+
+        // 反序列化hash
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&slice[pos..pos+32]);
+        pos += 32;
+
+        // 反序列化data
+        // 首先读取长度
+        if slice.len() < pos + 4 {
+            return Err(anyhow::anyhow!("Slice too short for data length"));
+        }
+        let mut len_bytes = [0u8; 4];
+        len_bytes.copy_from_slice(&slice[pos..pos+4]);
+        let data_len = u32::from_le_bytes(len_bytes) as usize;
+        pos += 4;
+
+        // 然后读取数据内容
+        if slice.len() < pos + data_len {
+            return Err(anyhow::anyhow!("Slice too short for data content"));
+        }
+        let data = slice[pos..pos+data_len].to_vec();
+
+        Ok(DataHashRecord {
+            hash,
+            data,
+        })
+    }
+}
+
+impl DataHashRecord {
     pub fn new(&mut self, data: &Vec<u8>) -> Self {
         let mut hasher = POSEIDON_HASHER.clone();
         let batchdata = data

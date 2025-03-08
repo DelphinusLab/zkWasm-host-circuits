@@ -197,7 +197,7 @@ impl Clone for RocksDB {
     }
 }
 impl RocksDB {
-    // 创建新的 RocksDB 实例
+    // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let merkle_cf_name = "merkle_records";
         let data_cf_name = "data_records";
@@ -218,7 +218,7 @@ impl RocksDB {
 
     // 清空数据库
     pub fn clear(&self) -> Result<()> {
-        // 清空 merkle 记录
+        // clear merkle records
         let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
@@ -230,7 +230,7 @@ impl RocksDB {
             batch.delete_cf(merkle_cf, &key);
         }
 
-        // 清空 data 记录
+        // clear data records
         let data_cf = self.db.cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 
@@ -253,7 +253,6 @@ impl TreeDB for RocksDB {
 
         match self.db.get_cf(cf, hash)? {
             Some(data) => {
-                // println!("hash {:?}, serialized: {:?}", hash, data.len());
                 let record = MerkleRecord::from_slice(&data)?;
                 Ok(Some(record))
             },
@@ -278,8 +277,6 @@ impl TreeDB for RocksDB {
 
         for record in records {
             let serialized = record.to_slice();
-            // println!("deserialized: {:?}", r.Err());
-            // println!("hash {:?}, set serialized: {:?}", record.hash, serialized.len());
             batch.put_cf(cf, &record.hash, serialized);
         }
 

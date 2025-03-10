@@ -614,6 +614,9 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::Instant;
+    use hex;
+    use rand;
+    use std::io;
 
     #[test]
     /* Test for check parent node
@@ -997,11 +1000,225 @@ mod tests {
 
         // 5
         let a = mt.get_root_hash();
-        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        // Drop the merkle tree to release the database reference
+        drop(mt);
+        drop(rocks_db);
+        // Reconstruct the RocksMerkle
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_db/").unwrap()));
+        let mt = RocksMerkle::<DEPTH>::construct(TEST_ADDR, a, Some(rocks_db));
         assert_eq!(mt.get_root_hash(), a);
         let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert_eq!(mt.verify_proof(&proof).unwrap(), true);
     }
+
+    #[test]
+    #[ignore]
+    fn test_rocksdb_10m_batch_insert() {
+        use std::time::Instant;
+        use std::fs;
+        use std::io;
+        
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [9; 32];
+        const NUM_RECORDS: usize = 10_000_000; // 10 million records
+        const PROGRESS_INTERVAL: usize = 10_000; // Print progress every 10k records
+        const TEST_DATA: [u8; 32] = [1; 32];
+
+        println!("Starting large batch insert test with {} records...", NUM_RECORDS);
+
+        // Ask for user confirmation before deleting the database
+        print!("Do you really want to delete old 10m db? [y/N]: ");
+        io::stdout().flush().unwrap();
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        
+        if input.trim().to_lowercase() != "y" {
+            println!("Operation cancelled by user");
+            return;
+        }
+
+        // Clean up any existing test database
+        let _ = fs::remove_dir_all("./test_10m_db");
+
+        // Create RocksDB instance and RocksMerkle
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_10m_db/").unwrap()));
+        let _ = rocks_db.borrow_mut().clear();
+
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let total_start = Instant::now();
+        let mut last_progress_time = Instant::now();
+
+        // Calculate the starting and ending indices
+        let start_index = 2_u64.pow(32) - 1;
+        let end_index = start_index + (NUM_RECORDS as u64 - 1);
+
+        // Insert records with increasing indices
+        for i in 0..NUM_RECORDS {
+            let index = start_index + i as u64;
+            let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
+            leaf.set(&TEST_DATA.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+
+            // Print progress every PROGRESS_INTERVAL records
+            if (i + 1) % PROGRESS_INTERVAL == 0 {
+                let current_progress = i + 1;
+                let elapsed_since_last = last_progress_time.elapsed();
+                let total_elapsed = total_start.elapsed();
+                let records_per_second = PROGRESS_INTERVAL as f64 / elapsed_since_last.as_secs_f64();
+                
+                println!(
+                    "Progress: {}/{} records ({:.2}%) - {:.2} records/sec - Total time: {:.2}s",
+                    current_progress,
+                    NUM_RECORDS,
+                    (current_progress as f64 / NUM_RECORDS as f64) * 100.0,
+                    records_per_second,
+                    total_elapsed.as_secs_f64()
+                );
+                
+                last_progress_time = Instant::now();
+            }
+        }
+
+        let total_duration = total_start.elapsed();
+        println!("\nInsertion completed:");
+        println!("Total time: {:.2} seconds", total_duration.as_secs_f64());
+        println!("Average speed: {:.2} records/second", 
+            NUM_RECORDS as f64 / total_duration.as_secs_f64());
+
+        // Verify some random records
+        println!("\nVerifying random records...");
+        
+        // Verify first record
+        let (leaf, proof) = mt.get_leaf_with_proof(start_index).unwrap();
+        assert_eq!(leaf.index, start_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify middle record
+        let middle_index = start_index + (NUM_RECORDS as u64 / 2);
+        let (leaf, proof) = mt.get_leaf_with_proof(middle_index).unwrap();
+        assert_eq!(leaf.index, middle_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify last record
+        let (leaf, proof) = mt.get_leaf_with_proof(end_index).unwrap();
+        assert_eq!(leaf.index, end_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        let root_hash = mt.get_root_hash();
+        println!("\nFinal root hash (hex): 0x{}", hex::encode(root_hash));
+
+        println!("Test completed successfully! 10m records genereated.");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_rocksdb_random_updates() {
+        use std::time::Instant;
+        use rand::Rng;
+        
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [9; 32]; // Same as test_rocksdb_10m_batch_insert
+        const NUM_UPDATES: usize = 1000;
+        const NEW_TEST_DATA: [u8; 32] = [2; 32]; // Different data to distinguish from original
+        const NUM_RECORDS: usize = 10_000_000; // Same as test_rocksdb_10m_batch_insert
+
+        println!("Starting random update test with {} updates...", NUM_UPDATES);
+
+        // Open the existing RocksDB instance
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_10m_db/").unwrap()));
+        
+        // Get the root hash from the previous test
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let mut total_update_time = std::time::Duration::new(0, 0);
+        let mut last_progress_time = Instant::now();
+        let total_start = Instant::now();
+        let mut rng = rand::thread_rng();
+
+        // Calculate the valid index range (same as test_rocksdb_20m_batch_insert)
+        let start_index = 2_u64.pow(32) - 1;
+        let end_index = start_index + (NUM_RECORDS as u64 - 1);
+
+        // Store update durations for statistical analysis
+        let mut update_durations = Vec::with_capacity(NUM_UPDATES);
+
+        // Perform random updates
+        for i in 0..NUM_UPDATES {
+            // Generate random index outside of timing
+            let random_index = rng.gen_range(start_index..=end_index);
+            
+            // Time only the update operations
+            let update_start = Instant::now();
+            let (mut leaf, _) = mt.get_leaf_with_proof(random_index).unwrap();
+            leaf.set(&NEW_TEST_DATA.to_vec());
+            let _proof = mt.set_leaf_with_proof(&leaf).unwrap();
+            let update_duration = update_start.elapsed();
+            
+            // Store the duration
+            update_durations.push(update_duration);
+            total_update_time += update_duration;
+
+            // Print progress every 100 updates (not included in timing)
+            if (i + 1) % 100 == 0 {
+                let current_progress = i + 1;
+                let elapsed_since_last = last_progress_time.elapsed();
+                let total_elapsed = total_start.elapsed();
+                let updates_per_second = 100.0 / elapsed_since_last.as_secs_f64();
+                
+                println!(
+                    "Progress: {}/{} updates ({:.2}%) - {:.2} updates/sec - Last update took: {:.2}ms - Total time: {:.2}s",
+                    current_progress,
+                    NUM_UPDATES,
+                    (current_progress as f64 / NUM_UPDATES as f64) * 100.0,
+                    updates_per_second,
+                    update_duration.as_millis(),
+                    total_elapsed.as_secs_f64()
+                );
+                
+                last_progress_time = Instant::now();
+            }
+
+            // Verify the update was successful (not included in timing)
+            let (leaf, proof) = mt.get_leaf_with_proof(random_index).unwrap();
+            assert_eq!(leaf.data.unwrap(), NEW_TEST_DATA);
+            assert!(mt.verify_proof(&proof).unwrap());
+        }
+
+        // Calculate statistics
+        update_durations.sort();
+        let min_duration = update_durations.first().unwrap();
+        let max_duration = update_durations.last().unwrap();
+        let median_duration = update_durations[NUM_UPDATES / 2];
+        let avg_duration = total_update_time / NUM_UPDATES as u32;
+        
+        // Print detailed timing statistics
+        println!("\nUpdate Operations Timing Statistics:");
+        println!("Total update operations time: {:.2} seconds", total_update_time.as_secs_f64());
+        println!("Average time per update: {:.2} ms", avg_duration.as_millis());
+        println!("Median time per update: {:.2} ms", median_duration.as_millis());
+        println!("Minimum time per update: {:.2} ms", min_duration.as_millis());
+        println!("Maximum time per update: {:.2} ms", max_duration.as_millis());
+        println!("Updates per second: {:.2}", 
+            NUM_UPDATES as f64 / total_update_time.as_secs_f64());
+
+        let root_hash = mt.get_root_hash();
+        println!("\nFinal root hash after updates (hex): 0x{}", hex::encode(root_hash));
+        println!("Random update test completed successfully!");
+    }
 }
+

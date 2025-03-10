@@ -616,7 +616,6 @@ mod tests {
     use std::time::Instant;
     use hex;
     use rand;
-    use std::io;
 
     #[test]
     /* Test for check parent node
@@ -1015,6 +1014,9 @@ mod tests {
 
     #[test]
     #[ignore]
+    // This one may take about 2 hours to finish to please use the command:
+    // cargo test --release test_rocksdb_10m_batch_insert --lib -- --nocapture --ignored
+    // to run it. If you forgot specifiy the --lib, cargo test will default run twice of it for both lib and bin.
     fn test_rocksdb_10m_batch_insert() {
         use std::time::Instant;
         use std::fs;
@@ -1026,11 +1028,8 @@ mod tests {
         const PROGRESS_INTERVAL: usize = 10_000; // Print progress every 10k records
         const TEST_DATA: [u8; 32] = [1; 32];
 
-        println!("Starting large batch insert test with {} records...", NUM_RECORDS);
-
         // Ask for user confirmation before deleting the database
-        print!("Do you really want to delete old 10m db? [y/N]: ");
-        io::stdout().flush().unwrap();
+        println!("Do you really want to delete old 10m db? [y/N]: ");
         
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
@@ -1042,6 +1041,8 @@ mod tests {
 
         // Clean up any existing test database
         let _ = fs::remove_dir_all("./test_10m_db");
+        
+        println!("Starting large batch insert test with {} records...", NUM_RECORDS);
 
         // Create RocksDB instance and RocksMerkle
         let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_10m_db/").unwrap()));
@@ -1219,6 +1220,204 @@ mod tests {
         let root_hash = mt.get_root_hash();
         println!("\nFinal root hash after updates (hex): 0x{}", hex::encode(root_hash));
         println!("Random update test completed successfully!");
+    }
+
+    #[test]
+    #[ignore]
+    // This is to test 2000 records insert performance and can compare with 2000 mongodb insert performance
+    fn test_rocksdb_2000_batch_insert() {
+        use std::time::Instant;
+        use std::fs;
+        
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [9; 32];
+        const NUM_RECORDS: usize = 2000; // 10 million records
+        const PROGRESS_INTERVAL: usize = 2000; // Print progress every 10k records
+        const TEST_DATA: [u8; 32] = [1; 32];
+
+        println!("Starting large batch insert test with {} records...", NUM_RECORDS);
+
+        // Clean up any existing test database
+        let _ = fs::remove_dir_all("./test_db");
+
+        // Create RocksDB instance and RocksMerkle
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_db/").unwrap()));
+        let _ = rocks_db.borrow_mut().clear();
+
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let total_start = Instant::now();
+        let mut last_progress_time = Instant::now();
+
+        // Calculate the starting and ending indices
+        let start_index = 2_u64.pow(32) - 1;
+        let end_index = start_index + (NUM_RECORDS as u64 - 1);
+
+        // Insert records with increasing indices
+        for i in 0..NUM_RECORDS {
+            let index = start_index + i as u64;
+            let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
+            leaf.set(&TEST_DATA.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+
+            // Print progress every PROGRESS_INTERVAL records
+            if (i + 1) % PROGRESS_INTERVAL == 0 {
+                let current_progress = i + 1;
+                let elapsed_since_last = last_progress_time.elapsed();
+                let total_elapsed = total_start.elapsed();
+                let records_per_second = PROGRESS_INTERVAL as f64 / elapsed_since_last.as_secs_f64();
+                
+                println!(
+                    "Progress: {}/{} records ({:.2}%) - {:.2} records/sec - Total time: {:.2}s",
+                    current_progress,
+                    NUM_RECORDS,
+                    (current_progress as f64 / NUM_RECORDS as f64) * 100.0,
+                    records_per_second,
+                    total_elapsed.as_secs_f64()
+                );
+                
+                last_progress_time = Instant::now();
+            }
+        }
+
+        let total_duration = total_start.elapsed();
+        println!("\nInsertion completed:");
+        println!("Total time: {:.2} seconds", total_duration.as_secs_f64());
+        println!("Average speed: {:.2} records/second", 
+            NUM_RECORDS as f64 / total_duration.as_secs_f64());
+
+        // Verify some random records
+        println!("\nVerifying random records...");
+        
+        // Verify first record
+        let (leaf, proof) = mt.get_leaf_with_proof(start_index).unwrap();
+        assert_eq!(leaf.index, start_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify middle record
+        let middle_index = start_index + (NUM_RECORDS as u64 / 2);
+        let (leaf, proof) = mt.get_leaf_with_proof(middle_index).unwrap();
+        assert_eq!(leaf.index, middle_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify last record
+        let (leaf, proof) = mt.get_leaf_with_proof(end_index).unwrap();
+        assert_eq!(leaf.index, end_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        let root_hash = mt.get_root_hash();
+        println!("\nFinal root hash (hex): 0x{}", hex::encode(root_hash));
+
+        println!("Test completed successfully! 10m records genereated.");
+    }
+
+    #[test]
+    #[ignore]
+    // This is to test 2000 records insert performance and can compare with 2000 rocksdb insert performance
+    fn test_mongodb_2000_batch_insert() {
+        use std::time::Instant;
+        
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [9; 32];
+        const NUM_RECORDS: usize = 2000; // 10 million records
+        const PROGRESS_INTERVAL: usize = 2000; // Print progress every 10k records
+        const TEST_DATA: [u8; 32] = [1; 32];
+
+        println!("Starting large batch insert test with {} records...", NUM_RECORDS);
+
+        let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+
+        // 1
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(mongodb.clone()),
+        );
+
+        let cname = get_collection_name(MONGODB_DATA_NAME_PREFIX.to_string(), TEST_ADDR);
+        let collection =
+            get_collection::<MerkleRecord>(
+                mongodb.borrow().get_database_client().unwrap(),
+                MONGODB_DATABASE.to_string(),
+                cname
+            ).unwrap();
+
+        // Clean up any existing test database
+        let _ = collection.delete_many(doc! {}, None);
+
+        let total_start = Instant::now();
+        let mut last_progress_time = Instant::now();
+
+        // Calculate the starting and ending indices
+        let start_index = 2_u64.pow(32) - 1;
+        let end_index = start_index + (NUM_RECORDS as u64 - 1);
+
+        // Insert records with increasing indices
+        for i in 0..NUM_RECORDS {
+            let index = start_index + i as u64;
+            let (mut leaf, _) = mt.get_leaf_with_proof(index).unwrap();
+            leaf.set(&TEST_DATA.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+
+            // Print progress every PROGRESS_INTERVAL records
+            if (i + 1) % PROGRESS_INTERVAL == 0 {
+                let current_progress = i + 1;
+                let elapsed_since_last = last_progress_time.elapsed();
+                let total_elapsed = total_start.elapsed();
+                let records_per_second = PROGRESS_INTERVAL as f64 / elapsed_since_last.as_secs_f64();
+                
+                println!(
+                    "Progress: {}/{} records ({:.2}%) - {:.2} records/sec - Total time: {:.2}s",
+                    current_progress,
+                    NUM_RECORDS,
+                    (current_progress as f64 / NUM_RECORDS as f64) * 100.0,
+                    records_per_second,
+                    total_elapsed.as_secs_f64()
+                );
+                
+                last_progress_time = Instant::now();
+            }
+        }
+
+        let total_duration = total_start.elapsed();
+        println!("\nInsertion completed:");
+        println!("Total time: {:.2} seconds", total_duration.as_secs_f64());
+        println!("Average speed: {:.2} records/second", 
+            NUM_RECORDS as f64 / total_duration.as_secs_f64());
+
+        // Verify some random records
+        println!("\nVerifying random records...");
+        
+        // Verify first record
+        let (leaf, proof) = mt.get_leaf_with_proof(start_index).unwrap();
+        assert_eq!(leaf.index, start_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify middle record
+        let middle_index = start_index + (NUM_RECORDS as u64 / 2);
+        let (leaf, proof) = mt.get_leaf_with_proof(middle_index).unwrap();
+        assert_eq!(leaf.index, middle_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        // Verify last record
+        let (leaf, proof) = mt.get_leaf_with_proof(end_index).unwrap();
+        assert_eq!(leaf.index, end_index);
+        assert_eq!(leaf.data.unwrap(), TEST_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+
+        let root_hash = mt.get_root_hash();
+        println!("\nFinal root hash (hex): 0x{}", hex::encode(root_hash));
+
+        println!("Test completed successfully! 10m records genereated.");
     }
 }
 

@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "zkwasm-host-circuits-prover"
 path = "src/main.rs"
 
+[[bin]]
+name = "migrate_from_mongo_to_rocksdb"
+path = "src/migrate/migrate_from_mongo_to_rocksdb.rs"
+
 [dependencies]
 strum = "0.24.1"
 strum_macros = "0.24.1"
@@ -41,6 +45,7 @@ anyhow = "1.0.86"
 num-traits = "0.2.15"
 num-derive = "0.3"
 rocksdb = "0.21.0"
+tempfile = "3.18.0"
 
 [features]
 default = ["mongo-tokio-sync"]

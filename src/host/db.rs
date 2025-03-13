@@ -205,6 +205,7 @@ impl RocksDB {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
+        opts.enable_statistics();
 
         let cfs = vec![merkle_cf_name, data_cf_name];
         let db = DB::open_cf(&opts, path, cfs)?;
@@ -243,6 +244,36 @@ impl RocksDB {
 
         self.db.write(batch)?;
         Ok(())
+    }
+
+    pub fn get_stats(&self) -> String {
+        let mut output = String::new();
+
+        if let Some(val) = self.db.property_value("rocksdb.block-cache-usage").unwrap() {
+            output.push_str(format!("\nBlock Cache Usage: {} bytes", val).as_str());
+        }
+        
+        if let Some(val) = self.db.property_value("rocksdb.cur-size-all-mem-tables").unwrap() {
+            output.push_str(format!("\nMemTable Usage: {} bytes", val).as_str());
+        }
+
+        if let Some(val) = self.db.property_value("rocksdb.estimate-table-readers-mem").unwrap() {
+            output.push_str(format!("\nTable Readers Memory Usage: {} bytes", val).as_str());
+        }
+
+        if let Some(val) = self.db.property_value("rocksdb.num-immutable-mem-table").unwrap() {
+            output.push_str(format!("\nNumber of memtables waiting to be flushed to disk: {}", val).as_str());
+        }
+
+        if let Some(val) = self.db.property_value("rocksdb.total-sst-files-size").unwrap() {
+            output.push_str(format!("\nTotal size of all SST files on disk: {} bytes", val).as_str());
+        }
+
+        if let Some(val) = self.db.property_value("rocksdb.stats").unwrap() {
+            output.push_str(format!("\nAll stats:\n{}", val).as_str());
+        }
+
+        output
     }
 }
 

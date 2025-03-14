@@ -275,6 +275,22 @@ impl RocksDB {
 
         output
     }
+
+    pub fn get<K : AsRef<[u8]>>(&self, key : K) -> Result<Option<Vec<u8>>> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+        Ok(self.db.get_cf(cf, key)?)
+    }
+
+    pub fn set<K : AsRef<[u8]>>(&self, key : K, val : Vec<u8>) -> Result<()> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        let mut batch = WriteBatch::default();
+        batch.put_cf(cf, &key, val);
+        self.db.write(batch)?;
+        Ok(())
+    }
 }
 
 impl TreeDB for RocksDB {

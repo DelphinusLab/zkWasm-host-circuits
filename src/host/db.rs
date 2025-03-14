@@ -292,7 +292,10 @@ impl RocksDB {
 
 impl TreeDB for RocksDB {
     fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>> {
-        match self.get(hash)? {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
+        match self.db.get_cf(cf, hash)? {
             Some(data) => {
                 let record = MerkleRecord::from_slice(&data)?;
                 Ok(Some(record))
@@ -302,8 +305,11 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
+        let cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+
         let serialized = record.to_slice();
-        self.set(&record.hash, serialized)?;
+        self.db.put_cf(cf, &record.hash, serialized)?;
         Ok(())
     }
 
@@ -323,7 +329,10 @@ impl TreeDB for RocksDB {
     }
 
     fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>> {
-        match self.get(hash)? {
+        let cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+
+        match self.db.get_cf(cf, hash)? {
             Some(data) => {
                 let record = DataHashRecord::from_slice(&data)?;
                 Ok(Some(record))
@@ -333,8 +342,11 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
+        let cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+
         let serialized = record.to_slice();
-        self.set(&record.hash, serialized)?;
+        self.db.put_cf(cf, &record.hash, serialized)?;
         Ok(())
     }
 }

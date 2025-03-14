@@ -282,23 +282,17 @@ impl RocksDB {
         Ok(self.db.get_cf(cf, key)?)
     }
 
-    pub fn set<K : AsRef<[u8]>>(&self, key : K, val : Vec<u8>) -> Result<()> {
+    pub fn set<K : AsRef<[u8]>>(&mut self, key : K, val : Vec<u8>) -> Result<()> {
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
-
-        let mut batch = WriteBatch::default();
-        batch.put_cf(cf, &key, val);
-        self.db.write(batch)?;
+        self.db.put_cf(cf, &key, val)?;
         Ok(())
     }
 }
 
 impl TreeDB for RocksDB {
     fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>> {
-        let cf = self.db.cf_handle(&self.merkle_cf_name)
-            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
-
-        match self.db.get_cf(cf, hash)? {
+        match self.get(hash)? {
             Some(data) => {
                 let record = MerkleRecord::from_slice(&data)?;
                 Ok(Some(record))
@@ -308,11 +302,8 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
-        let cf = self.db.cf_handle(&self.merkle_cf_name)
-            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
-
         let serialized = record.to_slice();
-        self.db.put_cf(cf, &record.hash, serialized)?;
+        self.set(&record.hash, serialized)?;
         Ok(())
     }
 
@@ -332,10 +323,7 @@ impl TreeDB for RocksDB {
     }
 
     fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>> {
-        let cf = self.db.cf_handle(&self.data_cf_name)
-            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
-
-        match self.db.get_cf(cf, hash)? {
+        match self.get(hash)? {
             Some(data) => {
                 let record = DataHashRecord::from_slice(&data)?;
                 Ok(Some(record))
@@ -345,11 +333,8 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
-        let cf = self.db.cf_handle(&self.data_cf_name)
-            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
-
         let serialized = record.to_slice();
-        self.db.put_cf(cf, &record.hash, serialized)?;
+        self.set(&record.hash, serialized)?;
         Ok(())
     }
 }

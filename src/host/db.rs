@@ -222,6 +222,10 @@ impl RocksDB {
 
     // 清空数据库
     pub fn clear(&self) -> Result<()> {
+        if self.read_only {
+            return Ok(());
+        }
+
         // clear merkle records
         let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
@@ -268,18 +272,32 @@ impl RocksDB {
         })
     }
 
-    fn validate_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
-        if self.read_only
-            && self
-                .get_merkle_record(&record.hash)?
-                .map_or(true, |it| it != *record)
+    fn validate_merkle_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
+        if self
+            .get_merkle_record(&record.hash)?
+            .map_or(true, |it| it != *record)
         {
-            return Err(anyhow::anyhow!(
-                "Read only mode! Record does not match, record {:?} should already be set",
+            Err(anyhow::anyhow!(
+                "Read only mode! Merkle record does not match, record {:?} should already be set",
                 record.hash
-            ));
+            ))
+        } else {
+            Ok(())
         }
-        Ok(())
+    }
+
+    fn validate_data_record_set_for_read_only(&self, record: &DataHashRecord) -> Result<()> {
+        if self
+            .get_data_record(&record.hash)?
+            .map_or(true, |it| it != *record)
+        {
+            Err(anyhow::anyhow!(
+                "Read only mode! Data record does not match, record {:?} should already be set",
+                record.hash
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -298,7 +316,10 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
-        self.validate_record_set_for_read_only(&record)?;
+        if self.read_only {
+            self.validate_merkle_record_set_for_read_only(&record)?;
+            return Ok(());
+        }
 
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
@@ -312,15 +333,18 @@ impl TreeDB for RocksDB {
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
+        if self.read_only {
+            for record in records {
+                self.validate_merkle_record_set_for_read_only(record)?;
+            }
+            return Ok(());
+        }
+
         let mut batch = WriteBatch::default();
-
         for record in records {
-            self.validate_record_set_for_read_only(record)?;
-
             let serialized = record.to_slice();
             batch.put_cf(cf, &record.hash, serialized);
         }
-
         self.db.write(batch)?;
         Ok(())
     }
@@ -339,11 +363,9 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
-        if self.read_only && self.get_data_record(&record.hash)?.map_or(true, |it| it != record) {
-            return Err(anyhow::anyhow!(
-                "Read only mode! Record does not match, record {:?} should already be set",
-                record.hash
-            ));
+        if self.read_only {
+            self.validate_data_record_set_for_read_only(&record)?;
+            return Ok(());
         }
 
         let cf = self.db.cf_handle(&self.data_cf_name)

@@ -223,7 +223,9 @@ impl RocksDB {
     // 清空数据库
     pub fn clear(&self) -> Result<()> {
         if self.read_only {
-            return Ok(());
+            return Err(anyhow::anyhow!(
+                "Read only mode db call clear."
+            ));
         }
 
         // clear merkle records

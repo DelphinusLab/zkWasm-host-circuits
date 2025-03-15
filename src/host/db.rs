@@ -198,6 +198,7 @@ impl Clone for RocksDB {
         }
     }
 }
+
 impl RocksDB {
     // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -266,6 +267,20 @@ impl RocksDB {
             read_only: true,
         })
     }
+
+    fn validate_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
+        if self.read_only
+            && self
+                .get_merkle_record(&record.hash)?
+                .map_or(true, |it| it != *record)
+        {
+            return Err(anyhow::anyhow!(
+                "Read only mode! Record does not match, record {:?} should already be set",
+                record.hash
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl TreeDB for RocksDB {
@@ -283,9 +298,7 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
-        if self.read_only {
-            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
-        }
+        self.validate_record_set_for_read_only(&record)?;
 
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
@@ -296,16 +309,14 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<()> {
-        if self.read_only {
-            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
-        }
-
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         let mut batch = WriteBatch::default();
 
         for record in records {
+            self.validate_record_set_for_read_only(record)?;
+
             let serialized = record.to_slice();
             batch.put_cf(cf, &record.hash, serialized);
         }
@@ -328,8 +339,11 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
-        if self.read_only {
-            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
+        if self.read_only && self.get_data_record(&record.hash)?.map_or(true, |it| it != record) {
+            return Err(anyhow::anyhow!(
+                "Read only mode! Record does not match, record {:?} should already be set",
+                record.hash
+            ));
         }
 
         let cf = self.db.cf_handle(&self.data_cf_name)

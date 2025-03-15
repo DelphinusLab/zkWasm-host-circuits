@@ -47,7 +47,6 @@ num-derive = "0.3"
 rocksdb = "0.21.0"
 tempfile = "^3.12.0"
 
-
 [features]
 default = ["mongo-tokio-sync"]
 perf = ["circuits-batcher/perf"]

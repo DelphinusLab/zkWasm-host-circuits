@@ -185,6 +185,7 @@ pub struct RocksDB {
     db: Arc<DB>,
     merkle_cf_name: String,
     data_cf_name: String,
+    read_only: bool,
 }
 
 impl Clone for RocksDB {
@@ -193,6 +194,7 @@ impl Clone for RocksDB {
             db: Arc::clone(&self.db),
             merkle_cf_name: self.merkle_cf_name.clone(),
             data_cf_name: self.data_cf_name.clone(),
+            read_only: self.read_only,
         }
     }
 }
@@ -213,6 +215,7 @@ impl RocksDB {
             db: Arc::new(db),
             merkle_cf_name: merkle_cf_name.to_string(),
             data_cf_name: data_cf_name.to_string(),
+            read_only : false,
         })
     }
 
@@ -244,6 +247,25 @@ impl RocksDB {
         self.db.write(batch)?;
         Ok(())
     }
+
+    pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let merkle_cf_name = "merkle_records";
+        let data_cf_name = "data_records";
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        let cfs = vec![merkle_cf_name, data_cf_name];
+        let db = DB::open_cf_for_read_only(&opts, path, cfs, false)?;
+
+        Ok(Self {
+            db: Arc::new(db),
+            merkle_cf_name: merkle_cf_name.to_string(),
+            data_cf_name: data_cf_name.to_string(),
+            read_only: true,
+        })
+    }
 }
 
 impl TreeDB for RocksDB {
@@ -261,6 +283,10 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
+        if self.read_only {
+            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
+        }
+
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
@@ -270,6 +296,10 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<()> {
+        if self.read_only {
+            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
+        }
+
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
@@ -298,6 +328,10 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
+        if self.read_only {
+            return Err(anyhow::anyhow!("Read only DB handler should not be used for set"));
+        }
+
         let cf = self.db.cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 

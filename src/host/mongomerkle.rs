@@ -11,7 +11,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use crate::host::db::{MongoDB, TreeDB};
+use crate::host::db::{MongoDB, RocksDB, TreeDB};
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleProof, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::MERKLE_LEAF_HASHER;
@@ -175,6 +175,18 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                 )),
             }
         }
+    }
+
+    fn start_record(&self, record_db: RocksDB) -> anyhow::Result<()> {
+        self.db.borrow_mut().start_record(record_db)
+    }
+
+    fn stop_record(&self) -> anyhow::Result<RocksDB> {
+        self.db.borrow_mut().stop_record()
+    }
+
+    fn is_recording(&self) -> bool {
+        self.db.borrow().is_recording()
     }
 }
 

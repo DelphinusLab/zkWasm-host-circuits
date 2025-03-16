@@ -330,12 +330,14 @@ impl TreeDB for RocksDB {
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
-        match self.db.get_cf(cf, hash)? {
+        match self.db.get_cf(cf, hash.clone())? {
             Some(data) => {
                 let record = MerkleRecord::from_slice(&data)?;
                 if self.record_db.is_some() {
-                    let mut record_db = self.record_db.clone().unwrap();
-                    record_db.set_merkle_record(record.clone())?;
+                    let record_db = self.record_db.clone().unwrap();
+                    let cf = record_db.db.cf_handle(&self.merkle_cf_name)
+                        .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+                    record_db.db.put_cf(cf, hash, data)?;
                 }
                 Ok(Some(record))
             },
@@ -353,10 +355,12 @@ impl TreeDB for RocksDB {
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         let serialized = record.to_slice();
-        self.db.put_cf(cf, &record.hash, serialized)?;
+        self.db.put_cf(cf, &record.hash, serialized.clone())?;
         if self.record_db.is_some() {
-            let mut record_db = self.record_db.clone().unwrap();
-            record_db.set_merkle_record(record.clone())?;
+            let record_db = self.record_db.clone().unwrap();
+            let cf = record_db.db.cf_handle(&record_db.merkle_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+            record_db.db.put_cf(cf, record.hash, serialized)?;
         }
         Ok(())
     }
@@ -371,18 +375,26 @@ impl TreeDB for RocksDB {
             }
             return Ok(());
         }
-
-        let mut batch = WriteBatch::default();
-        for record in records {
-            let serialized = record.to_slice();
-            batch.put_cf(cf, &record.hash, serialized);
-        }
-        self.db.write(batch)?;
-        for record in records {
-            if self.record_db.is_some() {
-                let mut record_db = self.record_db.clone().unwrap();
-                record_db.set_merkle_record(record.clone())?;
+        if !self.record_db.is_some() {
+            let mut batch = WriteBatch::default();
+            for record in records {
+                let serialized = record.to_slice();
+                batch.put_cf(cf, &record.hash, serialized);
             }
+            self.db.write(batch)?;
+        } else {
+            let record_db = self.record_db.clone().unwrap();
+            let record_db_cf = record_db.db.cf_handle(&record_db.merkle_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+            let mut batch = WriteBatch::default();
+            let mut record_db_batch = WriteBatch::default();
+            for record in records {
+                let serialized = record.to_slice();
+                batch.put_cf(cf, &record.hash, serialized.clone());
+                record_db_batch.put_cf(record_db_cf, &record.hash, serialized);
+            }
+            self.db.write(batch)?;
+            record_db.db.write(record_db_batch)?;
         }
         Ok(())
     }
@@ -395,8 +407,10 @@ impl TreeDB for RocksDB {
             Some(data) => {
                 let record = DataHashRecord::from_slice(&data)?;
                 if self.record_db.is_some() {
-                    let mut record_db = self.record_db.clone().unwrap();
-                    record_db.set_data_record(record.clone())?;
+                    let record_db = self.record_db.clone().unwrap();
+                    let cf = record_db.db.cf_handle(&record_db.data_cf_name)
+                        .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+                    record_db.db.put_cf(cf, &record.hash, data)?;
                 }
                 Ok(Some(record))
             },
@@ -414,10 +428,12 @@ impl TreeDB for RocksDB {
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 
         let serialized = record.to_slice();
-        self.db.put_cf(cf, &record.hash, serialized)?;
+        self.db.put_cf(cf, &record.hash, serialized.clone())?;
         if self.record_db.is_some() {
-            let mut record_db = self.record_db.clone().unwrap();
-            record_db.set_data_record(record)?;
+            let record_db = self.record_db.clone().unwrap();
+            let cf = record_db.db.cf_handle(&record_db.data_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+            record_db.db.put_cf(cf, &record.hash, serialized)?;
         }
         Ok(())
     }
@@ -427,14 +443,6 @@ impl TreeDB for RocksDB {
             return Err(anyhow::anyhow!("Record already started"));
         }
         self.record_db = Some(Box::new(record_db));
-        let mut record_db = self.record_db.clone();
-        let head = self.clone();
-        while let Some(db) = record_db.clone() {
-            if db.db.path() == head.db.path() {
-                return Err(anyhow::anyhow!("Record has loop"));
-            }
-            record_db = db.record_db.clone();
-        }
         Ok(())
     }
 

@@ -185,6 +185,7 @@ pub struct RocksDB {
     db: Arc<DB>,
     merkle_cf_name: String,
     data_cf_name: String,
+    read_only: bool,
 }
 
 impl Clone for RocksDB {
@@ -193,9 +194,11 @@ impl Clone for RocksDB {
             db: Arc::clone(&self.db),
             merkle_cf_name: self.merkle_cf_name.clone(),
             data_cf_name: self.data_cf_name.clone(),
+            read_only: self.read_only,
         }
     }
 }
+
 impl RocksDB {
     // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -213,11 +216,18 @@ impl RocksDB {
             db: Arc::new(db),
             merkle_cf_name: merkle_cf_name.to_string(),
             data_cf_name: data_cf_name.to_string(),
+            read_only : false,
         })
     }
 
     // 清空数据库
     pub fn clear(&self) -> Result<()> {
+        if self.read_only {
+            return Err(anyhow::anyhow!(
+                "Read only mode db call clear."
+            ));
+        }
+
         // clear merkle records
         let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
@@ -244,6 +254,53 @@ impl RocksDB {
         self.db.write(batch)?;
         Ok(())
     }
+
+    pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let merkle_cf_name = "merkle_records";
+        let data_cf_name = "data_records";
+
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+
+        let cfs = vec![merkle_cf_name, data_cf_name];
+        let db = DB::open_cf_for_read_only(&opts, path, cfs, false)?;
+
+        Ok(Self {
+            db: Arc::new(db),
+            merkle_cf_name: merkle_cf_name.to_string(),
+            data_cf_name: data_cf_name.to_string(),
+            read_only: true,
+        })
+    }
+
+    fn validate_merkle_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
+        if self
+            .get_merkle_record(&record.hash)?
+            .map_or(true, |it| it != *record)
+        {
+            Err(anyhow::anyhow!(
+                "Read only mode! Merkle record does not match, record {:?} should already be set",
+                record.hash
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_data_record_set_for_read_only(&self, record: &DataHashRecord) -> Result<()> {
+        if self
+            .get_data_record(&record.hash)?
+            .map_or(true, |it| it != *record)
+        {
+            Err(anyhow::anyhow!(
+                "Read only mode! Data record does not match, record {:?} should already be set",
+                record.hash
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl TreeDB for RocksDB {
@@ -261,6 +318,11 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
+        if self.read_only {
+            self.validate_merkle_record_set_for_read_only(&record)?;
+            return Ok(());
+        }
+
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
@@ -273,13 +335,18 @@ impl TreeDB for RocksDB {
         let cf = self.db.cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
-        let mut batch = WriteBatch::default();
+        if self.read_only {
+            for record in records {
+                self.validate_merkle_record_set_for_read_only(record)?;
+            }
+            return Ok(());
+        }
 
+        let mut batch = WriteBatch::default();
         for record in records {
             let serialized = record.to_slice();
             batch.put_cf(cf, &record.hash, serialized);
         }
-
         self.db.write(batch)?;
         Ok(())
     }
@@ -298,6 +365,11 @@ impl TreeDB for RocksDB {
     }
 
     fn set_data_record(&mut self, record: DataHashRecord) -> Result<()> {
+        if self.read_only {
+            self.validate_data_record_set_for_read_only(&record)?;
+            return Ok(());
+        }
+
         let cf = self.db.cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 

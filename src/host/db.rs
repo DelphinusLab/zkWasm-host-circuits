@@ -300,8 +300,11 @@ impl RocksDB {
         if self
             .get_merkle_record(&record.hash)?
             .map_or(true, |it| {
-                println!("found record: {:?}", it);
-                println!("provided record: {:?}", record);
+                if it != *record {
+                    println!("found record: {:?}", it);
+                    println!("provided record: {:?}", record);
+                } 
+                
                 it.hash != record.hash
             })
         {

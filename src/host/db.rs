@@ -302,8 +302,9 @@ impl RocksDB {
             .map_or(true, |it| it != *record)
         {
             Err(anyhow::anyhow!(
-                "Read only mode! Merkle record does not match, record {:?} should already be set",
-                record.hash
+                "Read only mode! Merkle record does not match, record {:?} should already be set. Data found is {:?}",
+                record.hash,
+                record.to_slice()
             ))
         } else {
             Ok(())
@@ -346,6 +347,13 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_record(&mut self, record: MerkleRecord) -> Result<()> {
+
+        println!(
+                "Read only mode! Merkle record does not match, record {:?} should already be set. Data found is {:?}",
+                record.hash,
+                record.to_slice()
+            );
+
         if self.read_only {
             self.validate_merkle_record_set_for_read_only(&record)?;
             return Ok(());

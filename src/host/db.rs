@@ -297,21 +297,23 @@ impl RocksDB {
     }
 
     fn validate_merkle_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
-        self.get_merkle_record(&record.hash)?
-            .ok_or_else(|| anyhow::anyhow!(
+        if self.get_merkle_record(&record.hash)?.is_none() {
+            return Err(anyhow::anyhow!(
                 "Read only mode! Merkle record does not match, record {:?} should already be set",
                 record.hash
-            ))
-            .map(|_| ())
+            ));
+        }
+        Ok(())
     }
 
     fn validate_data_record_set_for_read_only(&self, record: &DataHashRecord) -> Result<()> {
-        self.get_data_record(&record.hash)?
-            .ok_or_else(|| anyhow::anyhow!(
+        if self.get_data_record(&record.hash)?.is_none() {
+            return Err(anyhow::anyhow!(
                 "Read only mode! Data record does not match, record {:?} should already be set",
                 record.hash
-            ))
-            .map(|_| ())
+            ));
+        }
+        Ok(())
     }
 }
 

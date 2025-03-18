@@ -299,7 +299,7 @@ impl RocksDB {
     fn validate_merkle_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
         if self
             .get_merkle_record(&record.hash)?
-            .map_or(true, |it| it != *record)
+            .map_or(true, |it| it.hash != record.hash)
         {
             Err(anyhow::anyhow!(
                 "Read only mode! Merkle record does not match, record {:?} should already be set",

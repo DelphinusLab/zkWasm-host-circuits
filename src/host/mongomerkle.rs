@@ -230,7 +230,7 @@ impl MerkleRecord {
         let mut result = Vec::new();
 
         // index (u64 - 8byte)
-        result.extend_from_slice(&self.index.to_le_bytes());
+        // result.extend_from_slice(&self.index.to_le_bytes());
 
         // hash ([u8; 32])
         result.extend_from_slice(&self.hash);
@@ -271,10 +271,10 @@ impl MerkleRecord {
         let mut pos = 0;
 
         // index
-        let mut index_bytes = [0u8; 8];
-        index_bytes.copy_from_slice(&slice[pos..pos+8]);
-        let index = u64::from_le_bytes(index_bytes);
-        pos += 8;
+        // let mut index_bytes = [0u8; 8];
+        // index_bytes.copy_from_slice(&slice[pos..pos+8]);
+        // let index = u64::from_le_bytes(index_bytes);
+        // pos += 8;
 
         // hash
         if slice.len() < pos + 32 {
@@ -350,7 +350,7 @@ impl MerkleRecord {
         };
 
         Ok(MerkleRecord {
-            index,
+            index: 0,
             hash,
             left,
             right,
@@ -530,6 +530,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         parents: [(u64, [u8; 32], [u8; 32], [u8; 32]); DEPTH],
     ) -> Result<(), MerkleError> {
         self.leaf_check(leaf.index)?;
+        //println!("parents in set leaf and parents: {:?}", parents);
         let mut records: Vec<MerkleRecord> = parents
             .iter()
             .filter_map(|(index, hash, left, right)| {
@@ -962,7 +963,7 @@ mod tests {
      * 4. Check index=2_u32.pow(32) - 1 leave value updated.
      * 5. Load m tree from DB, check root and leave value.
      */
-    fn test_mongo_merkle_duplicate_leaf_update_with_rocksdb() {
+    fn test_rocks_merkle_duplicate_leaf_update_with_rocksdb_single() {
         // Init checking results
         const DEPTH: usize = 32;
         const TEST_ADDR: [u8; 32] = [6; 32];
@@ -1015,5 +1016,202 @@ mod tests {
         assert_eq!(leaf.index, INDEX1);
         assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
         assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+    }
+
+    #[test]
+    /* Test duplicate update same leaf with same data for 32 height m tree
+     * 1. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 2. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 4. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 5. Load m tree from DB, check root and leave value.
+     */
+    fn test_rocks_merkle_duplicate_leaf_update_with_rocksdb_readwrite() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_db/").unwrap()));
+
+        // 1
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let _ = rocks_db.borrow_mut().clear();
+
+
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 2
+        let start = Instant::now();
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        let duration = start.elapsed();
+        println!("get_leaf_with_proof elapse: {} us", duration.as_micros());
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 4
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 5
+        let a = mt.get_root_hash();
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        assert_eq!(mt.get_root_hash(), a);
+        let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+    }
+
+    #[test]
+    /* Test duplicate update same leaf with same data for 32 height m tree
+     * 1. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 2. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 3. Update index=2_u32.pow(32) - 1 (first leaf) leaf value. Check root.
+     * 4. Check index=2_u32.pow(32) - 1 leave value updated.
+     * 5. Load m tree from DB, check root and leave value.
+     */
+    fn test_rocks_merkle_duplicate_leaf_update_with_rocksdb_readonly() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new_read_only("./test_db/").unwrap()));
+
+        // 1
+        let mut mt = RocksMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 2
+        let start = Instant::now();
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        let duration = start.elapsed();
+        println!("get_leaf_with_proof elapse: {} us", duration.as_micros());
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 3
+        let (mut leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        leaf.set(&LEAF1_DATA.to_vec());
+        mt.set_leaf_with_proof(&leaf).unwrap();
+
+        // 4
+        let (leaf, _) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+
+        // 5
+        let a = mt.get_root_hash();
+        let mt = MongoMerkle::<DEPTH>::construct(TEST_ADDR, a, None);
+        assert_eq!(mt.get_root_hash(), a);
+        let (leaf, proof) = mt.get_leaf_with_proof(INDEX1).unwrap();
+        assert_eq!(leaf.index, INDEX1);
+        assert_eq!(leaf.data.unwrap(), LEAF1_DATA);
+        assert_eq!(mt.verify_proof(&proof).unwrap(), true);
+    }
+
+    fn test_rocks_merkle_duplicate_leaf_update_test1() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new("./test_db/").unwrap()));
+        //let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+
+        // 1
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+
+        let _ = rocks_db.borrow_mut().clear();
+
+
+        for i in 0..2 {
+            let (mut leaf, proof) = mt.get_leaf_with_proof(INDEX1 + i).unwrap();
+            //println!("proofs readwrite is  {:?}", proof);
+            leaf.set(&LEAF1_DATA.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+        }
+
+    }
+
+    fn test_rocks_merkle_duplicate_leaf_update_test2() {
+        // Init checking results
+        const DEPTH: usize = 32;
+        const TEST_ADDR: [u8; 32] = [6; 32];
+        const INDEX1: u64 = 2_u64.pow(DEPTH as u32) - 1;
+        const LEAF1_DATA: [u8; 32] = [
+            0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0,
+        ];
+
+
+        let rocks_db = Rc::new(RefCell::new(RocksDB::new_read_only("./test_db/").unwrap()));
+        //let mongodb = Rc::new(RefCell::new(MongoDB::new(TEST_ADDR, None)));
+
+        // 1
+        let mut mt = MongoMerkle::<DEPTH>::construct(
+            TEST_ADDR,
+            DEFAULT_HASH_VEC[DEPTH].clone(),
+            Some(rocks_db.clone()),
+        );
+
+        //let _ = rocks_db.borrow_mut().clear();
+        for i in 0..1 {
+            let (mut leaf, proof) = mt.get_leaf_with_proof(INDEX1 + i).unwrap();
+            //println!("proofs readonly is  {:?}", proof);
+            leaf.set(&LEAF1_DATA.to_vec());
+            mt.set_leaf_with_proof(&leaf).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_rocks_merkle_duplicate_reproduce() {
+        test_rocks_merkle_duplicate_leaf_update_test1();
+            println!("=====================================");
+            println!("=====================================");
+            println!("=====================================");
+            println!("=====================================");
+        test_rocks_merkle_duplicate_leaf_update_test2();
     }
 }

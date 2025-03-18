@@ -225,12 +225,10 @@ pub struct MerkleRecord {
 }
 
 impl MerkleRecord {
-    /// serialize MerkleRecord to Vec<u8>
+    /// serialize MerkleRecord to Vec<u8> \
+    /// Note: index can be ignored as it is not stored in db.
     pub fn to_slice(&self) -> Vec<u8> {
         let mut result = Vec::new();
-
-        // index (u64 - 8byte)
-        result.extend_from_slice(&self.index.to_le_bytes());
 
         // hash ([u8; 32])
         result.extend_from_slice(&self.hash);
@@ -269,12 +267,6 @@ impl MerkleRecord {
         }
 
         let mut pos = 0;
-
-        // index
-        let mut index_bytes = [0u8; 8];
-        index_bytes.copy_from_slice(&slice[pos..pos+8]);
-        let index = u64::from_le_bytes(index_bytes);
-        pos += 8;
 
         // hash
         if slice.len() < pos + 32 {
@@ -350,7 +342,7 @@ impl MerkleRecord {
         };
 
         Ok(MerkleRecord {
-            index,
+            index: 0, // Deserialize index as 0 since it is not stored in db
             hash,
             left,
             right,

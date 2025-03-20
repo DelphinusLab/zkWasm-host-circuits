@@ -1028,7 +1028,7 @@ source = "git+https://github.com/lanbones/ec-gpu#36b9abf8611347e2fe44f21a2f3607e
 [[package]]
 name = "ec-gpu-gen"
 version = "0.4.0"
-source = "git+https://github.com/lanbones/ec-gpu?branch=halo2-opt-v2#aedc591657644f047f25a2e089f0b489eba0bf38"
+source = "git+https://github.com/lanbones/ec-gpu?branch=halo2-opt-v2#ace72958a51aae199abd90762db6e9a1f7b507d5"
 dependencies = [
  "ark-std",
  "bitvec",
@@ -1575,7 +1575,7 @@ dependencies = [
 [[package]]
 name = "halo2ecc-o"
 version = "0.1.0"
-source = "git+https://github.com/ooglayout/halo2ecc-o.git#abe27af616b7790fda6dad6c5fb78e73331330b0"
+source = "git+https://github.com/ooglayout/halo2ecc-o.git#3c5e655b40a6b7b6f365ce4467f235413acfc498"
 dependencies = [
  "ark-std",
  "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",

@@ -73,11 +73,11 @@ fn assigned_cells_to_bn256(
     bn
 }
 
-fn get_scalar_from_cell(ctx: &mut NativeScalarEccContext<G1Affine>, a: Fr) -> AssignedValue<Fr> {
+fn assign_scalar(ctx: &mut NativeScalarEccContext<G1Affine>, a: Fr) -> AssignedValue<Fr> {
     ctx.plonk_region_context().assign(a).unwrap()
 }
 
-fn get_g1_from_cells(
+fn assign_point_g1(
     ctx: &mut NativeScalarEccContext<G1Affine>,
     a: &Vec<Limb<Fr>>, //G1 (3 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
@@ -96,7 +96,7 @@ fn get_g1_from_cells(
     )
 }
 
-fn get_g2_from_cells(
+fn assign_point_g2(
     ctx: &mut NativeScalarEccContext<G1Affine>,
     b: &Vec<Limb<Fr>>, //G2 (3 * 4 + 1)
 ) -> AssignedG2Affine<G1Affine, Fr> {
@@ -124,8 +124,7 @@ fn enable_fr_permute(
     fr: &AssignedValue<Fr>,
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
-    region.constrain_equal(input[0].get_the_cell().cell(), fr.cell())?;
-    Ok(())
+    region.constrain_equal(input[0].get_the_cell().cell(), fr.cell())
 }
 
 fn enable_fq_permute(
@@ -216,8 +215,8 @@ impl Bn256PairChip<Fr> {
                 let timer = start_timer!(|| "assign");
 
                 let mut ctx = self.config.ecc_chip_config.to_context(region);
-                let a_g1 = get_g1_from_cells(&mut ctx, a);
-                let b_g2 = get_g2_from_cells(&mut ctx, b);
+                let a_g1 = assign_point_g1(&mut ctx, a);
+                let b_g2 = assign_point_g2(&mut ctx, b);
                 let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)])?;
                 let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw)?;
 
@@ -287,8 +286,8 @@ impl Bn256SumChip<Fr> {
                     } else {
                         sum
                     };
-                    let a = get_scalar_from_cell(&mut ctx, group.get(1).unwrap().value);
-                    let g = get_g1_from_cells(&mut ctx, &group.get(2..9).unwrap().to_vec());
+                    let a = assign_scalar(&mut ctx, group.get(1).unwrap().value);
+                    let g = assign_point_g1(&mut ctx, &group.get(2..9).unwrap().to_vec());
                     let rhs = ctx.ecc_mul(&g, a);
                     let sum_ret = ctx.ecc_add(&lhs, &rhs)?;
                     let sum_ret = ctx.ecc_reduce(&sum_ret)?;

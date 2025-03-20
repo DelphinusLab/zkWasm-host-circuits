@@ -1,7 +1,7 @@
 pub mod anemoi;
 pub mod babyjub;
 pub mod bits_arith;
-pub mod bls;
+// pub mod bls;
 pub mod bn256;
 pub mod host;
 pub mod keccak256;

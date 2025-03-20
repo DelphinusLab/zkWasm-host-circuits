@@ -4,7 +4,7 @@ use crate::utils::field_to_bn;
 use halo2_proofs::arithmetic::{BaseExt, FieldExt};
 use num_bigint::BigUint;
 
-pub mod bls381adaptor;
+// pub mod bls381adaptor;
 pub mod bn256adaptor;
 pub mod hashadaptor;
 pub mod keccakadaptor;

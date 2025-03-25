@@ -315,6 +315,10 @@ impl RocksDB {
         }
         Ok(())
     }
+
+    pub fn get_db(&self) -> Arc<DB> {
+        self.db.clone()
+    }
 }
 
 impl TreeDB for RocksDB {

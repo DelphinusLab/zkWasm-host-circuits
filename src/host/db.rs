@@ -316,8 +316,18 @@ impl RocksDB {
         Ok(())
     }
 
-    pub fn get_db(&self) -> Arc<DB> {
-        self.db.clone()
+    pub fn count_documents(&self) -> Result<(usize, usize)> {
+        let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+        let iter = self.db.iterator_cf(merkle_cf, rocksdb::IteratorMode::Start);
+        let m_count = iter.count();
+
+        let data_cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+        let iter = self.db.iterator_cf(merkle_cf, rocksdb::IteratorMode::Start);
+        let d_count = iter.count();
+
+        Ok((m_count, d_count))
     }
 }
 

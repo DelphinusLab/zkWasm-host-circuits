@@ -329,6 +329,18 @@ impl RocksDB {
 
         Ok((m_count, d_count))
     }
+
+    pub fn flush(&self) -> Result<()> {
+        let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
+        self.db.flush_cf(merkle_cf)?;
+
+        let data_cf = self.db.cf_handle(&self.data_cf_name)
+            .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
+        self.db.flush_cf(data_cf)?;
+
+        Ok(())
+    }
 }
 
 impl TreeDB for RocksDB {

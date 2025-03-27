@@ -227,7 +227,7 @@ impl RocksDB {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-        opts.set_disable_auto_compactions(true)
+        opts.set_disable_auto_compactions(true);
 
         let cfs = vec![merkle_cf_name, data_cf_name];
         let db = DB::open_cf(&opts, path, cfs)?;

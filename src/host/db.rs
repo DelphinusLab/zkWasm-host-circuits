@@ -331,7 +331,7 @@ impl RocksDB {
     }
 
     pub fn flush(&self) -> Result<()> {
-        self.db.flush_wal(false)?;
+        self.db.flush_wal(true)?;
         Ok(())
     }
 }

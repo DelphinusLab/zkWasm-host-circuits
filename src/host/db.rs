@@ -340,12 +340,12 @@ impl RocksDB {
             .db
             .cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
-        self.db.compact_range_cf(merkle_cf, None, None)
+        self.db.compact_range_cf(merkle_cf, None, None);
         let data_cf = self
             .db
             .cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
-        self.db.compact_range_cf(data_cf, None, None)
+        self.db.compact_range_cf(data_cf, None, None);
         Ok(())
     }
 }

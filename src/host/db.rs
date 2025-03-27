@@ -331,7 +331,7 @@ impl RocksDB {
     }
 
     pub fn flush(&self) -> Result<()> {
-        self.db.flush_wal(true)?;
+        self.db.compact_range(None::<&[u8]>, None::<&[u8]>);
         Ok(())
     }
 }

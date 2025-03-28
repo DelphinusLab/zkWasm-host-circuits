@@ -224,6 +224,16 @@ impl Bn256PairChip<Fr> {
                 enable_g2affine_permute(region, &b_g2, b)?;
                 enable_fq12_permute(region, &ab_fq12, ab)?;
                 end_timer!(timer);
+
+                let timer = start_timer!(|| "finalize int mul");
+                ctx.integer_context().finalize_int_mul()?;
+                end_timer!(timer);
+
+                ctx.get_range_region_context().init()?;
+                let timer = start_timer!(|| "finalize compact cells");
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                end_timer!(timer);
+
                 Ok(())
             },
         )?;
@@ -310,6 +320,16 @@ impl Bn256SumChip<Fr> {
                         .unwrap()
                 });
                 end_timer!(timer);
+
+                let timer = start_timer!(|| "finalize int mul");
+                ctx.integer_context().finalize_int_mul()?;
+                end_timer!(timer);
+
+                ctx.get_range_region_context().init()?;
+                let timer = start_timer!(|| "finalize compact cells");
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                end_timer!(timer);
+
                 Ok(())
             },
         )?;

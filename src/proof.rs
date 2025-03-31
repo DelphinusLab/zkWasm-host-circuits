@@ -180,7 +180,7 @@ pub fn exec_create_host_proof(
                 &mut pkey_cache,
                 &mut params_cache,
                 Poseidon,
-                OpenSchema::GWC,
+                OpenSchema::Shplonk,
             );
             prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
             //prover.mock_proof(k as u32);

@@ -173,6 +173,7 @@ pub fn exec_create_host_proof(
                 ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0, None);
             let mut proof_gen_info =
                 ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
+            // prover.mock_proof::<Bn256,_>(k as u32,&$circuit,&vec![]);
             let proof = prover.exec_create_proof(
                 &$circuit,
                 &vec![],
@@ -183,7 +184,6 @@ pub fn exec_create_host_proof(
                 OpenSchema::GWC,
             );
             prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
-            //prover.mock_proof(k as u32);
             proof_gen_info.append_single_proof(prover);
             proof_gen_info.save(cache_folder);
         };

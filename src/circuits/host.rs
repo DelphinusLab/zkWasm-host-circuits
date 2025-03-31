@@ -139,9 +139,16 @@ impl HostOpConfig {
             let sel_n = self.get_expr(meta, HostOpConfig::sel_n());
             let enable = self.get_expr(meta, HostOpConfig::enable());
             let filtered_index = self.get_expr(meta, HostOpConfig::filtered_index());
+            let filtered_index_n = self.get_expr(meta, HostOpConfig::filtered_index_n());
             vec![
-                sel.clone() * (constant_from!(1 as u64) - enable.clone()) * filtered_index,
-                sel * (sel_n - constant_from!(1 as u64)) * enable,
+                // filter index is true(length..1), enable should also be true
+                sel.clone() * (constant_from!(1 as u64) - enable) * filtered_index,
+                // filtered_index_n is true, sel_n should also be true
+                // but if filtered_index or enable is true, sel_n may not be true(like as bn256 pairing end)
+                // if filtered_index_n is not true(end filtered), sel is not care.
+                // here enable_n is equivalent with filtered_index_n as previous constrain that
+                // enable always should be true when filter index is true. filtered_index_n is more direct than enable_n
+                sel * (sel_n - constant_from!(1 as u64)) * filtered_index_n,
             ]
         });
     }

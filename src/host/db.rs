@@ -315,6 +315,24 @@ impl RocksDB {
         }
         Ok(())
     }
+
+    pub fn compact(&self) -> Result<()> {
+        self.db.compact_range_cf(
+            self.db
+                .cf_handle(&self.merkle_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
+            None::<&[u8]>,
+            None::<&[u8]>,
+        );
+        self.db.compact_range_cf(
+            self.db
+                .cf_handle(&self.data_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
+            None::<&[u8]>,
+            None::<&[u8]>,
+        );
+        Ok(())
+    }
 }
 
 impl TreeDB for RocksDB {

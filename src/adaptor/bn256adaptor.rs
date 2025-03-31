@@ -267,6 +267,7 @@ impl HostOpSelector for Bn256PairChip<Fr> {
 
         let total_avail_rounds = Self::max_rounds(k);
 
+        // not real filter operands, set enable to false.
         for _ in 0..total_avail_rounds - total_used_instructions {
             // get g1_x and g1_y: ((1,1) (1,1) 1) * 2
             for j in 0..2 {

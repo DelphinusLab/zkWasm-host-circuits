@@ -1,7 +1,7 @@
 use crate::circuits::babyjub::AltJubChip;
 use crate::circuits::{
-    // bls::Bls381PairChip,
-    // bls::Bls381SumChip,
+    bls::Bls381PairChip,
+    bls::Bls381SumChip,
     bn256::Bn256PairChip,
     bn256::Bn256SumChip,
     host::{HostOpChip, HostOpConfig, HostOpSelector},
@@ -35,8 +35,8 @@ struct ArgOpName {
 }
 #[derive(clap::ArgEnum, Clone, Debug, Serialize, Deserialize)]
 pub enum OpType {
-    // BLS381PAIR,
-    // BLS381SUM,
+    BLS381PAIR,
+    BLS381SUM,
     BN256PAIR,
     BN256SUM,
     POSEIDONHASH,
@@ -190,14 +190,14 @@ pub fn exec_create_host_proof(
     }
 
     match opname {
-        // OpType::BLS381PAIR => {
-        //     let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
-        //     gen_proof!(circuit);
-        // }
-        // OpType::BLS381SUM => {
-        //     let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
-        //     gen_proof!(circuit);
-        // }
+        OpType::BLS381PAIR => {
+            let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::BLS381SUM => {
+            let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
         OpType::BN256PAIR => {
             let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k, ());
             gen_proof!(circuit);

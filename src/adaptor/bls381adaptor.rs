@@ -295,7 +295,6 @@ impl HostOpSelector for Bls381PairChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        self.range_chip.init_table(layouter)?;
         let a = arg_cells[0..9].to_vec();
         let b = arg_cells[9..26].to_vec();
         let ab = arg_cells[26..74].to_vec();
@@ -521,7 +520,6 @@ impl HostOpSelector for Bls381SumChip<Fr> {
         arg_cells: &Vec<Limb<Fr>>,
         layouter: &impl Layouter<Fr>,
     ) -> Result<(), Error> {
-        self.range_chip.init_table(layouter)?;
         self.load_bls381_sum_circuit(&arg_cells, layouter)?;
         Ok(())
     }

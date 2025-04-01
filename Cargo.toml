@@ -48,7 +48,7 @@ rocksdb = "0.21.0"
 tempfile = "3.18.0"
 
 [features]
-default = ["mongo-tokio-sync","cuda","perf","profile"]
+default = ["mongo-tokio-sync"]
 perf = ["circuits-batcher/perf"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]

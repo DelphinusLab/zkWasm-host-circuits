@@ -1558,7 +1558,7 @@ dependencies = [
  "blake2b_simd",
  "ff",
  "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
- "halo2ecc-o",
+ "halo2ecc-o 0.1.0 (git+https://github.com/ooglayout/halo2ecc-o.git)",
  "lazy_static",
  "num-bigint",
  "num-integer",
@@ -1570,6 +1570,20 @@ dependencies = [
  "sha2",
  "sha3",
  "tera",
+]
+
+[[package]]
+name = "halo2ecc-o"
+version = "0.1.0"
+source = "git+https://github.com/mooreland/halo2ecc-o.git?branch=support_bls381#0dcd5b77123e77c57f0af13545dfa7f3db53de50"
+dependencies = [
+ "ark-std",
+ "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "lazy_static",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rayon",
 ]
 
 [[package]]
@@ -4000,7 +4014,7 @@ dependencies = [
  "clap",
  "ff",
  "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
- "halo2ecc-o",
+ "halo2ecc-o 0.1.0 (git+https://github.com/mooreland/halo2ecc-o.git?branch=support_bls381)",
  "hex",
  "itertools",
  "lazy_static",

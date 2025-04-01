@@ -3,30 +3,28 @@ use halo2_proofs::pairing::bls12_381::Fr as Scalar;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
-    circuit::{AssignedCell, Chip, Layouter, Region},
+    circuit::{Chip, Layouter, Region},
     pairing::bls12_381::G1Affine,
     plonk::{ConstraintSystem, Error},
 };
 
 use halo2ecc_o::circuit::chips::pairing_chip::fq::Fq12ChipOps;
-// use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
-// use halo2ecc_s::circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps};
-use std::cell::RefCell;
 use std::marker::PhantomData;
-use std::rc::Rc;
 
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
-use halo2ecc_o::circuit::assign::{AssignedCondition, AssignedFq, AssignedInteger};
+use halo2ecc_o::circuit::assign::{AssignedFq, AssignedInteger};
 use halo2ecc_o::circuit::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
-// use halo2ecc_o::circuit::chips::ecc_chip::EccBaseIntegerChipWrapper;
-use halo2ecc_o::circuit::chips::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps,native_chip::NativeChipOps,msm_chip::EccChipMSMOps};
+use halo2ecc_o::circuit::chips::{
+    ecc_chip::EccChipBaseOps, msm_chip::EccChipMSMOps, native_chip::NativeChipOps,
+    pairing_chip::PairingChipOps,
+};
 
 pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
 
-use halo2ecc_o::{NativeScalarEccConfig,GeneralScalarEccConfig};
-use halo2ecc_o::context::{GeneralScalarEccContext};
+use halo2ecc_o::context::GeneralScalarEccContext;
+use halo2ecc_o::GeneralScalarEccConfig;
 
 use crate::utils::Limb;
 use num_bigint::BigUint;
@@ -91,18 +89,17 @@ fn assigned_cells_to_bn381(
     bn
 }
 
-
 fn get_scalar_from_cell(
-    ctx: &mut GeneralScalarEccContext<G1Affine,Fr>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a: &Vec<Limb<Fr>>,
-) -> AssignedInteger<Scalar,Fr> {
+) -> AssignedInteger<Scalar, Fr> {
     let bn = assigned_cells_to_fr(a, 0);
     let fr = ctx.scalar_integer_context().assign_w(Some(bn)).unwrap();
     fr
 }
 
 fn get_g1_from_cells(
-    ctx: &mut GeneralScalarEccContext<G1Affine,Fr>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a: &Vec<Limb<Fr>>, //G1 (4 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn381(a, 0);
@@ -113,11 +110,10 @@ fn get_g1_from_cells(
     AssignedPoint::new(
         x,
         y,
-        ctx.plonk_region_context().assign(if is_identity {
-            Fr::one()
-        } else {
-            Fr::zero()
-        }).unwrap().into(),
+        ctx.plonk_region_context()
+            .assign(if is_identity { Fr::one() } else { Fr::zero() })
+            .unwrap()
+            .into(),
     )
 }
 
@@ -137,15 +133,12 @@ fn get_g2_from_cells(
     AssignedG2Affine::new(
         (x1, x2),
         (y1, y2),
-        ctx.plonk_region_context().assign(if is_identity {
-            Fr::one()
-        } else {
-            Fr::zero()
-        }).unwrap().into(),
+        ctx.plonk_region_context()
+            .assign(if is_identity { Fr::one() } else { Fr::zero() })
+            .unwrap()
+            .into(),
     )
 }
-
-
 
 fn enable_fr_permute(
     region: &Region<'_, Fr>,
@@ -153,7 +146,10 @@ fn enable_fr_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     for i in 0..3 {
-        region.constrain_equal(input[i].get_the_cell().cell(), fr.limbs()[i].unwrap().cell())?;
+        region.constrain_equal(
+            input[i].get_the_cell().cell(),
+            fr.limbs()[i].unwrap().cell(),
+        )?;
     }
     Ok(())
 }
@@ -164,7 +160,10 @@ fn enable_fq_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     for i in 0..4 {
-        region.constrain_equal(input[i].get_the_cell().cell(), fq.limbs()[i].unwrap().cell())?;
+        region.constrain_equal(
+            input[i].get_the_cell().cell(),
+            fq.limbs()[i].unwrap().cell(),
+        )?;
     }
     Ok(())
 }
@@ -175,8 +174,8 @@ fn enable_g1affine_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(4);
-    enable_fq_permute(region,  &point.x, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region,  &point.y, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &point.x, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &point.y, &inputs.next().unwrap().to_vec())?;
     region.constrain_equal(input[8].get_the_cell().cell(), point.z.cell())?;
     Ok(())
 }
@@ -201,66 +200,18 @@ fn enable_fq12_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(4);
-    enable_fq_permute(
-        region,
-        &fq12.0 .0 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .0 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .1 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .1 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .2 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .2 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .0 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .0 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .1 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .1 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .2 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .2 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
+    enable_fq_permute(region, &fq12.0 .0 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .0 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .1 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .1 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .2 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .2 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .0 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .0 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .1 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .1 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .2 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .2 .1, &inputs.next().unwrap().to_vec())?;
     Ok(())
 }
 
@@ -274,7 +225,7 @@ impl Bls381PairChip<Fr> {
 
     pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
-            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine,Fr>(cs),
+            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine, Fr>(cs),
         }
     }
 
@@ -297,10 +248,24 @@ impl Bls381PairChip<Fr> {
                 let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]).unwrap();
                 let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw).unwrap();
 
-                enable_g1affine_permute(&mut region,  &a_g1, a)?;
-                enable_g2affine_permute(&mut region,  &b_g2, b)?;
-                enable_fq12_permute(&mut region,  &ab_fq12, ab)?;
+                enable_g1affine_permute(&mut region, &a_g1, a)?;
+                enable_g2affine_permute(&mut region, &b_g2, b)?;
+                enable_fq12_permute(&mut region, &ab_fq12, ab)?;
                 end_timer!(timer);
+
+                let timer = start_timer!(|| "finalize int mul");
+                ctx.integer_context().finalize_int_mul()?;
+                ctx.scalar_integer_context().finalize_int_mul()?;
+                end_timer!(timer);
+
+                ctx.get_range_region_context().init()?;
+                ctx.get_scalar_range_region_context().init()?;
+                let timer = start_timer!(|| "finalize compact cells");
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                ctx.get_scalar_range_region_context()
+                    .finalize_compact_cells()?;
+                end_timer!(timer);
+
                 Ok(())
             },
         )?;
@@ -336,7 +301,7 @@ impl Bls381SumChip<Fr> {
 
     pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
-            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine,Fr>(cs),
+            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine, Fr>(cs),
         }
     }
 
@@ -374,26 +339,16 @@ impl Bls381SumChip<Fr> {
                     sums.push(sum_ret);
                 }
 
-
                 ais.iter().enumerate().for_each(|(i, x)| {
-                    enable_fr_permute(&mut region, x, &ls[22 * i + 1..22 * i + 4].to_vec())
-                        .unwrap()
+                    enable_fr_permute(&mut region, x, &ls[22 * i + 1..22 * i + 4].to_vec()).unwrap()
                 });
                 g1s.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(
-                        &mut region,
-                        x,
-                        &ls[22 * i + 4..22 * i + 13].to_vec(),
-                    )
-                    .unwrap()
+                    enable_g1affine_permute(&mut region, x, &ls[22 * i + 4..22 * i + 13].to_vec())
+                        .unwrap()
                 });
                 sums.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(
-                        &mut region,
-                        x,
-                        &ls[22 * i + 13..22 * i + 22].to_vec(),
-                    )
-                    .unwrap()
+                    enable_g1affine_permute(&mut region, x, &ls[22 * i + 13..22 * i + 22].to_vec())
+                        .unwrap()
                 });
                 end_timer!(timer);
 
@@ -405,10 +360,9 @@ impl Bls381SumChip<Fr> {
                 ctx.get_range_region_context().init()?;
                 ctx.get_scalar_range_region_context().init()?;
                 let timer = start_timer!(|| "finalize compact cells");
-                ctx
-                    .get_range_region_context()
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                ctx.get_scalar_range_region_context()
                     .finalize_compact_cells()?;
-                ctx.get_scalar_range_region_context().finalize_compact_cells()?;
                 end_timer!(timer);
 
                 Ok(())

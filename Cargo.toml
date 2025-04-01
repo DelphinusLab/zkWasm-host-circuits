@@ -24,7 +24,7 @@ strum_macros = "0.24.1"
 ff = "0.12"
 cfg-if = "1.0.0"
 halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", tag="stable-logup-shuffle-v1.0.0",default-features = true }
-halo2ecc-o = { git = "https://github.com/ooglayout/halo2ecc-o.git"}
+halo2ecc-o = { git = "https://github.com/mooreland/halo2ecc-o.git",branch = "support_bls381"}
 itertools = "0.10.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 poseidon = { git = "https://github.com/DelphinusLab/poseidon" }
@@ -48,7 +48,7 @@ rocksdb = "0.21.0"
 tempfile = "3.18.0"
 
 [features]
-default = ["mongo-tokio-sync"]
+default = ["mongo-tokio-sync","cuda","perf","profile"]
 perf = ["circuits-batcher/perf"]
 mongo-std-sync = ["mongodb/sync"]
 mongo-tokio-sync = ["mongodb/tokio-sync"]

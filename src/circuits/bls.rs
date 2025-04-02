@@ -3,30 +3,28 @@ use halo2_proofs::pairing::bls12_381::Fr as Scalar;
 use halo2_proofs::pairing::bn256::Fr;
 use halo2_proofs::{
     arithmetic::{BaseExt, FieldExt},
-    circuit::{AssignedCell, Chip, Layouter, Region},
+    circuit::{Chip, Layouter, Region},
     pairing::bls12_381::G1Affine,
     plonk::{ConstraintSystem, Error},
 };
 
 use halo2ecc_o::circuit::chips::pairing_chip::fq::Fq12ChipOps;
-// use halo2ecc_s::circuit::integer_chip::IntegerChipOps;
-// use halo2ecc_s::circuit::{base_chip::BaseChipOps, ecc_chip::EccChipScalarOps};
-use std::cell::RefCell;
 use std::marker::PhantomData;
-use std::rc::Rc;
 
 use halo2_proofs::pairing::bls12_381::Fq as Bls381Fq;
-use halo2ecc_o::circuit::assign::{AssignedCondition, AssignedFq, AssignedInteger};
+use halo2ecc_o::circuit::assign::{AssignedFq, AssignedInteger};
 use halo2ecc_o::circuit::assign::{AssignedFq12, AssignedG2Affine, AssignedPoint};
-// use halo2ecc_o::circuit::chips::ecc_chip::EccBaseIntegerChipWrapper;
-use halo2ecc_o::circuit::chips::{ecc_chip::EccChipBaseOps, pairing_chip::PairingChipOps,native_chip::NativeChipOps,msm_chip::EccChipMSMOps};
+use halo2ecc_o::circuit::chips::{
+    ecc_chip::EccChipBaseOps, msm_chip::EccChipMSMOps, native_chip::NativeChipOps,
+    pairing_chip::PairingChipOps,
+};
 
 pub const BLS381FQ_SIZE: usize = 8;
 pub const BLS381G1_SIZE: usize = 17;
 pub const BLS381G2_SIZE: usize = 33;
 
-use halo2ecc_o::{NativeScalarEccConfig};
-use halo2ecc_o::context::{NativeScalarEccContext};
+use halo2ecc_o::context::GeneralScalarEccContext;
+use halo2ecc_o::GeneralScalarEccConfig;
 
 use crate::utils::Limb;
 use num_bigint::BigUint;
@@ -34,7 +32,7 @@ use std::ops::{AddAssign, Mul};
 
 #[derive(Clone, Debug)]
 pub struct Bls381ChipConfig {
-    ecc_chip_config: NativeScalarEccConfig,
+    ecc_chip_config: GeneralScalarEccConfig,
 }
 
 pub struct Bls381PairChip<N: FieldExt> {
@@ -91,19 +89,17 @@ fn assigned_cells_to_bn381(
     bn
 }
 
-
 fn get_scalar_from_cell(
-    ctx: &mut NativeScalarEccContext<G1Affine>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a: &Vec<Limb<Fr>>,
-) -> AssignedInteger<Bls381Fq,Scalar> {
+) -> AssignedInteger<Scalar, Fr> {
     let bn = assigned_cells_to_fr(a, 0);
-    //todo correct the fr type,refer old host
-    let fr = ctx.integer_context().assign_w(Some(bn)).unwrap();
+    let fr = ctx.scalar_integer_context().assign_w(Some(bn)).unwrap();
     fr
 }
 
 fn get_g1_from_cells(
-    ctx: &mut NativeScalarEccContext<G1Affine>,
+    ctx: &mut GeneralScalarEccContext<G1Affine, Fr>,
     a: &Vec<Limb<Fr>>, //G1 (4 * 2 + 1)
 ) -> AssignedPoint<G1Affine, Fr> {
     let x_bn = assigned_cells_to_bn381(a, 0);
@@ -114,11 +110,10 @@ fn get_g1_from_cells(
     AssignedPoint::new(
         x,
         y,
-        ctx.plonk_region_context().assign(if is_identity {
-            Fr::one()
-        } else {
-            Fr::zero()
-        })?.into(),
+        ctx.plonk_region_context()
+            .assign(if is_identity { Fr::one() } else { Fr::zero() })
+            .unwrap()
+            .into(),
     )
 }
 
@@ -130,23 +125,20 @@ fn get_g2_from_cells(
     let x2_bn = assigned_cells_to_bn381(b, 4);
     let y1_bn = assigned_cells_to_bn381(b, 8);
     let y2_bn = assigned_cells_to_bn381(b, 12);
-    let x1 = ctx.base_integer_chip().assign_w(&x1_bn);
-    let x2 = ctx.base_integer_chip().assign_w(&x2_bn);
-    let y1 = ctx.base_integer_chip().assign_w(&y1_bn);
-    let y2 = ctx.base_integer_chip().assign_w(&y2_bn);
+    let x1 = ctx.integer_context().assign_w(Some(x1_bn)).unwrap();
+    let x2 = ctx.integer_context().assign_w(Some(x2_bn)).unwrap();
+    let y1 = ctx.integer_context().assign_w(Some(y1_bn)).unwrap();
+    let y2 = ctx.integer_context().assign_w(Some(y2_bn)).unwrap();
     let is_identity = fr_to_bool(&b[16].value);
     AssignedG2Affine::new(
         (x1, x2),
         (y1, y2),
-        AssignedCondition(ctx.native_ctx.borrow_mut().assign(if is_identity {
-            Fr::one()
-        } else {
-            Fr::zero()
-        })),
+        ctx.plonk_region_context()
+            .assign(if is_identity { Fr::one() } else { Fr::zero() })
+            .unwrap()
+            .into(),
     )
 }
-
-
 
 fn enable_fr_permute(
     region: &Region<'_, Fr>,
@@ -154,9 +146,10 @@ fn enable_fr_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     for i in 0..3 {
-        let limb = fr.limbs_le[i].cell;
-        let limb_assigned = get_cell_of_ctx(cells, &limb);
-        region.constrain_equal(input[i].get_the_cell().cell(), limb_assigned.cell())?;
+        region.constrain_equal(
+            input[i].get_the_cell().cell(),
+            fr.limbs()[i].unwrap().cell(),
+        )?;
     }
     Ok(())
 }
@@ -167,9 +160,10 @@ fn enable_fq_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     for i in 0..4 {
-        let limb = fq.limbs_le[i].cell;
-        let limb_assigned = get_cell_of_ctx(cells, &limb);
-        region.constrain_equal(input[i].get_the_cell().cell(), limb_assigned.cell())?;
+        region.constrain_equal(
+            input[i].get_the_cell().cell(),
+            fq.limbs()[i].unwrap().cell(),
+        )?;
     }
     Ok(())
 }
@@ -180,11 +174,9 @@ fn enable_g1affine_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(4);
-    enable_fq_permute(region,  &point.x, &inputs.next().unwrap().to_vec())?;
-    enable_fq_permute(region,  &point.y, &inputs.next().unwrap().to_vec())?;
-    let z_limb0 = point.z.0.cell;
-    let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
-    region.constrain_equal(input[8].get_the_cell().cell(), z_limb0_assigned.cell())?;
+    enable_fq_permute(region, &point.x, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &point.y, &inputs.next().unwrap().to_vec())?;
+    region.constrain_equal(input[8].get_the_cell().cell(), point.z.cell())?;
     Ok(())
 }
 
@@ -198,9 +190,7 @@ fn enable_g2affine_permute(
     enable_fq_permute(region, &point.x.1, &inputs.next().unwrap().to_vec())?;
     enable_fq_permute(region, &point.y.0, &inputs.next().unwrap().to_vec())?;
     enable_fq_permute(region, &point.y.1, &inputs.next().unwrap().to_vec())?;
-    let z_limb0 = point.z.0.cell;
-    let z_limb0_assigned = get_cell_of_ctx(cells, &z_limb0);
-    region.constrain_equal(input[16].get_the_cell().cell(), z_limb0_assigned.cell())?;
+    region.constrain_equal(input[16].get_the_cell().cell(), point.z.cell())?;
     Ok(())
 }
 
@@ -210,66 +200,18 @@ fn enable_fq12_permute(
     input: &Vec<Limb<Fr>>,
 ) -> Result<(), Error> {
     let mut inputs = input.chunks(4);
-    enable_fq_permute(
-        region,
-        &fq12.0 .0 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .0 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .1 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .1 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .2 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.0 .2 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .0 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .0 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .1 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .1 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .2 .0,
-        &inputs.next().unwrap().to_vec(),
-    )?;
-    enable_fq_permute(
-        region,
-        &fq12.1 .2 .1,
-        &inputs.next().unwrap().to_vec(),
-    )?;
+    enable_fq_permute(region, &fq12.0 .0 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .0 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .1 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .1 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .2 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.0 .2 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .0 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .0 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .1 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .1 .1, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .2 .0, &inputs.next().unwrap().to_vec())?;
+    enable_fq_permute(region, &fq12.1 .2 .1, &inputs.next().unwrap().to_vec())?;
     Ok(())
 }
 
@@ -283,7 +225,7 @@ impl Bls381PairChip<Fr> {
 
     pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
-            ecc_chip_config: NativeScalarEccConfig::configure(cs),
+            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine, Fr>(cs),
         }
     }
 
@@ -298,16 +240,32 @@ impl Bls381PairChip<Fr> {
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
+                let mut ctx = self.config.ecc_chip_config.to_context(region);
+
                 let a_g1 = get_g1_from_cells(&mut ctx, a);
                 let b_g2 = get_g2_from_cells(&mut ctx, b);
 
-                let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]);
-                let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw);
+                let ab_fq12_raw = ctx.pairing(&[(&a_g1, &b_g2)]).unwrap();
+                let ab_fq12 = ctx.fq12_reduce(&ab_fq12_raw).unwrap();
 
-                enable_g1affine_permute(&mut region,  &a_g1, a)?;
-                enable_g2affine_permute(&mut region,  &b_g2, b)?;
-                enable_fq12_permute(&mut region,  &ab_fq12, ab)?;
+                enable_g1affine_permute(&mut region, &a_g1, a)?;
+                enable_g2affine_permute(&mut region, &b_g2, b)?;
+                enable_fq12_permute(&mut region, &ab_fq12, ab)?;
                 end_timer!(timer);
+
+                let timer = start_timer!(|| "finalize int mul");
+                ctx.integer_context().finalize_int_mul()?;
+                ctx.scalar_integer_context().finalize_int_mul()?;
+                end_timer!(timer);
+
+                ctx.get_range_region_context().init()?;
+                ctx.get_scalar_range_region_context().init()?;
+                let timer = start_timer!(|| "finalize compact cells");
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                ctx.get_scalar_range_region_context()
+                    .finalize_compact_cells()?;
+                end_timer!(timer);
+
                 Ok(())
             },
         )?;
@@ -343,7 +301,7 @@ impl Bls381SumChip<Fr> {
 
     pub fn configure(cs: &mut ConstraintSystem<Fr>) -> <Self as Chip<Fr>>::Config {
         Bls381ChipConfig {
-            ecc_chip_config: NativeScalarEccConfig::configure(cs),
+            ecc_chip_config: GeneralScalarEccConfig::configure::<G1Affine, Fr>(cs),
         }
     }
 
@@ -356,10 +314,11 @@ impl Bls381SumChip<Fr> {
             || "base",
             |mut region| {
                 let timer = start_timer!(|| "assign");
+                let mut ctx = self.config.ecc_chip_config.to_context(region);
                 let mut ais = vec![];
                 let mut g1s = vec![];
                 let mut sums = vec![];
-                let identity = ctx.assign_identity();
+                let identity = ctx.assign_identity().unwrap();
                 let mut sum = identity.clone();
                 for group in ls.chunks_exact(22) {
                     // using constraint to fix if to reset
@@ -372,60 +331,40 @@ impl Bls381SumChip<Fr> {
                     ais.push(a.clone());
                     let g = get_g1_from_cells(&mut ctx, &group.get(4..13).unwrap().to_vec());
                     let rhs = ctx.ecc_mul(&g, a);
-                    let sum_ret = ctx.ecc_add(&lhs, &rhs);
-                    let sum_ret = ctx.ecc_reduce(&sum_ret);
-                    ctx.native_ctx.borrow_mut().enable_permute(&sum_ret.z.0);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.x.limbs_le[0]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.x.limbs_le[1]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.x.limbs_le[2]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.x.limbs_le[3]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.y.limbs_le[0]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.y.limbs_le[1]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.y.limbs_le[2]);
-                    ctx.native_ctx
-                        .borrow_mut()
-                        .enable_permute(&sum_ret.y.limbs_le[3]);
-                    sum = ctx.to_point_with_curvature(sum_ret.clone());
+                    let sum_ret = ctx.ecc_add(&lhs, &rhs)?;
+                    let sum_ret = ctx.ecc_reduce(&sum_ret)?;
+
+                    sum = sum_ret.clone();
                     g1s.push(g);
                     sums.push(sum_ret);
                 }
 
-
                 ais.iter().enumerate().for_each(|(i, x)| {
-                    enable_fr_permute(&mut region, x, &ls[22 * i + 1..22 * i + 4].to_vec())
-                        .unwrap()
+                    enable_fr_permute(&mut region, x, &ls[22 * i + 1..22 * i + 4].to_vec()).unwrap()
                 });
                 g1s.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(
-                        &mut region,
-                        x,
-                        &ls[22 * i + 4..22 * i + 13].to_vec(),
-                    )
-                    .unwrap()
+                    enable_g1affine_permute(&mut region, x, &ls[22 * i + 4..22 * i + 13].to_vec())
+                        .unwrap()
                 });
                 sums.iter().enumerate().for_each(|(i, x)| {
-                    enable_g1affine_permute(
-                        &mut region,
-                        x,
-                        &ls[22 * i + 13..22 * i + 22].to_vec(),
-                    )
-                    .unwrap()
+                    enable_g1affine_permute(&mut region, x, &ls[22 * i + 13..22 * i + 22].to_vec())
+                        .unwrap()
                 });
                 end_timer!(timer);
+
+                let timer = start_timer!(|| "finalize int mul");
+                ctx.integer_context().finalize_int_mul()?;
+                ctx.scalar_integer_context().finalize_int_mul()?;
+                end_timer!(timer);
+
+                ctx.get_range_region_context().init()?;
+                ctx.get_scalar_range_region_context().init()?;
+                let timer = start_timer!(|| "finalize compact cells");
+                ctx.get_range_region_context().finalize_compact_cells()?;
+                ctx.get_scalar_range_region_context()
+                    .finalize_compact_cells()?;
+                end_timer!(timer);
+
                 Ok(())
             },
         )?;

@@ -222,10 +222,16 @@ impl Clone for RocksDB {
 impl RocksDB {
     // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut opts = Options::default();
+
+        RocksDB::new_with_options(path, &mut opts)
+    }
+
+    // create rocksdb with option
+    pub fn new_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
         let merkle_cf_name = "merkle_records";
         let data_cf_name = "data_records";
 
-        let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 

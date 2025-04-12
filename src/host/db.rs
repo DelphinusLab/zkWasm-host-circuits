@@ -226,7 +226,7 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        RocksDB::new_with_options(path, &mut opts)
+        Self::new_with_options(path, &mut opts)
     }
 
     // create rocksdb with option
@@ -286,7 +286,7 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        RocksDB::new_read_only_with_options(path, &mut opts)
+        Self::new_read_only_with_options(path, &mut opts)
     }
 
     pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {

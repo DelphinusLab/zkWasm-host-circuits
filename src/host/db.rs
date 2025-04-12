@@ -325,6 +325,7 @@ impl RocksDB {
         Ok(())
     }
 
+    // This function is manually flushing database memtables to SST files on the disk.
     pub fn flush(&self) -> Result<()> {
         self.db.flush_cf(
             self.db
@@ -339,6 +340,7 @@ impl RocksDB {
         Ok(())
     }
 
+    // This function is manually trigger compacting of SST files. It help to reduce the SST file size.
     pub fn compact(&self) -> Result<()> {
         self.db.compact_range_cf(
             self.db

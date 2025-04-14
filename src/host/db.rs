@@ -222,12 +222,17 @@ impl Clone for RocksDB {
 impl RocksDB {
     // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
+
+        Self::new_with_options(path, &mut opts)
+    }
+
+    // create rocksdb with option
+    pub fn new_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
+        let merkle_cf_name = "merkle_records";
+        let data_cf_name = "data_records";
 
         let cfs = vec![merkle_cf_name, data_cf_name];
         let db = DB::open_cf(&opts, path, cfs)?;
@@ -277,12 +282,16 @@ impl RocksDB {
     }
 
     pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
+
+        Self::new_read_only_with_options(path, &mut opts)
+    }
+
+    pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
+        let merkle_cf_name = "merkle_records";
+        let data_cf_name = "data_records";
 
         let cfs = vec![merkle_cf_name, data_cf_name];
         let db = DB::open_cf_for_read_only(&opts, path, cfs, false)?;
@@ -313,6 +322,40 @@ impl RocksDB {
                 record.hash
             ));
         }
+        Ok(())
+    }
+
+    // This function is manually flushing database memtables to SST files on the disk.
+    pub fn flush(&self) -> Result<()> {
+        self.db.flush_cf(
+            self.db
+                .cf_handle(&self.merkle_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?
+        )?;
+        self.db.flush_cf(
+            self.db
+                .cf_handle(&self.data_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?
+        )?;
+        Ok(())
+    }
+
+    // This function is manually trigger compacting of SST files. It help to reduce the SST file size.
+    pub fn compact(&self) -> Result<()> {
+        self.db.compact_range_cf(
+            self.db
+                .cf_handle(&self.merkle_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
+            None::<&[u8]>,
+            None::<&[u8]>,
+        );
+        self.db.compact_range_cf(
+            self.db
+                .cf_handle(&self.data_cf_name)
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
+            None::<&[u8]>,
+            None::<&[u8]>,
+        );
         Ok(())
     }
 }

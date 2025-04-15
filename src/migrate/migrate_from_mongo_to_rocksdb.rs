@@ -84,7 +84,7 @@ pub fn migrate_from_mongo_to_rocksdb(mongo_uri: &str, rocks_db_path: &str, cname
     rocks_db.clear()?;
 
     // Migrate Merkle records
-    let merkle_collection = mongo_db.merkel_collection()?;
+    let merkle_collection = mongo_db.merkle_collection()?;
     let merkle_cursor = merkle_collection.find(doc! {}, None)?;
 
     let mut merkle_count = 0;

@@ -78,7 +78,7 @@ pub fn migrate_from_mongo_to_rocksdb(mongo_uri: &str, rocks_db_path: &str, cname
     let mongo_db = MongoDB::new(cname_id, Some(mongo_uri.to_string()));
 
     // Initialize RocksDB
-    let mut rocks_db = RocksDB::new(rocks_db_path)?;
+    let mut rocks_db = RocksDB::new(rocks_db_path, None)?;
 
     // Clear RocksDB to ensure clean migration
     rocks_db.clear()?;

@@ -11,7 +11,7 @@ use mongodb::{
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
 use anyhow::Result;
-use rocksdb::{DB, Options, WriteBatch};
+use rocksdb::{ColumnFamilyDescriptor, Options, WriteBatch, DB};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -198,6 +198,8 @@ pub fn get_collection_name(name_prefix: String, id: [u8; 32]) -> String {
     format!("{}_{}", name_prefix, hex::encode(id))
 }
 
+const MERKLE_CF_NAME: &str = "merkle_records";
+const DATA_CF_NAME: &str = "data_records";
 
 pub struct RocksDB {
     db: Arc<DB>,
@@ -220,42 +222,62 @@ impl Clone for RocksDB {
 }
 
 impl RocksDB {
-    // create  RocksDB
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    fn default_options() -> Options {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-
-        Self::new_with_options(path, &mut opts)
+        opts
     }
 
-    // create rocksdb with option
-    pub fn new_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
-        let cfs = vec![merkle_cf_name, data_cf_name];
-        let db = DB::open_cf(&opts, path, cfs)?;
-
-        Ok(Self {
+    fn new_internal(db: DB, read_only: bool) -> Self {
+        Self {
             db: Arc::new(db),
-            merkle_cf_name: merkle_cf_name.to_string(),
-            data_cf_name: data_cf_name.to_string(),
-            read_only : false,
+            merkle_cf_name: MERKLE_CF_NAME.to_string(),
+            data_cf_name: DATA_CF_NAME.to_string(),
+            read_only,
             record_db: None,
-        })
+        }
+    }
+
+    fn get_cf_descriptor(opts: &Options) -> Vec<ColumnFamilyDescriptor> {
+        [MERKLE_CF_NAME, DATA_CF_NAME]
+            .iter()
+            .map(|name| ColumnFamilyDescriptor::new(*name, opts.clone()))
+            .collect()
+    }
+
+    fn new_with_options<P: AsRef<Path>>(path: P, opts: Options) -> Result<Self> {
+        DB::open_cf_descriptors(&opts, path, Self::get_cf_descriptor(&opts))
+            .map(|db| Self::new_internal(db, false))
+            .map_err(Into::into)
+    }
+
+    fn new_read_only_with_options<P: AsRef<Path>>(path: P, opts: Options) -> Result<Self> {
+        DB::open_cf_descriptors_read_only(&opts, path, Self::get_cf_descriptor(&opts), false)
+            .map(|db| Self::new_internal(db, true))
+            .map_err(Into::into)
+    }
+
+    /// Create DB handler with options. None opts will create handler with default options.
+    pub fn new<P: AsRef<Path>>(path: P, opts: Option<Options>) -> Result<Self> {
+        Self::new_with_options(path, opts.unwrap_or_else(|| Self::default_options()))
+    }
+
+    /// Create read-only DB handler with options. None opts will create handler with default options.
+    pub fn new_read_only<P: AsRef<Path>>(path: P, opts: Option<Options>) -> Result<Self> {
+        Self::new_read_only_with_options(path, opts.unwrap_or_else(|| Self::default_options()))
     }
 
     // 清空数据库
     pub fn clear(&self) -> Result<()> {
         if self.read_only {
-            return Err(anyhow::anyhow!(
-                "Read only mode db call clear."
-            ));
+            return Err(anyhow::anyhow!("Read only mode db call clear."));
         }
 
         // clear merkle records
-        let merkle_cf = self.db.cf_handle(&self.merkle_cf_name)
+        let merkle_cf = self
+            .db
+            .cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         let iter = self.db.iterator_cf(merkle_cf, rocksdb::IteratorMode::Start);
@@ -267,7 +289,9 @@ impl RocksDB {
         }
 
         // clear data records
-        let data_cf = self.db.cf_handle(&self.data_cf_name)
+        let data_cf = self
+            .db
+            .cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 
         let iter = self.db.iterator_cf(data_cf, rocksdb::IteratorMode::Start);
@@ -279,30 +303,6 @@ impl RocksDB {
 
         self.db.write(batch)?;
         Ok(())
-    }
-
-    pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
-
-        Self::new_read_only_with_options(path, &mut opts)
-    }
-
-    pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
-        let cfs = vec![merkle_cf_name, data_cf_name];
-        let db = DB::open_cf_for_read_only(&opts, path, cfs, false)?;
-
-        Ok(Self {
-            db: Arc::new(db),
-            merkle_cf_name: merkle_cf_name.to_string(),
-            data_cf_name: data_cf_name.to_string(),
-            read_only: true,
-            record_db: None,
-        })
     }
 
     fn validate_merkle_record_set_for_read_only(&self, record: &MerkleRecord) -> Result<()> {
@@ -330,12 +330,12 @@ impl RocksDB {
         self.db.flush_cf(
             self.db
                 .cf_handle(&self.merkle_cf_name)
-                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
         )?;
         self.db.flush_cf(
             self.db
                 .cf_handle(&self.data_cf_name)
-                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?
+                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
         )?;
         Ok(())
     }
@@ -358,11 +358,79 @@ impl RocksDB {
         );
         Ok(())
     }
+
+    pub fn print_stats(&self) {
+        let print_prop_value = |cf_name: &str, prop: &str| {
+            match self
+                .db
+                .property_value_cf(self.db.cf_handle(&cf_name).unwrap(), prop)
+            {
+                Ok(Some(val)) => println!("{} = {}", prop, val),
+                Ok(None) => println!("{} not available", prop),
+                Err(e) => println!("error getting {}: {:?}", prop, e),
+            };
+        };
+
+        for prop in vec![
+            "rocksdb.num-files-at-level0",
+            "rocksdb.num-files-at-level1",
+            "rocksdb.num-files-at-level2",
+            "rocksdb.num-files-at-level3",
+            "rocksdb.num-files-at-level4",
+            "rocksdb.num-files-at-level5",
+            "rocksdb.num-files-at-level6",
+            "rocksdb.stats",
+            "rocksdb.sstables",
+            "rocksdb.num-immutable-mem-table",
+            "rocksdb.mem-table-flush-pending",
+            "rocksdb.compaction-pending",
+            "rocksdb.background-errors",
+            "rocksdb.cur-size-active-mem-table",
+            "rocksdb.cur-size-all-mem-tables",
+            "rocksdb.size-all-mem-tables",
+            "rocksdb.num-entries-active-mem-table",
+            "rocksdb.num-entries-imm-mem-tables",
+            "rocksdb.num-deletes-active-mem-table",
+            "rocksdb.num-deletes-imm-mem-tables",
+            "rocksdb.estimate-num-keys",
+            "rocksdb.estimate-table-readers-mem",
+            "rocksdb.is-file-deletions-enabled",
+            "rocksdb.num-snapshots",
+            "rocksdb.oldest-snapshot-time",
+            "rocksdb.num-live-versions",
+            "rocksdb.current-super-version-number",
+            "rocksdb.estimate-live-data-size",
+            "rocksdb.total-sst-files-size",
+            "rocksdb.live-sst-files-size",
+            "rocksdb.base-level",
+            "rocksdb.estimate-pending-compaction-bytes",
+            "rocksdb.num-running-compactions",
+            "rocksdb.num-running-flushes",
+            "rocksdb.actual-delayed-write-rate",
+            "rocksdb.is-write-stopped",
+            "rocksdb.block-cache-capacity",
+            "rocksdb.block-cache-usage",
+            "rocksdb.block-cache-pinned-usage",
+            "rocksdb.options-statistics",
+            "rocksdb.dbstats",
+            "rocksdb.levelstats",
+            "rocksdb.cfstats",
+            "rocksdb.cfstats-no-file-histogram",
+            "rocksdb.cf-file-histogram",
+            "rocksdb.min-log-number-to-keep",
+            "rocksdb.min-obsolete-sst-number-to-keep",
+        ] {
+            print_prop_value(&self.merkle_cf_name, prop);
+            print_prop_value(&self.data_cf_name, prop);
+        }
+    }
 }
 
 impl TreeDB for RocksDB {
     fn get_merkle_record(&self, hash: &[u8; 32]) -> Result<Option<MerkleRecord>> {
-        let cf = self.db.cf_handle(&self.merkle_cf_name)
+        let cf = self
+            .db
+            .cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         match self.db.get_cf(cf, hash.clone())? {
@@ -370,12 +438,14 @@ impl TreeDB for RocksDB {
                 let record = MerkleRecord::from_slice(&data)?;
                 if self.record_db.is_some() {
                     let record_db = self.record_db.clone().unwrap();
-                    let cf = record_db.db.cf_handle(&self.merkle_cf_name)
+                    let cf = record_db
+                        .db
+                        .cf_handle(&self.merkle_cf_name)
                         .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
                     record_db.db.put_cf(cf, hash, data)?;
                 }
                 Ok(Some(record))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -386,14 +456,18 @@ impl TreeDB for RocksDB {
             return Ok(());
         }
 
-        let cf = self.db.cf_handle(&self.merkle_cf_name)
+        let cf = self
+            .db
+            .cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         let serialized = record.to_slice();
         self.db.put_cf(cf, &record.hash, serialized.clone())?;
         if self.record_db.is_some() {
             let record_db = self.record_db.clone().unwrap();
-            let cf = record_db.db.cf_handle(&record_db.merkle_cf_name)
+            let cf = record_db
+                .db
+                .cf_handle(&record_db.merkle_cf_name)
                 .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
             record_db.db.put_cf(cf, record.hash, serialized)?;
         }
@@ -401,7 +475,9 @@ impl TreeDB for RocksDB {
     }
 
     fn set_merkle_records(&mut self, records: &Vec<MerkleRecord>) -> Result<()> {
-        let cf = self.db.cf_handle(&self.merkle_cf_name)
+        let cf = self
+            .db
+            .cf_handle(&self.merkle_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
 
         if self.read_only {
@@ -419,7 +495,9 @@ impl TreeDB for RocksDB {
             self.db.write(batch)?;
         } else {
             let record_db = self.record_db.clone().unwrap();
-            let record_db_cf = record_db.db.cf_handle(&record_db.merkle_cf_name)
+            let record_db_cf = record_db
+                .db
+                .cf_handle(&record_db.merkle_cf_name)
                 .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?;
             let mut batch = WriteBatch::default();
             let mut record_db_batch = WriteBatch::default();
@@ -435,7 +513,9 @@ impl TreeDB for RocksDB {
     }
 
     fn get_data_record(&self, hash: &[u8; 32]) -> Result<Option<DataHashRecord>> {
-        let cf = self.db.cf_handle(&self.data_cf_name)
+        let cf = self
+            .db
+            .cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 
         match self.db.get_cf(cf, hash)? {
@@ -443,12 +523,14 @@ impl TreeDB for RocksDB {
                 let record = DataHashRecord::from_slice(&data)?;
                 if self.record_db.is_some() {
                     let record_db = self.record_db.clone().unwrap();
-                    let cf = record_db.db.cf_handle(&record_db.data_cf_name)
+                    let cf = record_db
+                        .db
+                        .cf_handle(&record_db.data_cf_name)
                         .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
                     record_db.db.put_cf(cf, &record.hash, data)?;
                 }
                 Ok(Some(record))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -459,14 +541,18 @@ impl TreeDB for RocksDB {
             return Ok(());
         }
 
-        let cf = self.db.cf_handle(&self.data_cf_name)
+        let cf = self
+            .db
+            .cf_handle(&self.data_cf_name)
             .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
 
         let serialized = record.to_slice();
         self.db.put_cf(cf, &record.hash, serialized.clone())?;
         if self.record_db.is_some() {
             let record_db = self.record_db.clone().unwrap();
-            let cf = record_db.db.cf_handle(&record_db.data_cf_name)
+            let cf = record_db
+                .db
+                .cf_handle(&record_db.data_cf_name)
                 .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?;
             record_db.db.put_cf(cf, &record.hash, serialized)?;
         }
@@ -498,9 +584,9 @@ impl TreeDB for RocksDB {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::host::datahash::DataHashRecord;
     use crate::host::mongomerkle::MerkleRecord;
+    use tempfile::tempdir;
 
     #[test]
     fn test_rocksdb_record_functionality() -> Result<()> {
@@ -524,7 +610,6 @@ mod tests {
 
         let left1 = [10u8; 32];
         let right1 = [11u8; 32];
-        
 
         let merkle_record1 = MerkleRecord {
             index: 0,
@@ -588,13 +673,24 @@ mod tests {
         // Test 1: Get existing merkle record and verify it's recorded
         let retrieved_merkle = db.get_merkle_record(&key1)?;
         assert!(retrieved_merkle.is_some(), "Should retrieve merkle record");
-        assert_eq!(retrieved_merkle.unwrap(), merkle_record1, "Retrieved merkle record should match original");
+        assert_eq!(
+            retrieved_merkle.unwrap(),
+            merkle_record1,
+            "Retrieved merkle record should match original"
+        );
 
         // Verify record was stored in record_db
         let record_db_clone = record_db.clone();
         let record_merkle = record_db_clone.get_merkle_record(&key1)?;
-        assert!(record_merkle.is_some(), "Record DB should have the retrieved merkle record");
-        assert_eq!(record_merkle.unwrap(), merkle_record1, "Record DB merkle record should match original");
+        assert!(
+            record_merkle.is_some(),
+            "Record DB should have the retrieved merkle record"
+        );
+        assert_eq!(
+            record_merkle.unwrap(),
+            merkle_record1,
+            "Record DB merkle record should match original"
+        );
 
         // Test 2: Set new merkle record and verify it's recorded
         db.set_merkle_record(merkle_record2.clone())?;
@@ -602,15 +698,29 @@ mod tests {
         // Verify record was stored in record_db
         let record_db_clone = record_db.clone();
         let record_merkle2 = record_db_clone.get_merkle_record(&key3)?;
-        assert!(record_merkle2.is_some(), "Record DB should have the new merkle record");
-        assert_eq!(record_merkle2.unwrap(), merkle_record2, "Record DB new merkle record should match");
+        assert!(
+            record_merkle2.is_some(),
+            "Record DB should have the new merkle record"
+        );
+        assert_eq!(
+            record_merkle2.unwrap(),
+            merkle_record2,
+            "Record DB new merkle record should match"
+        );
 
         // Test record with None values
         db.set_merkle_record(merkle_record_none.clone())?;
         let record_db_clone = record_db.clone();
         let record_merkle_none = record_db_clone.get_merkle_record(&merkle_record_none.hash)?;
-        assert!(record_merkle_none.is_some(), "Record DB should have the None-valued merkle record");
-        assert_eq!(record_merkle_none.unwrap(), merkle_record_none, "Record DB None-valued merkle record should match");
+        assert!(
+            record_merkle_none.is_some(),
+            "Record DB should have the None-valued merkle record"
+        );
+        assert_eq!(
+            record_merkle_none.unwrap(),
+            merkle_record_none,
+            "Record DB None-valued merkle record should match"
+        );
 
         // Test 3: Set merkle records batch and verify they're recorded
         let batch_records = vec![merkle_record3.clone()];
@@ -619,19 +729,37 @@ mod tests {
         // Verify batch record was stored in record_db
         let record_db_clone = record_db.clone();
         let record_merkle3 = record_db_clone.get_merkle_record(&key4)?;
-        assert!(record_merkle3.is_some(), "Record DB should have the batch merkle record");
-        assert_eq!(record_merkle3.unwrap(), merkle_record3, "Record DB batch merkle record should match");
+        assert!(
+            record_merkle3.is_some(),
+            "Record DB should have the batch merkle record"
+        );
+        assert_eq!(
+            record_merkle3.unwrap(),
+            merkle_record3,
+            "Record DB batch merkle record should match"
+        );
 
         // Test 4: Get existing data record and verify it's recorded
         let retrieved_data = db.get_data_record(&key2)?;
         assert!(retrieved_data.is_some(), "Should retrieve data record");
-        assert_eq!(retrieved_data.unwrap(), data_record1, "Retrieved data record should match original");
+        assert_eq!(
+            retrieved_data.unwrap(),
+            data_record1,
+            "Retrieved data record should match original"
+        );
 
         // Verify record was stored in record_db
         let record_db_clone = record_db.clone();
         let record_data = record_db_clone.get_data_record(&key2)?;
-        assert!(record_data.is_some(), "Record DB should have the retrieved data record");
-        assert_eq!(record_data.unwrap(), data_record1, "Record DB data record should match original");
+        assert!(
+            record_data.is_some(),
+            "Record DB should have the retrieved data record"
+        );
+        assert_eq!(
+            record_data.unwrap(),
+            data_record1,
+            "Record DB data record should match original"
+        );
 
         // Test 5: Set new data record and verify it's recorded
         db.set_data_record(data_record2.clone())?;
@@ -639,12 +767,22 @@ mod tests {
         // Verify record was stored in record_db
         let record_db_clone = record_db.clone();
         let record_data2 = record_db_clone.get_data_record(&key5)?;
-        assert!(record_data2.is_some(), "Record DB should have the new data record");
-        assert_eq!(record_data2.unwrap(), data_record2, "Record DB new data record should match");
+        assert!(
+            record_data2.is_some(),
+            "Record DB should have the new data record"
+        );
+        assert_eq!(
+            record_data2.unwrap(),
+            data_record2,
+            "Record DB new data record should match"
+        );
 
         // Stop recording and verify
         let _stopped_record_db = db.stop_record()?;
-        assert!(!db.is_recording(), "Recording should be inactive after stopping");
+        assert!(
+            !db.is_recording(),
+            "Recording should be inactive after stopping"
+        );
 
         // Clean up
         main_dir.close()?;
@@ -653,4 +791,3 @@ mod tests {
         Ok(())
     }
 }
-

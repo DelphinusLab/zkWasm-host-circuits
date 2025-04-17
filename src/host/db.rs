@@ -11,7 +11,7 @@ use mongodb::{
 use crate::host::datahash::DataHashRecord;
 use crate::host::mongomerkle::MerkleRecord;
 use anyhow::Result;
-use rocksdb::{DB, Options, WriteBatch};
+use rocksdb::{DB, Options, WriteBatch, ColumnFamilyDescriptor};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -198,6 +198,8 @@ pub fn get_collection_name(name_prefix: String, id: [u8; 32]) -> String {
     format!("{}_{}", name_prefix, hex::encode(id))
 }
 
+const MERKLE_CF_NAME: &str = "merkle_records";
+const DATA_CF_NAME: &str = "data_records";
 
 pub struct RocksDB {
     db: Arc<DB>,
@@ -222,25 +224,27 @@ impl Clone for RocksDB {
 impl RocksDB {
     // create  RocksDB
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+        let mut db_opts = Options::default();
+        let mut merkle_cf_opts = Options::default();
+        let mut data_cf_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
 
-        Self::new_with_options(path, &mut opts)
+        Self::new_with_options(path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)
     }
 
     // create rocksdb with option
-    pub fn new_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
-        let cfs = vec![merkle_cf_name, data_cf_name];
-        let db = DB::open_cf(&opts, path, cfs)?;
+    pub fn new_with_options<P: AsRef<Path>>(path: P, db_opts: &mut Options, merkle_cf_opts: &mut Options, data_cf_opts: &mut Options) -> Result<Self> {
+        let cfs = vec![
+            ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts.clone()),
+            ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts.clone()),
+        ];
+        let db = DB::open_cf_descriptors(&db_opts, path, cfs)?;
 
         Ok(Self {
             db: Arc::new(db),
-            merkle_cf_name: merkle_cf_name.to_string(),
-            data_cf_name: data_cf_name.to_string(),
+            merkle_cf_name: MERKLE_CF_NAME.to_string(),
+            data_cf_name: DATA_CF_NAME.to_string(),
             read_only : false,
             record_db: None,
         })
@@ -282,24 +286,26 @@ impl RocksDB {
     }
 
     pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+        let mut db_opts = Options::default();
+        let mut merkle_cf_opts = Options::default();
+        let mut data_cf_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
 
-        Self::new_read_only_with_options(path, &mut opts)
+        Self::new_read_only_with_options(path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)
     }
 
-    pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, opts: &mut Options) -> Result<Self> {
-        let merkle_cf_name = "merkle_records";
-        let data_cf_name = "data_records";
-
-        let cfs = vec![merkle_cf_name, data_cf_name];
-        let db = DB::open_cf_for_read_only(&opts, path, cfs, false)?;
+    pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, db_opts: &mut Options, merkle_cf_opts: &mut Options, data_cf_opts: &mut Options) -> Result<Self> {
+        let cfs = vec![
+            ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts.clone()),
+            ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts.clone()),
+        ];
+        let db = DB::open_cf_descriptors_read_only(&db_opts, path, cfs, false)?;
 
         Ok(Self {
             db: Arc::new(db),
-            merkle_cf_name: merkle_cf_name.to_string(),
-            data_cf_name: data_cf_name.to_string(),
+            merkle_cf_name: MERKLE_CF_NAME.to_string(),
+            data_cf_name: DATA_CF_NAME.to_string(),
             read_only: true,
             record_db: None,
         })

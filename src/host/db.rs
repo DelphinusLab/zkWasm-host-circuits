@@ -507,6 +507,7 @@ mod tests {
     use tempfile::tempdir;
     use crate::host::datahash::DataHashRecord;
     use crate::host::mongomerkle::MerkleRecord;
+    use std::time::Instant;
 
     #[test]
     fn test_rocksdb_record_functionality() -> Result<()> {
@@ -651,6 +652,171 @@ mod tests {
         // Stop recording and verify
         let _stopped_record_db = db.stop_record()?;
         assert!(!db.is_recording(), "Recording should be inactive after stopping");
+
+        // Clean up
+        main_dir.close()?;
+        record_dir.close()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_rocksdb_record_functionality_with_options() -> Result<()> {
+        // Create temporary directories for the databases
+        let main_dir = tempdir()?;
+        let record_dir = tempdir()?;
+
+        let main_path = main_dir.path().to_path_buf();
+        let record_path = record_dir.path().to_path_buf();
+
+        // Create the main and record databases
+        const OPEN_FILES: i32 = 80000;
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
+        db_opts.set_max_open_files(OPEN_FILES);
+
+        let mut merkle_cf_opts = Options::default();
+        merkle_cf_opts.set_max_open_files(OPEN_FILES);
+        let mut data_cf_opts = Options::default();
+        data_cf_opts.set_max_open_files(OPEN_FILES);
+
+        let mut db = RocksDB::new_with_options(&main_path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)?;
+        let record_db = RocksDB::new(&record_path)?;
+
+        let start = Instant::now();
+        // Create test data
+        let key1 = [1u8; 32]; // Merkle record key
+        let key2 = [2u8; 32]; // Data record key
+        let key3 = [3u8; 32]; // New Merkle record key
+        let key4 = [4u8; 32]; // Merkle records batch key
+        let key5 = [5u8; 32]; // New Data record key
+
+        let left1 = [10u8; 32];
+        let right1 = [11u8; 32];
+
+        let merkle_record1 = MerkleRecord {
+            index: 0,
+            hash: key1,
+            left: Some(left1),
+            right: Some(right1),
+            data: Some([20u8; 32]),
+        };
+
+        let data_record1 = DataHashRecord {
+            hash: key2,
+            data: vec![20, 21, 22],
+        };
+
+        let left2 = [30u8; 32];
+        let right2 = [31u8; 32];
+
+        let merkle_record2 = MerkleRecord {
+            index: 0,
+            hash: key3,
+            left: Some(left2),
+            right: Some(right2),
+            data: Some([21u8; 32]),
+        };
+
+        let left3 = [40u8; 32];
+        let right3 = [41u8; 32];
+
+        let merkle_record3 = MerkleRecord {
+            index: 0,
+            hash: key4,
+            left: Some(left3),
+            right: Some(right3),
+            data: Some([22u8; 32]),
+        };
+
+        // Also test a record with None values
+        let merkle_record_none = MerkleRecord {
+            index: 0,
+            hash: [42u8; 32],
+            left: None,
+            right: None,
+            data: None,
+        };
+
+        let data_record2 = DataHashRecord {
+            hash: key5,
+            data: vec![50, 51, 52],
+        };
+
+        // Insert initial records into main db
+        db.set_merkle_record(merkle_record1.clone())?;
+        db.set_data_record(data_record1.clone())?;
+
+        // Start recording
+        db.start_record(record_db.clone())?;
+
+        // Verify recording is active
+        assert!(db.is_recording(), "Recording should be active");
+
+        // Test 1: Get existing merkle record and verify it's recorded
+        let retrieved_merkle = db.get_merkle_record(&key1)?;
+        assert!(retrieved_merkle.is_some(), "Should retrieve merkle record");
+        assert_eq!(retrieved_merkle.unwrap(), merkle_record1, "Retrieved merkle record should match original");
+
+        // Verify record was stored in record_db
+        let record_db_clone = record_db.clone();
+        let record_merkle = record_db_clone.get_merkle_record(&key1)?;
+        assert!(record_merkle.is_some(), "Record DB should have the retrieved merkle record");
+        assert_eq!(record_merkle.unwrap(), merkle_record1, "Record DB merkle record should match original");
+
+        // Test 2: Set new merkle record and verify it's recorded
+        db.set_merkle_record(merkle_record2.clone())?;
+
+        // Verify record was stored in record_db
+        let record_db_clone = record_db.clone();
+        let record_merkle2 = record_db_clone.get_merkle_record(&key3)?;
+        assert!(record_merkle2.is_some(), "Record DB should have the new merkle record");
+        assert_eq!(record_merkle2.unwrap(), merkle_record2, "Record DB new merkle record should match");
+
+        // Test record with None values
+        db.set_merkle_record(merkle_record_none.clone())?;
+        let record_db_clone = record_db.clone();
+        let record_merkle_none = record_db_clone.get_merkle_record(&merkle_record_none.hash)?;
+        assert!(record_merkle_none.is_some(), "Record DB should have the None-valued merkle record");
+        assert_eq!(record_merkle_none.unwrap(), merkle_record_none, "Record DB None-valued merkle record should match");
+
+        // Test 3: Set merkle records batch and verify they're recorded
+        let batch_records = vec![merkle_record3.clone()];
+        db.set_merkle_records(&batch_records)?;
+
+        // Verify batch record was stored in record_db
+        let record_db_clone = record_db.clone();
+        let record_merkle3 = record_db_clone.get_merkle_record(&key4)?;
+        assert!(record_merkle3.is_some(), "Record DB should have the batch merkle record");
+        assert_eq!(record_merkle3.unwrap(), merkle_record3, "Record DB batch merkle record should match");
+
+        // Test 4: Get existing data record and verify it's recorded
+        let retrieved_data = db.get_data_record(&key2)?;
+        assert!(retrieved_data.is_some(), "Should retrieve data record");
+        assert_eq!(retrieved_data.unwrap(), data_record1, "Retrieved data record should match original");
+
+        // Verify record was stored in record_db
+        let record_db_clone = record_db.clone();
+        let record_data = record_db_clone.get_data_record(&key2)?;
+        assert!(record_data.is_some(), "Record DB should have the retrieved data record");
+        assert_eq!(record_data.unwrap(), data_record1, "Record DB data record should match original");
+
+        // Test 5: Set new data record and verify it's recorded
+        db.set_data_record(data_record2.clone())?;
+
+        // Verify record was stored in record_db
+        let record_db_clone = record_db.clone();
+        let record_data2 = record_db_clone.get_data_record(&key5)?;
+        assert!(record_data2.is_some(), "Record DB should have the new data record");
+        assert_eq!(record_data2.unwrap(), data_record2, "Record DB new data record should match");
+
+        // Stop recording and verify
+        let _stopped_record_db = db.stop_record()?;
+        assert!(!db.is_recording(), "Recording should be inactive after stopping");
+
+        let duration = start.elapsed();
+        println!("Db actions took: {:?}", duration);
 
         // Clean up
         main_dir.close()?;

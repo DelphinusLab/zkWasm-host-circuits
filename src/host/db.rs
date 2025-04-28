@@ -222,35 +222,39 @@ impl Clone for RocksDB {
 }
 
 impl RocksDB {
-    // create  RocksDB
+    /// Create `RocksDB` handler with default options.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut db_opts = Options::default();
-        let mut merkle_cf_opts = Options::default();
-        let mut data_cf_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
 
-        Self::new_with_options(path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)
+        Self::new_with_options(path, db_opts, Options::default(), Options::default())
     }
 
-    // create rocksdb with option
-    pub fn new_with_options<P: AsRef<Path>>(path: P, db_opts: &mut Options, merkle_cf_opts: &mut Options, data_cf_opts: &mut Options) -> Result<Self> {
-        let cfs = vec![
-            ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts.clone()),
-            ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts.clone()),
-        ];
-        let db = DB::open_cf_descriptors(&db_opts, path, cfs)?;
-
+    /// Create `RocksDB` handler with custom options.
+    pub fn new_with_options<P: AsRef<Path>>(
+        path: P,
+        db_opts: Options,
+        merkle_cf_opts: Options,
+        data_cf_opts: Options,
+    ) -> Result<Self> {
         Ok(Self {
-            db: Arc::new(db),
+            db: Arc::new(DB::open_cf_descriptors(
+                &db_opts,
+                path,
+                vec![
+                    ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts),
+                    ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts),
+                ],
+            )?),
             merkle_cf_name: MERKLE_CF_NAME.to_string(),
             data_cf_name: DATA_CF_NAME.to_string(),
-            read_only : false,
+            read_only: false,
             record_db: None,
         })
     }
 
-    // 清空数据库
+    /// Clear merkle records and data.
     pub fn clear(&self) -> Result<()> {
         if self.read_only {
             return Err(anyhow::anyhow!(
@@ -285,25 +289,31 @@ impl RocksDB {
         Ok(())
     }
 
+    /// Create read-only `RocksDB` handler with default options.
     pub fn new_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut db_opts = Options::default();
-        let mut merkle_cf_opts = Options::default();
-        let mut data_cf_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
-
-        Self::new_read_only_with_options(path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)
+        Self::new_read_only_with_options(path, db_opts, Options::default(), Options::default())
     }
 
-    pub fn new_read_only_with_options<P: AsRef<Path>>(path: P, db_opts: &mut Options, merkle_cf_opts: &mut Options, data_cf_opts: &mut Options) -> Result<Self> {
-        let cfs = vec![
-            ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts.clone()),
-            ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts.clone()),
-        ];
-        let db = DB::open_cf_descriptors_read_only(&db_opts, path, cfs, false)?;
-
+    /// Create read-only `RocksDB` handler with custom options.
+    pub fn new_read_only_with_options<P: AsRef<Path>>(
+        path: P,
+        db_opts: Options,
+        merkle_cf_opts: Options,
+        data_cf_opts: Options,
+    ) -> Result<Self> {
         Ok(Self {
-            db: Arc::new(db),
+            db: Arc::new(DB::open_cf_descriptors_read_only(
+                &db_opts,
+                path,
+                vec![
+                    ColumnFamilyDescriptor::new(MERKLE_CF_NAME, merkle_cf_opts),
+                    ColumnFamilyDescriptor::new(DATA_CF_NAME, data_cf_opts),
+                ],
+                false,
+            )?),
             merkle_cf_name: MERKLE_CF_NAME.to_string(),
             data_cf_name: DATA_CF_NAME.to_string(),
             read_only: true,
@@ -331,7 +341,8 @@ impl RocksDB {
         Ok(())
     }
 
-    // This function is manually flushing database memtables to SST files on the disk.
+    /// Manually trigger flushing of database memtables to SST files on the disk. Waits for flushing to finish
+    /// before returning.
     pub fn flush(&self) -> Result<()> {
         self.db.flush_cf(
             self.db
@@ -341,12 +352,13 @@ impl RocksDB {
         self.db.flush_cf(
             self.db
                 .cf_handle(&self.data_cf_name)
-                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?
+                .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?
         )?;
         Ok(())
     }
 
-    // This function is manually trigger compacting of SST files. It help to reduce the SST file size.
+    /// Manually trigger compacting of SST files. It help to reduce the SST file size. Waits for compacting 
+    /// to finish before returning.
     pub fn compact(&self) -> Result<()> {
         self.db.compact_range_cf(
             self.db
@@ -358,7 +370,7 @@ impl RocksDB {
         self.db.compact_range_cf(
             self.db
                 .cf_handle(&self.data_cf_name)
-                .ok_or_else(|| anyhow::anyhow!("Merkle column family not found"))?,
+                .ok_or_else(|| anyhow::anyhow!("Data column family not found"))?,
             None::<&[u8]>,
             None::<&[u8]>,
         );
@@ -671,17 +683,17 @@ mod tests {
 
         // Create the main and record databases
         const OPEN_FILES: i32 = 80000;
-        let mut db_opts = Options::default();
+        let db_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
         db_opts.set_max_open_files(OPEN_FILES);
 
-        let mut merkle_cf_opts = Options::default();
+        let merkle_cf_opts = Options::default();
         merkle_cf_opts.set_max_open_files(OPEN_FILES);
-        let mut data_cf_opts = Options::default();
+        let data_cf_opts = Options::default();
         data_cf_opts.set_max_open_files(OPEN_FILES);
 
-        let mut db = RocksDB::new_with_options(&main_path, &mut db_opts, &mut merkle_cf_opts, &mut data_cf_opts)?;
+        let mut db = RocksDB::new_with_options(&main_path, db_opts, merkle_cf_opts, data_cf_opts)?;
         let record_db = RocksDB::new(&record_path)?;
 
         let start = Instant::now();

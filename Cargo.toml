@@ -46,6 +46,8 @@ num-traits = "0.2.15"
 num-derive = "0.3"
 rocksdb = "0.21.0"
 tempfile = "3.18.0"
+#backend
+plonkish_backend = { git = "https://github.com/mooreland/hyperplonk.git",branch="moore/support_halo2"}
 
 [features]
 default = ["mongo-tokio-sync"]
@@ -55,3 +57,8 @@ mongo-tokio-sync = ["mongodb/tokio-sync"]
 cuda = ["halo2_proofs/cuda"]
 complex-leaf = []
 profile = ["ark-std/print-trace", "halo2_proofs/profile", "circuits-batcher/profile"]
+
+[patch."https://github.com/DelphinusLab/halo2-gpu-specific.git"]
+halo2_proofs = {  path = "/home/moore/github/delphinus/temp/halo2-gpu-specific/halo2_proofs" }
+[patch."https://github.com/lanbones/pairing"]
+pairing = { git = "https://github.com/mooreland/pairing", package = "pairing_bn256",features = ["derive_serde"]}

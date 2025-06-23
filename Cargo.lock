@@ -460,6 +460,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.65.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -545,8 +554,8 @@ name = "bls12_381"
 version = "0.7.0"
 source = "git+https://github.com/lanbones/bls12_381.git#31fcd53a340cadbb5558bb75422516b81704a0a1"
 dependencies = [
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "pairing",
  "rand_core",
  "subtle",
@@ -682,8 +691,8 @@ dependencies = [
  "clap",
  "downcast-rs",
  "env_logger 0.9.3",
- "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "ff 0.12.1",
+ "halo2_proofs",
  "halo2aggregator-s",
  "hex",
  "lazy_static",
@@ -1035,8 +1044,8 @@ dependencies = [
  "crossbeam-channel",
  "ec-gpu",
  "execute",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "hex",
  "log",
  "num_cpus",
@@ -1241,6 +1250,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ff"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
+dependencies = [
+ "bitvec",
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
 name = "fil-rustacuda"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1264,7 +1284,7 @@ version = "0.10.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1657b4441c3403d9f7b3409e47575237dac27b1b5726df654a6ecbf92f0f7577"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -1390,6 +1410,7 @@ version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
+ "serde",
  "typenum",
  "version_check",
 ]
@@ -1486,7 +1507,18 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
 dependencies = [
- "ff",
+ "ff 0.12.1",
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
+name = "group"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
+dependencies = [
+ "ff 0.13.1",
  "rand_core",
  "subtle",
 ]
@@ -1494,7 +1526,6 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.1.0-beta.1"
-source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0#55d1969571375005206615deb6ff0395a7ca1607"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -1503,36 +1534,9 @@ dependencies = [
  "core_affinity",
  "cuda-driver-sys",
  "ec-gpu-gen",
- "ff",
- "group",
- "lazy_static",
- "log",
- "memmap",
- "num",
- "num-bigint",
- "num-derive",
- "num-integer",
- "num-traits",
- "pairing_bn256",
- "rand",
- "rand_core",
- "rayon",
- "subtle",
-]
-
-[[package]]
-name = "halo2_proofs"
-version = "0.1.0-beta.1"
-source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git#55d1969571375005206615deb6ff0395a7ca1607"
-dependencies = [
- "ark-std",
- "blake2b_simd",
- "bumpalo",
- "cfg-if 0.1.10",
- "core_affinity",
- "cuda-driver-sys",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
+ "itertools",
  "lazy_static",
  "log",
  "memmap",
@@ -1556,14 +1560,14 @@ dependencies = [
  "ark-ff",
  "ark-std",
  "blake2b_simd",
- "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "ff 0.12.1",
+ "halo2_proofs",
  "halo2ecc-o",
  "lazy_static",
  "num-bigint",
  "num-integer",
  "num-traits",
- "poseidon",
+ "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon)",
  "rand_core",
  "serde",
  "serde_json",
@@ -1573,12 +1577,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "halo2curves"
+version = "0.3.2"
+source = "git+https://github.com/privacy-scaling-explorations/halo2curves.git?tag=0.3.2#9f5c50810bbefe779ee5cf1d852b2fe85dc35d5e"
+dependencies = [
+ "ff 0.13.1",
+ "group 0.13.0",
+ "lazy_static",
+ "num-bigint",
+ "num-traits",
+ "pasta_curves",
+ "paste",
+ "rand",
+ "rand_core",
+ "static_assertions",
+ "subtle",
+]
+
+[[package]]
 name = "halo2ecc-o"
 version = "0.1.0"
 source = "git+https://github.com/ooglayout/halo2ecc-o.git#3c5e655b40a6b7b6f365ce4467f235413acfc498"
 dependencies = [
  "ark-std",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "lazy_static",
  "num-bigint",
  "num-integer",
@@ -1860,6 +1882,9 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+dependencies = [
+ "spin 0.5.2",
+]
 
 [[package]]
 name = "lazycell"
@@ -2263,22 +2288,23 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "135590d8bdba2b31346f9cd1fb2a912329f5135e832a4f422942eb6ead8b6b3b"
 dependencies = [
- "group",
+ "group 0.12.1",
 ]
 
 [[package]]
 name = "pairing_bn256"
 version = "0.1.1"
-source = "git+https://github.com/lanbones/pairing#30b052f29d7ec3e68e20528584d9495de678ea05"
+source = "git+https://github.com/mooreland/pairing?branch=support_serder#a3b82656530cb104394a316de900c7abd0fbad08"
 dependencies = [
  "bls12_381",
  "ec-gpu",
- "ff",
- "group",
+ "ff 0.12.1",
+ "group 0.12.1",
  "num-bigint",
  "num-traits",
  "rand",
  "rand_core",
+ "serde",
  "static_assertions",
  "subtle",
 ]
@@ -2319,6 +2345,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c705f256449c60da65e11ff6626e0c16a0a0b96aaa348de61376b249bc340f41"
 dependencies = [
  "regex",
+]
+
+[[package]]
+name = "pasta_curves"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3e57598f73cc7e1b2ac63c79c517b31a0877cd7c402cdcaa311b5208de7a095"
+dependencies = [
+ "blake2b_simd",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "lazy_static",
+ "rand",
+ "static_assertions",
+ "subtle",
 ]
 
 [[package]]
@@ -2461,6 +2502,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "plonkish_backend"
+version = "0.1.0"
+source = "git+https://github.com/mooreland/hyperplonk.git?branch=moore/support_halo2#45157da8eeb3777caf05052320b7b9cbeb4121ab"
+dependencies = [
+ "ark-std",
+ "bincode",
+ "bitvec",
+ "ff 0.12.1",
+ "generic-array 0.14.7",
+ "group 0.12.1",
+ "halo2_proofs",
+ "itertools",
+ "num-bigint",
+ "num-integer",
+ "poseidon 0.2.0 (git+https://github.com/han0110/poseidon?branch=feature/with-spec)",
+ "rand",
+ "rayon",
+ "serde",
+ "sha3",
+]
+
+[[package]]
 name = "polling"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2493,9 +2556,18 @@ dependencies = [
 [[package]]
 name = "poseidon"
 version = "0.2.0"
+source = "git+https://github.com/han0110/poseidon?branch=feature/with-spec#fa4c2544ed38666f1f72d1c4fd0956756a7112b3"
+dependencies = [
+ "halo2curves",
+ "subtle",
+]
+
+[[package]]
+name = "poseidon"
+version = "0.2.0"
 source = "git+https://github.com/DelphinusLab/poseidon#8977ca390f50cdbd2496970216dfc1060b2caab9"
 dependencies = [
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git)",
+ "halo2_proofs",
  "subtle",
 ]
 
@@ -2694,7 +2766,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "getrandom 0.2.12",
  "libc",
- "spin",
+ "spin 0.9.8",
  "untrusted",
  "windows-sys 0.52.0",
 ]
@@ -3081,6 +3153,12 @@ dependencies = [
  "libc",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
@@ -3998,8 +4076,8 @@ dependencies = [
  "cfg-if 1.0.0",
  "circuits-batcher",
  "clap",
- "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "ff 0.12.1",
+ "halo2_proofs",
  "halo2ecc-o",
  "hex",
  "itertools",
@@ -4009,7 +4087,8 @@ dependencies = [
  "num-bigint",
  "num-derive",
  "num-traits",
- "poseidon",
+ "plonkish_backend",
+ "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon)",
  "rand",
  "rand_core",
  "ripemd",
@@ -4031,7 +4110,7 @@ dependencies = [
  "cc",
  "cuda-runtime-sys",
  "env_logger 0.11.6",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "lazy_static",
  "libc",
  "log",
@@ -4048,3 +4127,8 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "pairing_bn256"
+version = "0.1.1"
+source = "git+https://github.com/mooreland/pairing#30b052f29d7ec3e68e20528584d9495de678ea05"

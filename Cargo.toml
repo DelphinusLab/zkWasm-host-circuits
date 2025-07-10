@@ -23,7 +23,7 @@ strum = "0.24.1"
 strum_macros = "0.24.1"
 ff = "0.12"
 cfg-if = "1.0.0"
-halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", tag="stable-logup-shuffle-v1.0.0",default-features = true }
+halo2_proofs = { git = "https://github.com/DelphinusLab/halo2-gpu-specific.git", default-features = true }
 halo2ecc-o = { git = "https://github.com/ooglayout/halo2ecc-o.git"}
 itertools = "0.10.0"
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -55,3 +55,6 @@ mongo-tokio-sync = ["mongodb/tokio-sync"]
 cuda = ["halo2_proofs/cuda"]
 complex-leaf = []
 profile = ["ark-std/print-trace", "halo2_proofs/profile", "circuits-batcher/profile"]
+
+[patch."https://github.com/DelphinusLab/halo2-gpu-specific.git"]
+halo2_proofs = { git = "https://www.github.com/DelphinusLab/halo2-gpu-specific.git" }

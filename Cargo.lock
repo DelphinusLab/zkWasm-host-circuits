@@ -683,7 +683,7 @@ dependencies = [
  "downcast-rs",
  "env_logger 0.9.3",
  "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "halo2aggregator-s",
  "hex",
  "lazy_static",
@@ -1494,7 +1494,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.1.0-beta.1"
-source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0#55d1969571375005206615deb6ff0395a7ca1607"
+source = "git+https://www.github.com/DelphinusLab/halo2-gpu-specific.git#f2aa4f26f223b44f3b0c8813ac549d970657afe8"
 dependencies = [
  "ark-std",
  "blake2b_simd",
@@ -1521,34 +1521,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "halo2_proofs"
-version = "0.1.0-beta.1"
-source = "git+https://github.com/DelphinusLab/halo2-gpu-specific.git#55d1969571375005206615deb6ff0395a7ca1607"
-dependencies = [
- "ark-std",
- "blake2b_simd",
- "bumpalo",
- "cfg-if 0.1.10",
- "core_affinity",
- "cuda-driver-sys",
- "ff",
- "group",
- "lazy_static",
- "log",
- "memmap",
- "num",
- "num-bigint",
- "num-derive",
- "num-integer",
- "num-traits",
- "pairing_bn256",
- "rand",
- "rand_core",
- "rayon",
- "subtle",
-]
-
-[[package]]
 name = "halo2aggregator-s"
 version = "1.1.0"
 source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?tag=stable-logup-shuffle-1.0.0#ba51aed7154ac0f4f865cd1d3883daa1e77f0a08"
@@ -1557,7 +1529,7 @@ dependencies = [
  "ark-std",
  "blake2b_simd",
  "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "halo2ecc-o",
  "lazy_static",
  "num-bigint",
@@ -1578,7 +1550,7 @@ version = "0.1.0"
 source = "git+https://github.com/ooglayout/halo2ecc-o.git#3c5e655b40a6b7b6f365ce4467f235413acfc498"
 dependencies = [
  "ark-std",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "lazy_static",
  "num-bigint",
  "num-integer",
@@ -2495,7 +2467,7 @@ name = "poseidon"
 version = "0.2.0"
 source = "git+https://github.com/DelphinusLab/poseidon#8977ca390f50cdbd2496970216dfc1060b2caab9"
 dependencies = [
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git)",
+ "halo2_proofs",
  "subtle",
 ]
 
@@ -3184,11 +3156,10 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.18.0"
+version = "3.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c317e0a526ee6120d8dabad239c8dadca62b24b6f168914bbbc8e2fb1f0e567"
+checksum = "e8a64e3985349f2441a1a9ef0b853f869006c3855f2cda6862a94d26ebb9d6a1"
 dependencies = [
- "cfg-if 1.0.0",
  "fastrand 2.3.0",
  "getrandom 0.3.1",
  "once_cell",
@@ -3999,7 +3970,7 @@ dependencies = [
  "circuits-batcher",
  "clap",
  "ff",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "halo2ecc-o",
  "hex",
  "itertools",
@@ -4031,7 +4002,7 @@ dependencies = [
  "cc",
  "cuda-runtime-sys",
  "env_logger 0.11.6",
- "halo2_proofs 0.1.0-beta.1 (git+https://github.com/DelphinusLab/halo2-gpu-specific.git?tag=stable-logup-shuffle-v1.0.0)",
+ "halo2_proofs",
  "lazy_static",
  "libc",
  "log",

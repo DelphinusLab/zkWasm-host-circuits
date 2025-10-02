@@ -7,3 +7,4 @@ pub mod proof;
 pub mod utils;
 
 pub extern crate anyhow;
+pub const DEFAULT_CIRCUITS_K: u32 = 22;

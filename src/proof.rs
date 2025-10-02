@@ -20,24 +20,11 @@ use halo2_proofs::{
 use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use circuits_batcher::args::HashType::Poseidon;
-use circuits_batcher::args::OpenSchema;
+use circuits_batcher::args::{OpenSchema, ProveSchema};
 use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
 
 use crate::host::ExternalHostCallEntryTable;
 use serde::{Deserialize, Serialize};
-
-use plonkish_backend::backend;
-use plonkish_backend::backend::PlonkishBackend;
-use plonkish_backend::backend::PlonkishCircuit;
-use plonkish_backend::pcs::multilinear;
-use plonkish_backend::pcs::univariate;
-use plonkish_backend::transform::circuit::get_zkwasm_circuit;
-use plonkish_backend::util::end_timer;
-use plonkish_backend::util::start_timer;
-use plonkish_backend::util::transcript::InMemoryTranscript;
-use plonkish_backend::util::transcript::Keccak256Transcript;
-use rand::prelude::StdRng;
-use rand::SeedableRng;
 
 pub const MERKLE_DEPTH: usize = 32;
 
@@ -72,7 +59,7 @@ impl<F: FieldExt, S: HostOpSelector> Default for HostOpCircuit<F, S> {
         HostOpCircuit {
             shared_operands: Vec::<F>::default(),
             shared_opcodes: Vec::<F>::default(),
-            k: 22,
+            k: crate::DEFAULT_CIRCUITS_K as usize,
             helper: S::Helper::default(),
             _marker: PhantomData,
         }
@@ -157,7 +144,6 @@ pub fn build_host_circuit<S: HostOpSelector>(
     // Prepare the private and public inputs to the circuit!
     let shared_operands = v.0.iter().map(|x| Fr::from(x.value as u64)).collect();
     let shared_opcodes = v.0.iter().map(|x| Fr::from(x.op as u64)).collect();
-
     HostOpCircuit::<Fr, S> {
         shared_operands,
         shared_opcodes,
@@ -166,79 +152,6 @@ pub fn build_host_circuit<S: HostOpSelector>(
         _marker: PhantomData,
     }
 }
-//
-// pub fn exec_create_host_proof(
-//     name: &str,
-//     k: usize,
-//     v: &ExternalHostCallEntryTable,
-//     opname: OpType,
-//     cache_folder: &PathBuf,
-//     param_folder: &PathBuf,
-// ) {
-//     // Instantiate the circuit with the private inputs.
-//     // Given the correct public input, our circuit will verify.
-//
-//     let mut params_cache = ParamsCache::<Bn256>::new(5, param_folder.clone());
-//     let mut pkey_cache = ProvingKeyCache::new(5, param_folder.clone());
-//     macro_rules! gen_proof {
-//         ($circuit: expr) => {
-//             let prover: ProofPieceInfo =
-//                 ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0, None);
-//             let mut proof_gen_info =
-//                 ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
-//             let proof = prover.exec_create_proof(
-//                 &$circuit,
-//                 &vec![],
-//                 k,
-//                 &mut pkey_cache,
-//                 &mut params_cache,
-//                 Poseidon,
-//                 OpenSchema::Shplonk,
-//             );
-//             prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
-//             //prover.mock_proof(k as u32);
-//             proof_gen_info.append_single_proof(prover);
-//             proof_gen_info.save(cache_folder);
-//         };
-//     }
-//
-//     match opname {
-//         // OpType::BLS381PAIR => {
-//         //     let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
-//         //     gen_proof!(circuit);
-//         // }
-//         // OpType::BLS381SUM => {
-//         //     let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
-//         //     gen_proof!(circuit);
-//         // }
-//         OpType::BN256PAIR => {
-//             let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k, ());
-//             gen_proof!(circuit);
-//         }
-//         OpType::BN256SUM => {
-//             let circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k, ());
-//             gen_proof!(circuit);
-//         }
-//         OpType::POSEIDONHASH => {
-//             let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k, ());
-//             gen_proof!(circuit);
-//         }
-//         OpType::MERKLE => {
-//             let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, None);
-//             gen_proof!(circuit);
-//         }
-//         OpType::JUBJUBSUM => {
-//             let circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k, ());
-//             gen_proof!(circuit);
-//         }
-//         OpType::KECCAKHASH => {
-//             let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k, ());
-//             gen_proof!(circuit);
-//         }
-//     };
-//
-//     println!("Proof generated.");
-// }
 
 pub fn exec_create_host_proof(
     name: &str,
@@ -247,62 +160,69 @@ pub fn exec_create_host_proof(
     opname: OpType,
     cache_folder: &PathBuf,
     param_folder: &PathBuf,
+    prove_type: ProveSchema,
 ) {
     // Instantiate the circuit with the private inputs.
     // Given the correct public input, our circuit will verify.
 
-
-    {
-        let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k, ());
-        // gen_proof!(circuit);
-        type GeminiKzg = multilinear::Gemini<univariate::UnivariateKzg<Bn256>>;
-        type HyperPlonk = backend::hyperplonk::HyperPlonk<GeminiKzg>;
-
-        let zkcircuit = get_zkwasm_circuit::<HyperPlonk, Bn256, _>(
-            k as u32,
-            std::slice::from_ref(&circuit),
-            vec![],
-        );
-
-        let circuit_info = zkcircuit.circuit_info().unwrap();
-        let instances = zkcircuit.instances.clone();
-
-        let timer = start_timer(|| format!("setup-{}", k));
-        let param =
-            HyperPlonk::setup(&circuit_info, StdRng::from_seed(Default::default())).unwrap();
-        end_timer(timer);
-
-        let timer = start_timer(|| format!("preprocess-{}", k));
-        let (pp, vp) = HyperPlonk::preprocess(&param, &circuit_info).unwrap();
-        end_timer(timer);
-
-        let _timer = start_timer(|| format!("prove-{}", k));
-        let mut transcript = Keccak256Transcript::default();
-        HyperPlonk::prove(
-            &pp,
-            &zkcircuit,
-            &mut transcript,
-            StdRng::from_seed(Default::default()),
-        )
-            .unwrap();
-        let proof = transcript.into_proof();
-
-        let _timer = start_timer(|| format!("verify-{}", k));
-        let mut transcript = Keccak256Transcript::from_proof((), proof.as_slice());
-        match HyperPlonk::verify(
-            &vp,
-            instances.as_slice(),
-            &mut transcript,
-            StdRng::from_seed(Default::default()),
-        ) {
-            Ok(_) => {
-                println!("✅ Proof verification succeeded");
-            }
-            Err(err) => {
-                panic!("❌ Proof verification failed: {:?}", err);
-            }
-        }
+    let mut params_cache = ParamsCache::<Bn256>::new(5, param_folder.clone());
+    let mut pkey_cache = ProvingKeyCache::new(5, param_folder.clone());
+    macro_rules! gen_proof {
+        ($circuit: expr) => {
+            let prover: ProofPieceInfo =
+                ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0, None, prove_type);
+            let mut proof_gen_info =
+                ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
+            let proof = prover.exec_create_proof(
+                &$circuit,
+                &vec![],
+                k,
+                &mut pkey_cache,
+                &mut params_cache,
+                Poseidon,
+                OpenSchema::Shplonk,
+            );
+            prover.save_proof_data::<Fr>(&vec![], &proof, cache_folder);
+            //prover.mock_proof(k as u32);
+            proof_gen_info.append_single_proof(prover);
+            proof_gen_info.save(cache_folder);
+        };
     }
+
+    match opname {
+        // OpType::BLS381PAIR => {
+        //     let circuit = build_host_circuit::<Bls381PairChip<Fr>>(&v, k, ());
+        //     gen_proof!(circuit);
+        // }
+        // OpType::BLS381SUM => {
+        //     let circuit = build_host_circuit::<Bls381SumChip<Fr>>(&v, k, ());
+        //     gen_proof!(circuit);
+        // }
+        OpType::BN256PAIR => {
+            let circuit = build_host_circuit::<Bn256PairChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::BN256SUM => {
+            let circuit = build_host_circuit::<Bn256SumChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::POSEIDONHASH => {
+            let circuit = build_host_circuit::<PoseidonChip<Fr, 9, 8>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::MERKLE => {
+            let circuit = build_host_circuit::<MerkleChip<Fr, MERKLE_DEPTH>>(&v, k, None);
+            gen_proof!(circuit);
+        }
+        OpType::JUBJUBSUM => {
+            let circuit = build_host_circuit::<AltJubChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+        OpType::KECCAKHASH => {
+            let circuit = build_host_circuit::<KeccakChip<Fr>>(&v, k, ());
+            gen_proof!(circuit);
+        }
+    };
 
     println!("Proof generated.");
 }

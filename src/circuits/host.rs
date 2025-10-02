@@ -16,6 +16,7 @@ use halo2_proofs::{
 };
 
 use crate::constant_from;
+use crate::DEFAULT_CIRCUITS_K;
 
 #[rustfmt::skip]
 customized_circuits!(HostOpConfig, 2, 11, 3, 0,
@@ -407,7 +408,7 @@ impl<S: HostOpSelector> HostOpChip<Fr, S> {
             }
         }
 
-        let last_row = (1 << 22) - 1000;
+        let last_row = (1 << DEFAULT_CIRCUITS_K) - 1000;
 
         // Set the max sel for shared_ops
         for i in 0..last_row {

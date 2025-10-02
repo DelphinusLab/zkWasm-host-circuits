@@ -7,10 +7,11 @@ pub mod proof;
 pub mod utils;
 
 use crate::proof::{exec_create_host_proof, read_host_call_table, OpType};
+use circuits_batcher::args::ProveSchema;
 use clap::{arg, value_parser, App, Arg, ArgMatches};
 use std::path::PathBuf;
 
-const DEFAULT_CIRCUITS_K: u32 = 22;
+use zkwasm_host_circuits::DEFAULT_CIRCUITS_K;
 
 #[derive(clap::Parser)]
 struct ArgOpName {
@@ -83,6 +84,20 @@ fn parse_opname(matches: &ArgMatches) -> OpType {
         .clone()
 }
 
+fn prove_type<'a>() -> Arg<'a> {
+    arg!(-t --prove_type<PROVE_TYPE> "prove schema, halo2 or hyper_plonk")
+        .required(false)
+        .max_values(1)
+        .value_parser(value_parser!(ProveSchema))
+}
+
+fn parse_prove_type(matches: &ArgMatches) -> ProveSchema {
+    matches
+        .get_one::<ProveSchema>("prove_type")
+        .unwrap_or(&ProveSchema::UseHalo2)
+        .clone()
+}
+
 #[allow(clippy::many_single_char_names)]
 fn main() {
     let clap_app = App::new("hostcircuit")
@@ -90,7 +105,8 @@ fn main() {
         .arg(output_folder())
         .arg(param_folder())
         .arg(opname())
-        .arg(circuits_k());
+        .arg(circuits_k())
+        .arg(prove_type());
 
     let matches = clap_app.get_matches();
     let input_file = parse_input_file(&matches);
@@ -98,6 +114,7 @@ fn main() {
     let param_folder = parse_param_folder(&matches);
     let opname = parse_opname(&matches);
     let k = parse_circuits_k(&matches);
+    let prove_type = parse_prove_type(&matches);
 
     exec_create_host_proof(
         "host",
@@ -106,5 +123,6 @@ fn main() {
         opname,
         &cache_folder,
         &param_folder,
+        prove_type,
     );
 }

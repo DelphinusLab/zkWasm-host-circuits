@@ -554,8 +554,8 @@ name = "bls12_381"
 version = "0.7.0"
 source = "git+https://github.com/lanbones/bls12_381.git#31fcd53a340cadbb5558bb75422516b81704a0a1"
 dependencies = [
- "ff 0.12.1",
- "group 0.12.1",
+ "ff",
+ "group",
  "pairing",
  "rand_core",
  "subtle",
@@ -683,7 +683,6 @@ dependencies = [
 [[package]]
 name = "circuits-batcher"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/continuation-batcher.git?tag=stable-logup-shuffle-1.0#00945b9329051b3da504c3ce2f6c5470fe48d239"
 dependencies = [
  "anyhow",
  "ark-std",
@@ -691,7 +690,7 @@ dependencies = [
  "clap",
  "downcast-rs",
  "env_logger 0.9.3",
- "ff 0.12.1",
+ "ff",
  "halo2_proofs",
  "halo2aggregator-s",
  "hex",
@@ -701,9 +700,10 @@ dependencies = [
  "md5",
  "num",
  "num-bigint",
- "num-derive",
+ "num-derive 0.3.3",
  "num-integer",
  "num-traits",
+ "plonkish_backend",
  "quote",
  "rand",
  "serde",
@@ -713,7 +713,6 @@ dependencies = [
  "strum",
  "strum_macros",
  "uuid",
- "wabt",
  "wast",
  "zkwasm-prover",
 ]
@@ -724,7 +723,7 @@ version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
 dependencies = [
- "glob 0.3.1",
+ "glob",
  "libc",
  "libloading",
 ]
@@ -766,15 +765,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
 dependencies = [
  "os_str_bytes",
-]
-
-[[package]]
-name = "cmake"
-version = "0.1.50"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -891,7 +881,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee74643f7430213a1a78320f88649de309b20b80818325575e393f848f79f5d"
 dependencies = [
- "glob 0.3.1",
+ "glob",
 ]
 
 [[package]]
@@ -1044,8 +1034,8 @@ dependencies = [
  "crossbeam-channel",
  "ec-gpu",
  "execute",
- "ff 0.12.1",
- "group 0.12.1",
+ "ff",
+ "group",
  "hex",
  "log",
  "num_cpus",
@@ -1250,17 +1240,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ff"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
-dependencies = [
- "bitvec",
- "rand_core",
- "subtle",
-]
-
-[[package]]
 name = "fil-rustacuda"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1284,7 +1263,7 @@ version = "0.10.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1657b4441c3403d9f7b3409e47575237dac27b1b5726df654a6ecbf92f0f7577"
 dependencies = [
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -1455,12 +1434,6 @@ checksum = "4271d37baee1b8c7e4b708028c57d816cf9d2434acb33a549475f78c181f6253"
 
 [[package]]
 name = "glob"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8be18de09a56b60ed0edf84bc9df007e30040691af7acd1c41874faac5895bfb"
-
-[[package]]
-name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
@@ -1507,18 +1480,7 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
 dependencies = [
- "ff 0.12.1",
- "rand_core",
- "subtle",
-]
-
-[[package]]
-name = "group"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
-dependencies = [
- "ff 0.13.1",
+ "ff",
  "rand_core",
  "subtle",
 ]
@@ -1534,15 +1496,15 @@ dependencies = [
  "core_affinity",
  "cuda-driver-sys",
  "ec-gpu-gen",
- "ff 0.12.1",
- "group 0.12.1",
+ "ff",
+ "group",
  "itertools",
  "lazy_static",
  "log",
  "memmap",
  "num",
  "num-bigint",
- "num-derive",
+ "num-derive 0.3.3",
  "num-integer",
  "num-traits",
  "pairing_bn256",
@@ -1555,43 +1517,26 @@ dependencies = [
 [[package]]
 name = "halo2aggregator-s"
 version = "1.1.0"
-source = "git+https://github.com/DelphinusLab/halo2aggregator-s.git?tag=stable-logup-shuffle-1.0.0#ba51aed7154ac0f4f865cd1d3883daa1e77f0a08"
 dependencies = [
  "ark-ff",
  "ark-std",
  "blake2b_simd",
- "ff 0.12.1",
+ "ff",
  "halo2_proofs",
  "halo2ecc-o",
+ "itertools",
  "lazy_static",
  "num-bigint",
  "num-integer",
  "num-traits",
- "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon)",
+ "plonkish_backend",
+ "poseidon",
  "rand_core",
  "serde",
  "serde_json",
  "sha2",
  "sha3",
  "tera",
-]
-
-[[package]]
-name = "halo2curves"
-version = "0.3.2"
-source = "git+https://github.com/privacy-scaling-explorations/halo2curves.git?tag=0.3.2#9f5c50810bbefe779ee5cf1d852b2fe85dc35d5e"
-dependencies = [
- "ff 0.13.1",
- "group 0.13.0",
- "lazy_static",
- "num-bigint",
- "num-traits",
- "pasta_curves",
- "paste",
- "rand",
- "rand_core",
- "static_assertions",
- "subtle",
 ]
 
 [[package]]
@@ -1882,9 +1827,6 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-dependencies = [
- "spin 0.5.2",
-]
 
 [[package]]
 name = "lazycell"
@@ -1940,7 +1882,7 @@ dependencies = [
  "bindgen",
  "bzip2-sys",
  "cc",
- "glob 0.3.1",
+ "glob",
  "libc",
  "libz-sys",
  "lz4-sys",
@@ -2211,6 +2153,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.53",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2244,9 +2197,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.18"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da0df0e5185db44f69b44f26786fe401b6c293d1907744beaa7fa62b2e5a517a"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
@@ -2288,7 +2241,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "135590d8bdba2b31346f9cd1fb2a912329f5135e832a4f422942eb6ead8b6b3b"
 dependencies = [
- "group 0.12.1",
+ "group",
 ]
 
 [[package]]
@@ -2298,8 +2251,8 @@ source = "git+https://github.com/mooreland/pairing?branch=support_serder#a3b8265
 dependencies = [
  "bls12_381",
  "ec-gpu",
- "ff 0.12.1",
- "group 0.12.1",
+ "ff",
+ "group",
  "num-bigint",
  "num-traits",
  "rand",
@@ -2345,21 +2298,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c705f256449c60da65e11ff6626e0c16a0a0b96aaa348de61376b249bc340f41"
 dependencies = [
  "regex",
-]
-
-[[package]]
-name = "pasta_curves"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3e57598f73cc7e1b2ac63c79c517b31a0877cd7c402cdcaa311b5208de7a095"
-dependencies = [
- "blake2b_simd",
- "ff 0.13.1",
- "group 0.13.0",
- "lazy_static",
- "rand",
- "static_assertions",
- "subtle",
 ]
 
 [[package]]
@@ -2504,19 +2442,21 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 [[package]]
 name = "plonkish_backend"
 version = "0.1.0"
-source = "git+https://github.com/mooreland/hyperplonk.git?branch=moore/support_halo2#45157da8eeb3777caf05052320b7b9cbeb4121ab"
 dependencies = [
  "ark-std",
  "bincode",
  "bitvec",
- "ff 0.12.1",
+ "ff",
  "generic-array 0.14.7",
- "group 0.12.1",
+ "group",
  "halo2_proofs",
  "itertools",
+ "num",
  "num-bigint",
+ "num-derive 0.4.2",
  "num-integer",
- "poseidon 0.2.0 (git+https://github.com/han0110/poseidon?branch=feature/with-spec)",
+ "num-traits",
+ "poseidon",
  "rand",
  "rayon",
  "serde",
@@ -2551,15 +2491,6 @@ dependencies = [
  "rustix 0.38.31",
  "tracing",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "poseidon"
-version = "0.2.0"
-source = "git+https://github.com/han0110/poseidon?branch=feature/with-spec#fa4c2544ed38666f1f72d1c4fd0956756a7112b3"
-dependencies = [
- "halo2curves",
- "subtle",
 ]
 
 [[package]]
@@ -2766,7 +2697,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "getrandom 0.2.12",
  "libc",
- "spin 0.9.8",
+ "spin",
  "untrusted",
  "windows-sys 0.52.0",
 ]
@@ -3153,12 +3084,6 @@ dependencies = [
  "libc",
  "windows-sys 0.52.0",
 ]
-
-[[package]]
-name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
@@ -3643,29 +3568,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
-name = "wabt"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bef93d5e6c81a293bccf107cf43aa47239382f455ba14869d36695d8963b9c"
-dependencies = [
- "serde",
- "serde_derive",
- "serde_json",
- "wabt-sys",
-]
-
-[[package]]
-name = "wabt-sys"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a4e043159f63e16986e713e9b5e1c06043df4848565bf672e27c523864c7791"
-dependencies = [
- "cc",
- "cmake",
- "glob 0.2.11",
-]
-
-[[package]]
 name = "waker-fn"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4076,7 +3978,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "circuits-batcher",
  "clap",
- "ff 0.12.1",
+ "ff",
  "halo2_proofs",
  "halo2ecc-o",
  "hex",
@@ -4085,10 +3987,10 @@ dependencies = [
  "lru",
  "mongodb",
  "num-bigint",
- "num-derive",
+ "num-derive 0.3.3",
  "num-traits",
  "plonkish_backend",
- "poseidon 0.2.0 (git+https://github.com/DelphinusLab/poseidon)",
+ "poseidon",
  "rand",
  "rand_core",
  "ripemd",
@@ -4104,7 +4006,7 @@ dependencies = [
 [[package]]
 name = "zkwasm-prover"
 version = "0.1.0"
-source = "git+https://github.com/DelphinusLab/zkWasm-prover.git?tag=stable-logup-shuffle-1.0#198d74b3aef0101f6fee7c07873a0ea2e859de2c"
+source = "git+https://github.com/DelphinusLab/zkWasm-prover.git?tag=stable-logup-shuffle-v1.0.1#17ab7a9cf64560d8dff78c408588d5cf659272c8"
 dependencies = [
  "ark-std",
  "cc",
@@ -4127,8 +4029,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "pairing_bn256"
-version = "0.1.1"
-source = "git+https://github.com/mooreland/pairing#30b052f29d7ec3e68e20528584d9495de678ea05"

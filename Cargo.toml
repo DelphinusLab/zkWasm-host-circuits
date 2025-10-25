@@ -47,7 +47,7 @@ num-derive = "0.3"
 rocksdb = "0.21.0"
 tempfile = "3.18.0"
 #backend
-plonkish_backend = {git = "https://github.com/mooreland/hyperplonk.git" }
+plonkish_backend = {git = "https://github.com/DelphinusLab/hyperplonk.git",branch="moore/support_zeromorph"}
 
 [features]
 default = ["mongo-tokio-sync"]
@@ -59,13 +59,9 @@ complex-leaf = []
 profile = ["ark-std/print-trace", "halo2_proofs/profile", "circuits-batcher/profile"]
 
 [patch."https://github.com/DelphinusLab/halo2-gpu-specific.git"]
-halo2_proofs = {  path = "/Users/pony/github/delphinuslab/temp/halo2-gpu-specific/halo2_proofs" }
-#[patch."https://github.com/lanbones/pairing"]
-#pairing = { git = "https://github.com/mooreland/pairing", package = "pairing_bn256",features = ["derive_serde"]}
-
-[patch."https://github.com/DelphinusLab/continuation-batcher.git"]
-circuits-batcher ={path="/Users/pony/github/delphinuslab/continuation-batcher"}
+halo2_proofs={path="../halo2-gpu-specific/halo2_proofs"}
 [patch."https://github.com/DelphinusLab/halo2aggregator-s.git"]
-halo2aggregator-s={path="/Users/pony/github/delphinuslab/halo2aggregator-s"}
-[patch."https://github.com/mooreland/hyperplonk.git"]
-plonkish_backend ={path = "/Users/pony/github/delphinuslab/hyperplonk/plonkish_backend"}
+halo2aggregator-s={path="../halo2aggregator-s"}
+[patch."https://github.com/DelphinusLab/continuation-batcher.git"]
+circuits-batcher ={path="../continuation-batcher"}
+

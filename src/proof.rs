@@ -21,8 +21,7 @@ use std::{fs::File, io::BufReader, marker::PhantomData, path::PathBuf};
 
 use circuits_batcher::args::HashType::Poseidon;
 use circuits_batcher::args::{OpenSchema, ProveSchema};
-use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache};
-
+use circuits_batcher::proof::{ParamsCache, ProofGenerationInfo, ProofPieceInfo, ProvingKeyCache,Prover};
 use crate::host::ExternalHostCallEntryTable;
 use serde::{Deserialize, Serialize};
 
@@ -173,7 +172,7 @@ pub fn exec_create_host_proof(
                 ProofPieceInfo::new(format!("{}.{:?}", name, opname), 0, 0, None, prove_type);
             let mut proof_gen_info =
                 ProofGenerationInfo::new(format!("{}.{:?}", name, opname).as_str(), k, Poseidon);
-            let proof = prover.exec_create_proof(
+            let proof = prover.create_proof(
                 &$circuit,
                 &vec![],
                 k,

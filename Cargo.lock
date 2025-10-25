@@ -2442,6 +2442,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 [[package]]
 name = "plonkish_backend"
 version = "0.1.0"
+source = "git+https://github.com/DelphinusLab/hyperplonk.git?branch=moore/support_zeromorph#4400d42a4fde42a460a25673e148a151ddd6a73c"
 dependencies = [
  "ark-std",
  "bincode",
@@ -2456,7 +2457,6 @@ dependencies = [
  "num-derive 0.4.2",
  "num-integer",
  "num-traits",
- "poseidon",
  "rand",
  "rayon",
  "serde",

@@ -1,6 +1,6 @@
 use itertools::Itertools;
-pub const BITRATE: usize = (1600 / LANE_SIZE) as usize;
-pub const CAPACITY: usize = (512 / LANE_SIZE) as usize;
+pub const BITRATE: usize = (1600 / LANE_SIZE) as usize; //25
+pub const CAPACITY: usize = (512 / LANE_SIZE) as usize; //8
 pub const L: usize = 6;
 pub const RATE: usize = (1088 / LANE_SIZE) as usize; //17
 pub const LANE_SIZE: u32 = 64;
@@ -132,6 +132,7 @@ impl State {
         for i in 0..RATE {
             let word = input[i];
             self.0[x][y] = (&word) ^ (&self.0[x][y]);
+            //this [0,0],[1,0]..,[4,0], ,[0,1]... to xor with input[i]
             if x < 5 - 1 {
                 x += 1;
             } else {
@@ -181,6 +182,10 @@ impl Keccak {
         }
     }
 
+    // only for special case that:
+    // 1. inputs are RATE-aligned
+    // 2. the padding has been set to inputs beforehand
+    // just absorb and get result directly
     pub fn update_exact(&mut self, inputs: &[u64; RATE]) -> [u64; 4] {
         assert_eq!(self.absorbing.len(), 0);
         self.state.absorb(inputs);
@@ -188,6 +193,47 @@ impl Keccak {
         self.state.result()
     }
 
+    // Keccak updates operate on a byte stream ([u8]), and the input is not guaranteed to be aligned to u64 boundaries.
+    // Therefore, a total_bytes counter is required to track the exact number of absorbed bytes.
+    // For the remaining data that is not u64-aligned, absorption must still be performed byte-wise using XOR.
+    // Test plan:
+    // First, test inputs that are u64-aligned but not rate-aligned.
+    // Then, test inputs that are byte-aligned but not u64-aligned.
+    fn keccak_pad10star1(&mut self, offset_bytes: usize, total_bytes: usize) {
+        let start_lane_index = offset_bytes / 8;
+        let start_lane_byte = offset_bytes % 8;
+
+        // 起始 bit XOR 0x01
+        let start_mask: u64 = 1u64 << (start_lane_byte * 8); // 第 start_lane_byte 个 byte 的最低位
+        self.absorbing[start_lane_index] ^= start_mask;
+
+        // 结束 bit XOR 0x80
+        let end_lane_index = (total_bytes-1 ) / 8;
+        let end_lane_byte = (total_bytes-1 ) % 8;
+        let end_mask: u64 = 0x80u64 << (end_lane_byte * 8);
+        self.absorbing[end_lane_index] ^= end_mask;
+    }
+
+    pub fn squeeze(&mut self) -> [u64; 4] {
+        let len = self.absorbing.len();
+        let padding_total = RATE - (len % RATE);
+
+        let starting_one_lane = 1u64;
+        let zero_lane = 0;
+        let ending_one_lane = 1u64 << 63;
+        let one_zero_one_lane = starting_one_lane + ending_one_lane;
+        if padding_total == 1 {
+            self.absorbing.push(one_zero_one_lane);
+        } else {
+            self.absorbing.resize(RATE, zero_lane);
+            self.keccak_pad10star1(len*8,RATE*8)
+        }
+        let r: Vec<u64> = self.absorbing.clone();
+        self.state.absorb(&r.try_into().unwrap());
+        self.absorbing.truncate(0);
+        self.state.result()
+    }
+    /*
     /// Returns keccak hash based on current state
     pub fn squeeze(&mut self) -> [u64; 4] {
         let len = self.absorbing.len();
@@ -213,6 +259,7 @@ impl Keccak {
         self.absorbing.truncate(0);
         self.state.result()
     }
+     */
 }
 
 lazy_static::lazy_static! {
@@ -224,6 +271,7 @@ mod tests {
     use super::KECCAK_HASHER;
     use crate::host::keccak256::N_R;
     use itertools::Itertools;
+    use num_traits::ToBytes;
     use rand::RngCore;
     use rand_core::OsRng;
 
@@ -239,6 +287,34 @@ mod tests {
         let result = hasher.squeeze();
 
         let hash = result.iter().map(|x| format!("{:02x}", x)).join("");
+        println!("hash result is {:?}", hash); // endian does not match the reference implementation
+        println!("expect result is {:?}", expect_str);
+        //assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
+    }
+
+    #[test]
+    fn test_keccak_bytes() {
+        let exp = [
+            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182,
+            83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112,
+        ];
+        let expect_str = exp.iter().map(|x| format!("{:02x}", x)).join("");
+        let mut hasher = super::KECCAK_HASHER.clone();
+        hasher.update(&[1;8]);
+        let result = hasher.squeeze();
+        // after absorb state is State([[4333579421379646149, 14671339323370021561, 4391692840257016808, 16970298442240338249, 16062291397582171322], [13836122230913597074, 2243375101132795228, 4309499098775122448, 1971761234120675839, 1601982631079003425], [4262519377828905189, 9371364203318886753, 13438072403645551266, 450719451514497906, 7734681229251997073], [8116759062988257915, 9347994793612953298, 18018124564071650747, 18340686150147091359, 13256946727218518206], [8406387447366859581, 12814238161780307547, 4323130096954625545, 11254645818134300982, 11816912122432958423]])
+        // hash result is "3c23f7860146d2c5 c003c7dcb27d7e92 3b2782ca53b600e570a4855d04d8fa7b"
+        // expect result is "c5d2460186f7233c 927e7db2dcc703c0 e500b653ca82273b7bfad8045d85a470"
+        //here hash is [u64;4], hex(4333579421379646149_U64)=3c23f7860146d2c5, the 1st byte is "c5",in array ["c5","d2",.."3c"]
+        // let bytes: Vec<u8> = result
+        //     .iter()
+        //     .flat_map(|x| x.to_le_bytes())
+        //     .collect();
+        let bytes: [u8; 32] = unsafe {
+            std::mem::transmute(result)
+        };
+        let hash = bytes.iter().map(|x| format!("{:02x}", x)).join("");
+
         println!("hash result is {:?}", hash); // endian does not match the reference implementation
         println!("expect result is {:?}", expect_str);
         //assert_eq!(result.to_string(), ZERO_HASHER_SQUEEZE);
